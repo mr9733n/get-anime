@@ -21,7 +21,7 @@ class ConfigManager:
     def get_setting(self, section, setting, default=None):
         return self.config[section].get(setting, default)
 
-class AniLibraApp:
+class AnimePlayerApp:
     def __init__(self, window):
         self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
@@ -99,7 +99,7 @@ class AniLibraApp:
 
     def init_logger(self, log_level):
         # Create logger
-        self.logger = logging.getLogger("AniLibraApp")
+        self.logger = logging.getLogger("AnimePlayerApp")
         self.logger.setLevel(log_level)
         log_folder = 'logs'
         if not os.path.exists(log_folder):
@@ -455,5 +455,5 @@ class AniLibraApp:
 
 if __name__ == "__main__":
     window = tk.Tk()
-    app = AniLibraApp(window)
+    app = AnimePlayerApp(window)
     window.mainloop()

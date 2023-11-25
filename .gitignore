@@ -1,4 +1,5 @@
 *.m3u
 *.png
-logs\
-logs\*.txt
+logs/*.txt
+*.json
+

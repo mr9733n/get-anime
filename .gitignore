@@ -3,3 +3,4 @@
 logs/*.txt
 *.json
 
+logs/debug_log_2023-11-24.txt

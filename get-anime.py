@@ -26,19 +26,11 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         super(CustomTimedRotatingFileHandler, self).__init__(*args, **kwargs)
 
     def doRollover(self):
-        # Сначала вызываем оригинальную функцию doRollover
         super(CustomTimedRotatingFileHandler, self).doRollover()
-
-        # Теперь переименовываем файл
-        # Получаем базовое имя файла без расширения
         base_filename, file_extension = os.path.splitext(self.baseFilename)
-        # Форматируем текущую дату
         date_now = datetime.datetime.now().strftime("%Y-%m-%d")
-        # Имя нового файла с корректной датой и расширением
         new_log_file = f"{base_filename}_{date_now}{file_extension}"
-
         if os.path.exists(new_log_file):
-            # Новое имя файла с корректной датой
             correct_log_file_name = f"{base_filename}_{date_now}{file_extension}"
             os.rename(new_log_file, correct_log_file_name)
 
@@ -145,7 +137,6 @@ class AnimePlayerApp:
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'utils' folder.")
             utils_json = os.path.join(utils_folder, 'response.json')
-
             self.log_message(f"Attempting to read {utils_json}.")
             with open(utils_json, 'r', encoding='utf-8') as file:
                 data = json.load(file)
@@ -182,7 +173,6 @@ class AnimePlayerApp:
                 if not os.path.exists(playlists_folder):
                     os.makedirs(playlists_folder)
                     self.log_message(f"Created 'playlists' folder.")
-
                 self.playlist_name = os.path.join(playlists_folder, f"{data['list'][0]['code']}.m3u")
                 self.log_message(f"Saving playlist to {self.playlist_name}.")
                 try:

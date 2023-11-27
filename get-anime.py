@@ -429,10 +429,12 @@ class AnimePlayerApp:
                         ru_name = title["names"].get("ru", "Название отсутствует")
                         en_name = title["names"].get("en", "Название отсутствует")
                         announce = str(title.get("announce", "Состояние отсутствует"))
+                        type_full_string =  str(title["type"].get("full_string", {}))
                         self.text.insert(tk.END, "---\n")
                         self.text.insert(tk.END, "Название: " + ru_name + "\n")
                         self.text.insert(tk.END, "Название: " + en_name + "\n\n")
                         self.text.insert(tk.END, "Анонс: " + announce + "\n")
+                        self.text.insert(tk.END, type_full_string + "\n")
                         self.text.insert(tk.END, "\n")
                         link_id = f"title_link_{i}"
                         self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))

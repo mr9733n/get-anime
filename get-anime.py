@@ -21,6 +21,28 @@ class ConfigManager:
     def get_setting(self, section, setting, default=None):
         return self.config[section].get(setting, default)
 
+class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
+    def __init__(self, *args, **kwargs):
+        super(CustomTimedRotatingFileHandler, self).__init__(*args, **kwargs)
+
+    def doRollover(self):
+        # Сначала вызываем оригинальную функцию doRollover
+        super(CustomTimedRotatingFileHandler, self).doRollover()
+
+        # Теперь переименовываем файл
+        # Получаем базовое имя файла без расширения
+        base_filename, file_extension = os.path.splitext(self.baseFilename)
+        # Форматируем текущую дату
+        date_now = datetime.datetime.now().strftime("%Y-%m-%d")
+        # Имя нового файла с корректной датой и расширением
+        new_log_file = f"{base_filename}_{date_now}{file_extension}"
+
+        if os.path.exists(new_log_file):
+            # Новое имя файла с корректной датой
+            correct_log_file_name = f"{base_filename}_{date_now}{file_extension}"
+            os.rename(new_log_file, correct_log_file_name)
+
+
 class AnimePlayerApp:
     def __init__(self, window):
         self.config_manager = ConfigManager('config.ini')
@@ -40,8 +62,8 @@ class AnimePlayerApp:
         atexit.register(self.delete_response_json)        
 
     def load_config(self):
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         # Get configuration values
+        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url =  self.config_manager.get_setting('Settings', 'base_url')
         self.api_version =  self.config_manager.get_setting('Settings', 'api_version')
@@ -107,7 +129,8 @@ class AnimePlayerApp:
         # Define and configure the TimedRotatingFileHandler
         log_file = os.path.join(log_folder, datetime.datetime.now().strftime("debug_log_%Y-%m-%d.txt"))
         print(f"Log file path: {log_file}")  # Добавьте эту строку для проверки пути к лог-файлу
-        handler = TimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
+        # handler = TimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
+        handler = CustomTimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
         # Log message format
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
@@ -162,7 +185,6 @@ class AnimePlayerApp:
 
                 self.playlist_name = os.path.join(playlists_folder, f"{data['list'][0]['code']}.m3u")
                 self.log_message(f"Saving playlist to {self.playlist_name}.")
-
                 try:
                     if self.playlist_name is not None:
                         with open(self.playlist_name, 'w') as file:
@@ -198,11 +220,9 @@ class AnimePlayerApp:
             if not os.path.exists(playlists_folder):
                 os.makedirs(playlists_folder)
                 self.log_message(f"Created 'playlists' folder.")
-
             if hasattr(self, 'playlist_name') and self.playlist_name is not None:
                 playlist_path = os.path.join(playlists_folder, os.path.basename(self.playlist_name))
                 self.log_message(f"Attempting to play playlist from {playlist_path}.")
-                
                 if os.path.exists(playlist_path):
                     media_player_command = [vlc_path, playlist_path]
                     subprocess.Popen(media_player_command)
@@ -238,11 +258,9 @@ class AnimePlayerApp:
         try:
             vlc_path = self.video_player_path
             playlists_folder = 'playlists'
-            
             if hasattr(self, 'playlist_name') and self.playlist_name:
                 playlist_path = os.path.join(playlists_folder, self.playlist_name)
                 self.log_message(f"Attempting to play playlist from {playlist_path}.")
-                
                 if os.path.exists(playlist_path):
                     media_player_command = [vlc_path, playlist_path]
                     subprocess.Popen(media_player_command)
@@ -420,9 +438,11 @@ class AnimePlayerApp:
                     for i, title in enumerate(title_list):
                         ru_name = title["names"].get("ru", "Название отсутствует")
                         en_name = title["names"].get("en", "Название отсутствует")
+                        announce = str(title.get("announce", "Состояние отсутствует"))
                         self.text.insert(tk.END, "---\n")
                         self.text.insert(tk.END, "Название: " + ru_name + "\n")
-                        self.text.insert(tk.END, "Название: " + en_name + "\n")
+                        self.text.insert(tk.END, "Название: " + en_name + "\n\n")
+                        self.text.insert(tk.END, "Анонс: " + announce + "\n")
                         self.text.insert(tk.END, "\n")
                         link_id = f"title_link_{i}"
                         self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
@@ -470,8 +490,10 @@ class AnimePlayerApp:
                 en_name = data["list"][0]["names"].get("en", "Название отсутствует")
                 description = data["list"][0].get("description", "Описание отсутствует")
                 status = data["list"][0]["status"].get("string", "Статус отсутствует")
+                announce =str(data["list"][0].get("announce", "Состояние отсутствует"))
                 genres = ", ".join(data["list"][0].get("genres", ["Жанры отсутствуют"]))
                 season_info = data["list"][0].get("season", {})
+                type_full_string =  data["list"][0]["type"].get("full_string", {})
                 year_str = str(season_info.get("year", "Год отсутствует"))
                 self.text.insert(tk.END, "Название: " + ru_name + "\n")
                 self.text.insert(tk.END, "Название: " + en_name + "\n")
@@ -479,7 +501,9 @@ class AnimePlayerApp:
                 self.text.insert(tk.END, "Описание: " + description + "\n")
                 self.text.insert(tk.END, "\n")
                 self.text.insert(tk.END, "Статус: " + status + "\n")
+                self.text.insert(tk.END, "Анонс: " + announce + "\n")
                 self.text.insert(tk.END, "Жанры: " + genres + "\n")
+                self.text.insert(tk.END, type_full_string + "\n")
                 self.text.insert(tk.END, "Год: " + year_str + "\n")
                 self.text.insert(tk.END, "Серии: " + data["list"][0]["type"]["full_string"] + "\n")
                 self.text.insert(tk.END, "\n")
@@ -531,8 +555,6 @@ class AnimePlayerApp:
             error_message = f"An error occurred while clicking on title: {str(e)}"
             self.log_message(error_message)
             print(error_message)
-
-    
 
 if __name__ == "__main__":
     window = tk.Tk()

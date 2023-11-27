@@ -226,3 +226,43 @@
 2023-11-24 21:55:55,305 - DEBUG - No data available. Please fetch data first.
 2023-11-24 22:10:01,455 - DEBUG - Start application...
 2023-11-24 22:10:04,563 - DEBUG - An error occurred while deleting 'response.json': [WinError 2] The system cannot find the file specified: 'response.json'
+2023-11-24 22:44:37,938 - DEBUG - Start application...
+2023-11-24 22:44:47,241 - DEBUG - Successfully fetched poster for title 'Higurashi no Naku Koro ni Kai'. URL: https://anilibria.tv/storage/releases/posters/741/bV7SAv7q9lkTF2Ww__78688ee8ed682facc5dd6bd89ae839af.jpg, Time taken: 2.09 seconds, Image size: 109522 bytes.
+2023-11-24 22:44:47,242 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 1.14 seconds, Response size: 11025 bytes.
+2023-11-24 22:47:31,170 - DEBUG - An error occurred while deleting 'response.json': [WinError 2] The system cannot find the file specified: 'response.json'
+2023-11-24 22:47:33,425 - DEBUG - Start application...
+2023-11-24 22:47:38,283 - DEBUG - An error occurred while deleting 'response.json': [WinError 2] The system cannot find the file specified: 'response.json'
+2023-11-24 23:25:01,385 - DEBUG - Start application...
+2023-11-24 23:25:04,013 - DEBUG - An error occurred while displaying information: cannot access local variable 'utils_json' where it is not associated with a value
+2023-11-24 23:25:04,013 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.92 seconds, Response size: 6904 bytes.
+2023-11-24 23:25:43,197 - DEBUG - Start application...
+2023-11-24 23:25:45,711 - DEBUG - An error occurred while displaying information: cannot access local variable 'utils_json' where it is not associated with a value
+2023-11-24 23:25:45,711 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.88 seconds, Response size: 6257 bytes.
+2023-11-24 23:26:21,658 - DEBUG - Start application...
+2023-11-24 23:26:23,821 - DEBUG - An error occurred while displaying information: cannot access local variable 'utils_json' where it is not associated with a value
+2023-11-24 23:26:23,821 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.70 seconds, Response size: 7666 bytes.
+2023-11-24 23:26:51,191 - DEBUG - Start application...
+2023-11-24 23:26:53,392 - DEBUG - An error occurred while displaying information: cannot access local variable 'utils_json' where it is not associated with a value
+2023-11-24 23:26:53,392 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.81 seconds, Response size: 6223 bytes.
+2023-11-24 23:49:15,554 - DEBUG - Start application...
+2023-11-24 23:49:22,896 - DEBUG - Attempting to read utils\response.json.
+2023-11-24 23:49:22,896 - DEBUG - File utils\response.json not found.
+2023-11-24 23:49:22,896 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.86 seconds, Response size: 7483 bytes.
+2023-11-24 23:49:42,712 - DEBUG - Attempting to read utils\response.json.
+2023-11-24 23:49:42,712 - DEBUG - File utils\response.json not found.
+2023-11-24 23:49:42,713 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 3.32 seconds, Response size: 3784 bytes.
+2023-11-24 23:49:55,330 - DEBUG - Starting to save playlist.
+2023-11-24 23:49:55,331 - DEBUG - Attempting to read utils\response.json.
+2023-11-24 23:49:55,331 - DEBUG - File utils\response.json not found.
+2023-11-24 23:49:55,331 - DEBUG - No data available. Please fetch data first.
+2023-11-24 23:49:56,701 - DEBUG - Attempting to play all links.
+2023-11-24 23:49:56,702 - DEBUG - Please save the playlist first.
+2023-11-24 23:49:59,511 - DEBUG - Attempting to read utils\response.json.
+2023-11-24 23:49:59,511 - DEBUG - File utils\response.json not found.
+2023-11-24 23:49:59,512 - DEBUG - Successfully fetched schedule for day 1. URL: https://api.anilibria.tv/v3/title/schedule?days=1, Time taken: 1.04 seconds.
+2023-11-24 23:50:38,459 - DEBUG - File utils\response.json does not exist. No need to delete.
+2023-11-24 23:50:47,495 - DEBUG - Start application...
+2023-11-24 23:50:57,084 - DEBUG - Attempting to read utils\response.json.
+2023-11-24 23:50:57,084 - DEBUG - File utils\response.json not found.
+2023-11-24 23:50:57,084 - DEBUG - Successfully fetched random title. URL: https://api.anilibria.tv/v3/title/random, Time taken: 0.89 seconds, Response size: 6660 bytes.
+2023-11-24 23:52:07,599 - DEBUG - File utils\response.json does not exist. No need to delete.

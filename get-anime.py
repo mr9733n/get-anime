@@ -12,6 +12,7 @@ import time
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import datetime
+from tkinter.ttk import Combobox
 
 class ConfigManager:
     def __init__(self, config_file):
@@ -22,23 +23,36 @@ class ConfigManager:
         return self.config[section].get(setting, default)
 
 class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, log_dir, log_filename, *args, **kwargs):
         super(CustomTimedRotatingFileHandler, self).__init__(*args, **kwargs)
+        self.log_dir = log_dir
+        self.log_filename = log_filename
+        self.current_log_date = None
 
     def doRollover(self):
-        super(CustomTimedRotatingFileHandler, self).doRollover()
-        base_filename, file_extension = os.path.splitext(self.baseFilename)
-        date_now = datetime.datetime.now().strftime("%Y-%m-%d")
-        new_log_file = f"{base_filename}_{date_now}{file_extension}"
-        if os.path.exists(new_log_file):
-            correct_log_file_name = f"{base_filename}_{date_now}{file_extension}"
-            os.rename(new_log_file, correct_log_file_name)
+        # Получаем текущую дату
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
+        # Если текущая дата отличается от предыдущей, создаем новый лог-файл
+        if current_date != self.current_log_date:
+            self.current_log_date = current_date
+
+            # Сначала вызываем оригинальную функцию doRollover
+            super(CustomTimedRotatingFileHandler, self).doRollover()
+
+            # Теперь переименовываем файл
+            base_filename, file_extension = os.path.splitext(self.baseFilename)
+            new_log_file = f"{base_filename}_{current_date}{file_extension}"
+
+            if os.path.exists(new_log_file):
+                correct_log_file_name = f"{base_filename}{file_extension}"  # Убираем старую дату
+                os.rename(new_log_file, correct_log_file_name)
 
 class AnimePlayerApp:
     def __init__(self, window):
         self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
+        self.log_filename = "debug_log"  # Укажите имя лог-файла
         self.window = window
         self.window.title("AnimePlayerApp")
         self.window.geometry("1000x600")
@@ -92,17 +106,20 @@ class AnimePlayerApp:
         # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.all_links_play)
         self.play_button.grid(row=4, column=0, columnspan=3, sticky="ew")
-        # Create a variable for selecting quality
-        self.quality_var = tk.StringVar()
-        self.quality_var.set("fhd")
-        # Create a dropdown menu for selecting quality
+
+        # Create a dropdown menu for selecting quality using Combobox
         self.quality_label = ttk.Label(self.window, text="Качество:")
         self.quality_label.grid(row=3, column=8)
-        self.quality_dropdown = ttk.OptionMenu(self.window, self.quality_var, "fhd", "hd", "sd")
+        self.quality_var = tk.StringVar()
+        self.quality_var.set("fhd")  # Устанавливаем "fhd" в качестве значения по умолчанию
+        quality_options = ["fhd", "hd", "sd"]
+        self.quality_dropdown = Combobox(self.window, textvariable=self.quality_var, values=quality_options)
         self.quality_dropdown.grid(row=3, column=9)
+        self.quality_dropdown.state(['readonly'])  # Запрещаем пользователю вводить свои значения
         self.refresh_button = ttk.Button(self.window, text="Обновить", command=self.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
         self.window.grid_columnconfigure(1, weight=3)
+
         # Create a text field for displaying information
         self.text = tk.Text(self.window, wrap=tk.WORD, cursor="hand2")
         self.text.grid(row=2, column=3, columnspan=7, sticky="nsew")
@@ -118,14 +135,20 @@ class AnimePlayerApp:
         log_folder = 'logs'
         if not os.path.exists(log_folder):
             os.makedirs(log_folder)
-        # Define and configure the TimedRotatingFileHandler
-        log_file = os.path.join(log_folder, datetime.datetime.now().strftime("debug_log_%Y-%m-%d.txt"))
+        
+        # Define log file path with current date
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        log_file = os.path.join(log_folder, f"{self.log_filename}_{current_date}.txt")
+
         print(f"Log file path: {log_file}")  # Добавьте эту строку для проверки пути к лог-файлу
-        # handler = TimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
-        handler = CustomTimedRotatingFileHandler(log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
+        
+        # Create the CustomTimedRotatingFileHandler with log_dir and log_filename
+        handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
+        
         # Log message format
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
+        
         # Add the handler to the logger
         self.logger.addHandler(handler)
         self.log_message("Start application...")
@@ -550,5 +573,5 @@ class AnimePlayerApp:
 
 if __name__ == "__main__":
     window = tk.Tk()
-    app = AnimePlayerApp(window)
+    pp = AnimePlayerApp(window)
     window.mainloop()

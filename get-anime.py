@@ -30,29 +30,22 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         self.current_log_date = None
 
     def doRollover(self):
-        # Получаем текущую дату
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-
-        # Если текущая дата отличается от предыдущей, создаем новый лог-файл
         if current_date != self.current_log_date:
             self.current_log_date = current_date
-
-            # Сначала вызываем оригинальную функцию doRollover
             super(CustomTimedRotatingFileHandler, self).doRollover()
-
-            # Теперь переименовываем файл
             base_filename, file_extension = os.path.splitext(self.baseFilename)
             new_log_file = f"{base_filename}_{current_date}{file_extension}"
 
             if os.path.exists(new_log_file):
-                correct_log_file_name = f"{base_filename}{file_extension}"  # Убираем старую дату
+                correct_log_file_name = f"{base_filename}{file_extension}" 
                 os.rename(new_log_file, correct_log_file_name)
 
 class AnimePlayerApp:
     def __init__(self, window):
         self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
-        self.log_filename = "debug_log"  # Укажите имя лог-файла
+        self.log_filename = "debug_log"
         self.window = window
         self.window.title("AnimePlayerApp")
         self.window.geometry("1000x600")
@@ -61,10 +54,8 @@ class AnimePlayerApp:
         self.load_config()
         self.window.grid_rowconfigure(2, weight=1)
         self.window.grid_columnconfigure(0, weight=1)
-        # Global variables for storing links
         self.discovered_links = []
         self.current_link = None
-        # Function to delete response.json file when the application exits
         atexit.register(self.delete_response_json)        
 
     def load_config(self):
@@ -106,20 +97,18 @@ class AnimePlayerApp:
         # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.all_links_play)
         self.play_button.grid(row=4, column=0, columnspan=3, sticky="ew")
-
         # Create a dropdown menu for selecting quality using Combobox
         self.quality_label = ttk.Label(self.window, text="Качество:")
         self.quality_label.grid(row=3, column=8)
         self.quality_var = tk.StringVar()
-        self.quality_var.set("fhd")  # Устанавливаем "fhd" в качестве значения по умолчанию
+        self.quality_var.set("fhd")  
         quality_options = ["fhd", "hd", "sd"]
         self.quality_dropdown = Combobox(self.window, textvariable=self.quality_var, values=quality_options)
         self.quality_dropdown.grid(row=3, column=9)
-        self.quality_dropdown.state(['readonly'])  # Запрещаем пользователю вводить свои значения
+        self.quality_dropdown.state(['readonly'])  
         self.refresh_button = ttk.Button(self.window, text="Обновить", command=self.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
         self.window.grid_columnconfigure(1, weight=3)
-
         # Create a text field for displaying information
         self.text = tk.Text(self.window, wrap=tk.WORD, cursor="hand2")
         self.text.grid(row=2, column=3, columnspan=7, sticky="nsew")
@@ -135,20 +124,15 @@ class AnimePlayerApp:
         log_folder = 'logs'
         if not os.path.exists(log_folder):
             os.makedirs(log_folder)
-        
         # Define log file path with current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         log_file = os.path.join(log_folder, f"{self.log_filename}_{current_date}.txt")
-
-        print(f"Log file path: {log_file}")  # Добавьте эту строку для проверки пути к лог-файлу
-        
+        print(f"Log file path: {log_file}") 
         # Create the CustomTimedRotatingFileHandler with log_dir and log_filename
         handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
-        
         # Log message format
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
-        
         # Add the handler to the logger
         self.logger.addHandler(handler)
         self.log_message("Start application...")
@@ -482,7 +466,7 @@ class AnimePlayerApp:
                                         self.text.tag_config("hyperlink_episodes", foreground="blue")
                                         episodes_found = True
                         if not episodes_found:
-                            self.text.insert(tk.END, "\nСерии в выбранном качестве не найдены, выберите другое качество\n")
+                            self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
                         self.text.insert(tk.END, "\n")
                         title_start = self.text.index(tk.END)
                         self.text.tag_add("title_block", title_start, tk.END)
@@ -501,46 +485,53 @@ class AnimePlayerApp:
             self.text.delete("1.0", tk.END)
             if data is not None:
                 selected_quality = self.quality_var.get()
-                ru_name = data["list"][0]["names"].get("ru", "Название отсутствует")
-                en_name = data["list"][0]["names"].get("en", "Название отсутствует")
-                description = data["list"][0].get("description", "Описание отсутствует")
-                status = data["list"][0]["status"].get("string", "Статус отсутствует")
-                announce =str(data["list"][0].get("announce", "Состояние отсутствует"))
-                genres = ", ".join(data["list"][0].get("genres", ["Жанры отсутствуют"]))
-                season_info = data["list"][0].get("season", {})
-                type_full_string =  data["list"][0]["type"].get("full_string", {})
-                year_str = str(season_info.get("year", "Год отсутствует"))
-                self.text.insert(tk.END, "Название: " + ru_name + "\n")
-                self.text.insert(tk.END, "Название: " + en_name + "\n")
-                self.text.insert(tk.END, "\n")
-                self.text.insert(tk.END, "Описание: " + description + "\n")
-                self.text.insert(tk.END, "\n")
-                self.text.insert(tk.END, "Статус: " + status + "\n")
-                self.text.insert(tk.END, "Анонс: " + announce + "\n")
-                self.text.insert(tk.END, "Жанры: " + genres + "\n")
-                self.text.insert(tk.END, type_full_string + "\n")
-                self.text.insert(tk.END, "Год: " + year_str + "\n")
-                self.text.insert(tk.END, "Серии: " + data["list"][0]["type"]["full_string"] + "\n")
-                self.text.insert(tk.END, "\n")
-                self.show_poster(None, en_name, data["list"][0])
                 self.discovered_links = []
-                episodes_found = False
-                for episode in data["list"][0]["player"]["list"].values():
-                    if "hls" in episode:
-                        hls = episode["hls"]
-                        if selected_quality in hls:
-                            url = hls[selected_quality]
-                            if url is not None:
-                                self.discovered_links.append(url)
-                                self.text.insert(tk.END, f"Серия {episode['episode']}: ")
-                                hyperlink_start = self.text.index(tk.END)
-                                self.text.insert(hyperlink_start, "Смотреть", ("hyperlink", len(self.discovered_links) - 1))
-                                hyperlink_end = self.text.index(tk.END)
-                                self.text.insert(hyperlink_end, "\n")
-                                self.text.tag_bind("hyperlink", "<Button-1>", self.on_link_click)
-                                episodes_found = True
-                if not episodes_found:
-                    self.text.insert(tk.END, "\nСерии в выбранном качестве не найдены, выберите другое качество\n")
+
+                for i, item in enumerate(data["list"]):
+                    self.text.insert(tk.END, "\n")
+                    ru_name = item["names"].get("ru", "Название отсутствует")
+                    en_name = item["names"].get("en", "Название отсутствует")
+                    description = item.get("description", "Описание отсутствует")
+                    status = item["status"].get("string", "Статус отсутствует")
+                    announce = str(item.get("announce", "Состояние отсутствует"))
+                    genres = ", ".join(item.get("genres", ["Жанры отсутствуют"]))
+                    season_info = item.get("season", {})
+                    type_full_string = item["type"].get("full_string", {})
+                    year_str = str(season_info.get("year", "Год отсутствует"))
+
+                    self.text.insert(tk.END, "Название: " + ru_name + "\n")
+                    self.text.insert(tk.END, "Название: " + en_name + "\n")
+                    self.text.insert(tk.END, "\n")
+                    self.text.insert(tk.END, "Описание: " + description + "\n")
+                    self.text.insert(tk.END, "\n")
+                    self.text.insert(tk.END, "Статус: " + status + "\n")
+                    self.text.insert(tk.END, "Анонс: " + announce + "\n")
+                    self.text.insert(tk.END, "Жанры: " + genres + "\n")
+                    self.text.insert(tk.END, type_full_string + "\n")
+                    self.text.insert(tk.END, "Год: " + year_str + "\n")
+                    self.text.insert(tk.END, "Серии: " + item["type"]["full_string"] + "\n")
+                    self.text.insert(tk.END, "\n")
+
+                    self.show_poster(None, en_name, item)
+
+                    episodes_found = False
+                    for episode in item["player"]["list"].values():
+                        if "hls" in episode:
+                            hls = episode["hls"]
+                            if selected_quality in hls:
+                                url = hls[selected_quality]
+                                if url is not None:
+                                    self.discovered_links.append(url)
+                                    self.text.insert(tk.END, f"Серия {episode['episode']}: ")
+                                    hyperlink_start = self.text.index(tk.END)
+                                    self.text.insert(hyperlink_start, "Смотреть", ("hyperlink", len(self.discovered_links) - 1))
+                                    hyperlink_end = self.text.index(tk.END)
+                                    self.text.insert(hyperlink_end, "\n")
+                                    self.text.tag_bind("hyperlink", "<Button-1>", self.on_link_click)
+                                    episodes_found = True
+
+                    if not episodes_found:
+                        self.text.insert(tk.END, "\nСерии в выбранном качестве не найдены, выберите другое качество\n")
         except Exception as e:
             error_message = f"An error occurred while displaying information: {str(e)}"
             self.log_message(error_message)

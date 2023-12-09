@@ -130,12 +130,9 @@ class AnimePlayerApp:
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         log_file = os.path.join(log_folder, f"{self.log_filename}_{current_date}.txt")
         print(f"Log file path: {log_file}") 
-        # Create the CustomTimedRotatingFileHandler with log_dir and log_filename
         handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
-        # Log message format
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
-        # Add the handler to the logger
         self.logger.addHandler(handler)
         self.log_message("Start application...")
 

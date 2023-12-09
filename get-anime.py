@@ -52,6 +52,7 @@ class AnimePlayerApp:
         self.current_link = None
         self.poster_data = []  
         self.current_poster_index = 0
+        self.clear_cache_file()
         
         atexit.register(self.delete_response_json)        
 
@@ -327,8 +328,13 @@ class AnimePlayerApp:
 
     def clear_cache_file(self):
         try:
-            if os.path.exists(self.cache_file_path):
-                os.remove(self.cache_file_path)
+            utils_folder = 'utils'
+            if not os.path.exists(utils_folder):
+                os.makedirs(utils_folder)
+                self.log_message(f"Created 'utils' folder.")
+            cache_file = os.path.join(utils_folder, self.cache_file_path)
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
                 self.logger.debug("Cache file cleared successfully.")
         except Exception as e:
             error_message = f"An error occurred while clearing the cache file: {str(e)}"
@@ -338,8 +344,13 @@ class AnimePlayerApp:
     def read_poster_links(self):
         poster_links = []
         try:
-            if os.path.exists(self.cache_file_path):
-                with open(self.cache_file_path, "r") as file:
+            utils_folder = 'utils'
+            if not os.path.exists(utils_folder):
+                os.makedirs(utils_folder)
+                self.log_message(f"Created 'utils' folder.")
+            cache_file = os.path.join(utils_folder, self.cache_file_path)
+            if os.path.exists(cache_file):
+                with open(cache_file, "r") as file:
                     for line in file:
                         poster_links.append(line.strip())
                 self.logger.debug("Cache file read successfully. ")
@@ -351,7 +362,12 @@ class AnimePlayerApp:
 
     def write_poster_links(self, poster_links):
         try:
-            with open(self.cache_file_path, "a") as file:
+            utils_folder = 'utils'
+            if not os.path.exists(utils_folder):
+                os.makedirs(utils_folder)
+                self.log_message(f"Created 'utils' folder.")
+            cache_file = os.path.join(utils_folder, self.cache_file_path)
+            with open(cache_file, "a") as file:
                 for link in poster_links:
                     file.write(link + "\n")
             self.logger.debug("Cache file writen successfully.")

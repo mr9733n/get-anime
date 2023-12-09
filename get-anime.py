@@ -29,17 +29,9 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         self.log_filename = log_filename
         self.current_log_date = None
 
-    def doRollover(self):
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-        if current_date != self.current_log_date:
-            self.current_log_date = current_date
-            super(CustomTimedRotatingFileHandler, self).doRollover()
-            base_filename, file_extension = os.path.splitext(self.baseFilename)
-            new_log_file = f"{base_filename}_{current_date}{file_extension}"
-
-            if os.path.exists(new_log_file):
-                correct_log_file_name = f"{base_filename}{file_extension}" 
-                os.rename(new_log_file, correct_log_file_name)
+    def getLogFileName(self, current_date):
+        base_filename, file_extension = os.path.splitext(self.baseFilename)
+        return f"{base_filename}_{current_date}{file_extension}"
 
 class AnimePlayerApp:
     def __init__(self, window):
@@ -292,7 +284,7 @@ class AnimePlayerApp:
             self.write_poster_links([poster_url])
             title_name = {title_data['names']['en']}
             self.show_poster(poster_url)
-            self.logger.debug(f"Successfully fetched poster for title '{title_name}'. URL: '{poster_url}' ")
+            self.logger.debug(f"Successfully GET poster for title '{title_name}'. URL: '{poster_url}' ")
                                        
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while GET downloading the poster: {str(e)}"
@@ -320,7 +312,7 @@ class AnimePlayerApp:
             self.poster_label.image = poster_photo
             response.raise_for_status()
             num_bytes = len(response.content) if response.content else 0
-            self.logger.debug(f"Successfully fetched poster. URL: '{poster_url}', "
+            self.logger.debug(f"Successfully SHOW poster. URL: '{poster_url}', "
                             f"Time taken: {end_time - start_time:.2f} seconds, "
                             f"Image size: {num_bytes} bytes.")
 
@@ -377,9 +369,10 @@ class AnimePlayerApp:
                 self.current_poster_index = (self.current_poster_index + 1) % len(poster_links)
                 # print(self.current_poster_index)
                 current_poster_url = poster_links[self.current_poster_index]
-                print(current_poster_url)
+                # print(current_poster_url)
                 # print(current_poster_filename)
                 self.show_poster(current_poster_url) 
+                self.logger.debug(f"Successfully CHANGE poster. URL: '{current_poster_url}' " )
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while CHANGE downloading the poster: {str(e)}"
             self.log_message(error_message)

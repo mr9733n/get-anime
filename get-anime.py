@@ -43,6 +43,8 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
 
 class AnimePlayerApp:
     def __init__(self, window):
+        self.cache_file_path = "poster_cache.txt"
+        self.poster_links = [] 
         self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
@@ -56,6 +58,9 @@ class AnimePlayerApp:
         self.window.grid_columnconfigure(0, weight=1)
         self.discovered_links = []
         self.current_link = None
+        self.poster_data = []  
+        self.current_poster_index = 0
+        
         atexit.register(self.delete_response_json)        
 
     def load_config(self):
@@ -93,10 +98,10 @@ class AnimePlayerApp:
         self.display_button.grid(row=1, column=1, sticky="ew")
         # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.save_button = ttk.Button(self.window, text="Сохранить плейлист", command=self.save_playlist)
-        self.save_button.grid(row=3, column=0, columnspan=3, sticky="ew")
+        self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
         # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.all_links_play)
-        self.play_button.grid(row=4, column=0, columnspan=3, sticky="ew")
+        self.play_button.grid(row=5, column=0, columnspan=3, sticky="ew")
         # Create a dropdown menu for selecting quality using Combobox
         self.quality_label = ttk.Label(self.window, text="Качество:")
         self.quality_label.grid(row=3, column=8)
@@ -113,6 +118,10 @@ class AnimePlayerApp:
         self.text = tk.Text(self.window, wrap=tk.WORD, cursor="hand2")
         self.text.grid(row=2, column=3, columnspan=7, sticky="nsew")
         self.text.tag_configure("hyperlink", foreground="blue")
+        self.poster_label = tk.Label(self.window)  # Создайте атрибут poster_label
+        self.poster_label.grid(row=2, column=0, columnspan=3)
+        self.next_poster_button = ttk.Button(self.window, text="Следующий постер", command=self.change_poster)
+        self.next_poster_button.grid(row=3, column=0, columnspan=3, sticky="ew")
         
     def log_message(self, message):
         self.logger.debug(message)
@@ -275,31 +284,108 @@ class AnimePlayerApp:
             self.log_message(error_message)
             print(error_message)
 
-    def show_poster(self, event, index, title_data):
+    def get_poster(self, title_data):
+        try:
+            self.clear_poster()
+
+            poster_url = "https://" + self.base_url + title_data["posters"]["small"]["url"]
+            self.write_poster_links([poster_url])
+            title_name = {title_data['names']['en']}
+            self.show_poster(poster_url)
+            self.logger.debug(f"Successfully fetched poster for title '{title_name}'. URL: '{poster_url}' ")
+                                       
+        except requests.exceptions.RequestException as e:
+            error_message = f"An error occurred while GET downloading the poster: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+        except Exception as e:
+            error_message = f"An error occurred while GET processing the poster: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+
+    def show_poster(self, poster_url):
         try:
             self.clear_poster()
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.660 YaBrowser/23.9.5.660 Yowser/2.5 Safari/537.36'}
-            poster_url = "https://" + self.base_url + title_data["posters"]["small"]["url"]
             params = {'no_cache': 'true', 'timestamp': time.time()}
             start_time = time.time()
             response = requests.get(poster_url, headers=headers, stream=True, params=params)
             end_time = time.time()
             response.raise_for_status()
+
             poster_image = Image.open(io.BytesIO(response.content))
             poster_photo = ImageTk.PhotoImage(poster_image)
             self.poster_label = tk.Label(self.window, image=poster_photo)
             self.poster_label.grid(row=2, column=0, columnspan=3)
             self.poster_label.image = poster_photo
+            response.raise_for_status()
             num_bytes = len(response.content) if response.content else 0
-            self.logger.debug(f"Successfully fetched poster for title '{title_data['names']['en']}'. URL: {poster_url}, "
+            self.logger.debug(f"Successfully fetched poster. URL: '{poster_url}', "
                             f"Time taken: {end_time - start_time:.2f} seconds, "
                             f"Image size: {num_bytes} bytes.")
+
         except requests.exceptions.RequestException as e:
-            error_message = f"An error occurred while downloading the poster: {str(e)}"
+            error_message = f"An error occurred while SHOW downloading the poster: {str(e)}"
             self.log_message(error_message)
             print(error_message)
         except Exception as e:
-            error_message = f"An error occurred while processing the poster: {str(e)}"
+            error_message = f"An error occurred while SHOW processing the poster: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+
+    def clear_cache_file(self):
+        try:
+            if os.path.exists(self.cache_file_path):
+                os.remove(self.cache_file_path)
+                self.logger.debug("Cache file cleared successfully.")
+        except Exception as e:
+            error_message = f"An error occurred while clearing the cache file: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+
+    def read_poster_links(self):
+        poster_links = []
+        try:
+            if os.path.exists(self.cache_file_path):
+                with open(self.cache_file_path, "r") as file:
+                    for line in file:
+                        poster_links.append(line.strip())
+                self.logger.debug("Cache file read successfully. ")
+        except Exception as e:
+            error_message = f"An error occurred while reading the cache file: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+        return poster_links
+
+    def write_poster_links(self, poster_links):
+        try:
+            with open(self.cache_file_path, "a") as file:
+                for link in poster_links:
+                    file.write(link + "\n")
+            self.logger.debug("Cache file writen successfully.")
+        except Exception as e:
+            error_message = f"An error occurred while writing to the cache file: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+
+    def change_poster(self):
+        try:
+            poster_links = self.read_poster_links()
+            # print(f"{[poster_links]}")
+            if poster_links:
+                self.clear_poster()
+                self.current_poster_index = (self.current_poster_index + 1) % len(poster_links)
+                # print(self.current_poster_index)
+                current_poster_url = poster_links[self.current_poster_index]
+                print(current_poster_url)
+                # print(current_poster_filename)
+                self.show_poster(current_poster_url) 
+        except requests.exceptions.RequestException as e:
+            error_message = f"An error occurred while CHANGE downloading the poster: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+        except Exception as e:
+            error_message = f"An error occurred while CHANGE processing the poster: {str(e)}"
             self.log_message(error_message)
             print(error_message)
 
@@ -423,6 +509,7 @@ class AnimePlayerApp:
 
     def display_schedule(self):
         try:
+            self.clear_cache_file() 
             data = self.read_json_data()
             self.text.delete("1.0", tk.END)
             self.clear_poster()    
@@ -447,6 +534,9 @@ class AnimePlayerApp:
                         self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
                         self.text.insert(tk.END, "\n\n")
                         self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>", lambda event, en=en_name: self.on_title_click(event, en))
+                        
+                        self.get_poster(title)
+                        
                         episodes_found = False
                         for episode in title["player"]["list"].values():
                             if "hls" in episode:
@@ -480,6 +570,7 @@ class AnimePlayerApp:
 
     def display_info(self):
         try:
+            self.clear_cache_file() 
             self.title_search_entry.delete(0, tk.END)
             data = self.read_json_data()
             self.text.delete("1.0", tk.END)
@@ -511,8 +602,8 @@ class AnimePlayerApp:
                     self.text.insert(tk.END, "Год: " + year_str + "\n")
                     self.text.insert(tk.END, "Серии: " + item["type"]["full_string"] + "\n")
                     self.text.insert(tk.END, "\n")
-
-                    self.show_poster(None, en_name, item)
+ 
+                    self.get_poster(item)
 
                     episodes_found = False
                     for episode in item["player"]["list"].values():
@@ -529,7 +620,8 @@ class AnimePlayerApp:
                                     self.text.insert(hyperlink_end, "\n")
                                     self.text.tag_bind("hyperlink", "<Button-1>", self.on_link_click)
                                     episodes_found = True
-
+                    self.text.insert(tk.END, "\n")
+                    self.text.insert(tk.END, "--- " + "\n")                    
                     if not episodes_found:
                         self.text.insert(tk.END, "\nСерии в выбранном качестве не найдены, выберите другое качество\n")
         except Exception as e:
@@ -564,5 +656,5 @@ class AnimePlayerApp:
 
 if __name__ == "__main__":
     window = tk.Tk()
-    pp = AnimePlayerApp(window)
+    app = AnimePlayerApp(window)
     window.mainloop()

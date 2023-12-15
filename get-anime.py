@@ -27,12 +27,11 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         super(CustomTimedRotatingFileHandler, self).__init__(*args, **kwargs)
         self.log_dir = log_dir
         self.log_filename = log_filename
-        self.current_log_date = None
 
     def getLogFileName(self, current_date):
         base_filename, file_extension = os.path.splitext(self.baseFilename)
-        return f"{base_filename}_{current_date}{file_extension}"
-
+        return f"{base_filename}_{current_date}.{file_extension}"
+    
 class AnimePlayerApp:
     def __init__(self, window):
         self.cache_file_path = "poster_cache.txt"
@@ -127,10 +126,10 @@ class AnimePlayerApp:
         if not os.path.exists(log_folder):
             os.makedirs(log_folder)
         # Define log file path with current date
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-        log_file = os.path.join(log_folder, f"{self.log_filename}_{current_date}.txt")
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d") 
+        log_file = os.path.join(log_folder, f"{self.log_filename}.txt")
         print(f"Log file path: {log_file}") 
-        handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, backupCount=7, encoding='utf-8')
+        handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -302,7 +301,6 @@ class AnimePlayerApp:
             response = requests.get(poster_url, headers=headers, stream=True, params=params)
             end_time = time.time()
             response.raise_for_status()
-
             poster_image = Image.open(io.BytesIO(response.content))
             poster_photo = ImageTk.PhotoImage(poster_image)
             self.poster_label = tk.Label(self.window, image=poster_photo)
@@ -310,9 +308,10 @@ class AnimePlayerApp:
             self.poster_label.image = poster_photo
             response.raise_for_status()
             num_bytes = len(response.content) if response.content else 0
+            num_kilobytes = num_bytes / 1024
             self.logger.debug(f"Successfully SHOW poster. URL: '{poster_url}', "
                             f"Time taken: {end_time - start_time:.2f} seconds, "
-                            f"Image size: {num_bytes} bytes.")
+                            f"Image size: {num_kilobytes} Kb.")
 
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while SHOW downloading the poster: {str(e)}"

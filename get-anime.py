@@ -575,7 +575,7 @@ class AnimePlayerApp:
             self.log_message(error_message)
             print(error_message)
 
-    def display_title_info(self, title, index):
+    def display_title_info(self, title, index, show_description=True):
         """
         Вспомогательная функция для отображения информации о тайтле.
         """
@@ -595,7 +595,8 @@ class AnimePlayerApp:
         self.text.insert(tk.END, "Анонс: " + announce + "\n")
         self.text.insert(tk.END, type_full_string + "\n")
         self.text.insert(tk.END, "Статус: " + (status if status else "Статус отсутствует") + "\n")
-        self.text.insert(tk.END, "Описание: " + (description if description else "Описание отсутствует") + "\n")
+        if show_description and description:
+            self.text.insert(tk.END, "Описание: " + description + "\n")
         self.text.insert(tk.END, "Жанры: " + (genres if genres else "Жанры отсутствуют") + "\n")
         self.text.insert(tk.END, "Год: " + (year_str if year_str else "Год отсутствует") + "\n")
         self.text.insert(tk.END, "---\n\n")
@@ -664,7 +665,7 @@ class AnimePlayerApp:
                     day_word = self.days_of_week[day]
                     self.text.insert(tk.END, f"День недели: {day_word}\n\n")
                     for i, title in enumerate(title_list):
-                        self.display_title_info(title, i)
+                        self.display_title_info(title, i, show_description=False)
         except Exception as e:
             error_message = f"An error occurred while displaying the schedule: {str(e)}"
             self.log_message(error_message)

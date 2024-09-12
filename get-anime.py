@@ -13,6 +13,13 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import datetime
 from tkinter.ttk import Combobox
+import warnings
+
+# Suppress urllib3 NotOpenSSLWarning
+warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
+
+# Suppress Tkinter deprecation warning
+os.environ['TK_SILENCE_DEPRECATION'] = '1'
 
 class ConfigManager:
     def __init__(self, config_file):
@@ -41,7 +48,7 @@ class AnimePlayerApp:
         self.log_filename = "debug_log"
         self.window = window
         self.window.title("AnimePlayerApp")
-        self.window.geometry("1000x600")
+        self.window.geometry("1160x640")
         self.init_ui()
         self.init_logger(log_level)
         self.load_config()
@@ -62,6 +69,7 @@ class AnimePlayerApp:
         self.base_url =  self.config_manager.get_setting('Settings', 'base_url')
         self.api_version =  self.config_manager.get_setting('Settings', 'api_version')
         self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
+        self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
 
     def init_ui(self):
         self.days_of_week = [
@@ -235,18 +243,73 @@ class AnimePlayerApp:
             self.log_message(error_message)
             print(error_message)
 
+    # Обновленная функция для обработки кликов по ссылкам
     def on_link_click(self, event):
         try:
+            # Получаем индекс ссылки, которая была кликнута
             link_index = int(event.widget.tag_names(tk.CURRENT)[1])
             link = self.discovered_links[link_index]
-            vlc_path = self.video_player_path
-            open_link = "https://" + self.stream_video_url + link
-            media_player_command = [vlc_path, open_link]
-            subprocess.Popen(media_player_command)
+
+            # Проверяем тип ссылки и выполняем соответствующие действия
+            if link.endswith('.m3u8'):
+                # Если это видео-ссылка, воспроизводим через VLC
+                vlc_path = self.video_player_path
+                open_link = "https://" + self.stream_video_url + link
+                media_player_command = [vlc_path, open_link]
+                subprocess.Popen(media_player_command)
+                self.log_message(f"Playing video link: {open_link}")
+            elif '/torrent/download.php' in link:
+                # Обработка торрент-ссылок
+                self.handle_torrent_link(link)
+            else:
+                self.log_message(f"Unknown link type: {link}")
+
         except Exception as e:
-            error_message = f"An error occurred while playing the video: {str(e)}"
+            error_message = f"An error occurred while processing the link: {str(e)}"
             self.log_message(error_message)
             print(error_message)
+
+    # Универсальная функция для обработки торрентов и магнитных ссылок
+    def handle_torrent_link(self, link):
+        try:
+            torrent_client_path = self.torrent_client_path
+
+            # Если ссылка — это торрент URL, корректируем и скачиваем его
+            torrent_save_path = 'torrents'
+            if not os.path.exists(torrent_save_path):
+                os.makedirs(torrent_save_path)
+
+            # Исправляем URL для скачивания
+            if not link.startswith("https://"):
+                link = "https://anilibria.tv" + link
+
+            torrent_path = self.download_torrent(link, torrent_save_path)
+            if torrent_path:
+                subprocess.run([torrent_client_path, torrent_path], check=True)
+                self.log_message(f"Torrent saved and opened: {torrent_path}")
+            else:
+                self.log_message("Failed to download or open torrent.")
+
+        except Exception as e:
+            error_message = f"Error handling torrent link: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+
+    # Функция для скачивания торрента
+    def download_torrent(self, url, save_path):
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # Проверка на ошибки при скачивании
+            torrent_path = os.path.join(save_path, os.path.basename(url))
+            with open(torrent_path, 'wb') as file:
+                file.write(response.content)
+            self.log_message(f"Torrent downloaded: {torrent_path}")
+            return torrent_path
+        except Exception as e:
+            error_message = f"An error occurred while downloading the torrent: {str(e)}"
+            self.log_message(error_message)
+            print(error_message)
+            return None
 
     def play_playlist(self):
         self.log_message("Attempting to play specific playlist.")
@@ -512,12 +575,88 @@ class AnimePlayerApp:
             self.log_message(error_message)
             print(error_message)
 
+    def display_title_info(self, title, index):
+        """
+        Вспомогательная функция для отображения информации о тайтле.
+        """
+        self.text.insert(tk.END, "---\n\n")
+        ru_name = title["names"].get("ru", "Название отсутствует")
+        en_name = title["names"].get("en", "Название отсутствует")
+        announce = str(title.get("announce", "Состояние отсутствует"))
+        type_full_string = str(title["type"].get("full_string", {}))
+        status = title["status"].get("string", "Статус отсутствует")
+        description = title.get("description", "Описание отсутствует")
+        genres = ", ".join(title.get("genres", ["Жанры отсутствуют"]))
+        season_info = title.get("season", {})
+        year_str = str(season_info.get("year", "Год отсутствует"))
+
+        self.text.insert(tk.END, "Название: " + ru_name + "\n")
+        self.text.insert(tk.END, "Название: " + en_name + "\n\n")
+        self.text.insert(tk.END, "Анонс: " + announce + "\n")
+        self.text.insert(tk.END, type_full_string + "\n")
+        self.text.insert(tk.END, "Статус: " + (status if status else "Статус отсутствует") + "\n")
+        self.text.insert(tk.END, "Описание: " + (description if description else "Описание отсутствует") + "\n")
+        self.text.insert(tk.END, "Жанры: " + (genres if genres else "Жанры отсутствуют") + "\n")
+        self.text.insert(tk.END, "Год: " + (year_str if year_str else "Год отсутствует") + "\n")
+        self.text.insert(tk.END, "---\n\n")
+        
+        link_id = f"title_link_{index}"
+        self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
+        self.text.insert(tk.END, "\n\n")
+        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>", lambda event, en=en_name: self.on_title_click(event, en))
+
+        self.get_poster(title)
+
+        # Обработка серий
+        episodes_found = False
+        selected_quality = self.quality_var.get()
+        for episode in title["player"]["list"].values():
+            if "hls" in episode:
+                hls = episode["hls"]
+                if selected_quality in hls:
+                    url = hls[selected_quality]
+                    if url is not None:
+                        self.text.insert(tk.END, f"Серия {episode['episode']}: ")
+                        hyperlink_start = self.text.index(tk.END)
+                        self.text.insert(hyperlink_start, "Смотреть", ("hyperlink_episodes", len(self.discovered_links)))
+                        hyperlink_end = self.text.index(tk.END)
+                        self.text.insert(hyperlink_end, "\n")
+                        self.text.tag_bind("hyperlink_episodes", "<Button-1>", self.on_link_click)
+                        self.discovered_links.append(url)
+                        self.text.tag_add("hyperlink_episodes", hyperlink_start, hyperlink_end)
+                        self.text.tag_config("hyperlink_episodes", foreground="blue")
+                        episodes_found = True
+        if not episodes_found:
+            self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
+        self.text.insert(tk.END, "\n")
+
+        # Обработка торрентов
+        torrents_found = False
+        if "torrents" in title and "list" in title["torrents"]:
+            for torrent in title["torrents"]["list"]:
+                url = torrent.get("url")
+                quality = torrent["quality"].get("string", "Качество не указано")
+                if url:
+                    hyperlink_start = self.text.index(tk.END)
+                    self.text.insert(tk.END, f"Скачать ({quality})", ("hyperlink_torrents", len(self.discovered_links)))
+                    hyperlink_end = self.text.index(tk.END)
+                    self.text.insert(hyperlink_end, "\n")
+                    self.text.tag_bind("hyperlink_torrents", "<Button-1>", self.on_link_click)
+                    self.discovered_links.append(url)
+                    self.text.tag_add("hyperlink_torrents", hyperlink_start, hyperlink_end)
+                    self.text.tag_config("hyperlink_torrents", foreground="blue")
+                    torrents_found = True
+
+        if not torrents_found:
+            self.text.insert(tk.END, "\nТорренты не найдены\n")
+        self.text.insert(tk.END, "\n")      
+
     def display_schedule(self):
         try:
-            self.clear_cache_file() 
+            self.clear_cache_file()
             data = self.read_json_data()
             self.text.delete("1.0", tk.END)
-            self.clear_poster()    
+            self.clear_poster()
             if data is not None:
                 for day_info in data:
                     day = day_info.get("day")
@@ -525,47 +664,7 @@ class AnimePlayerApp:
                     day_word = self.days_of_week[day]
                     self.text.insert(tk.END, f"День недели: {day_word}\n\n")
                     for i, title in enumerate(title_list):
-                        ru_name = title["names"].get("ru", "Название отсутствует")
-                        en_name = title["names"].get("en", "Название отсутствует")
-                        announce = str(title.get("announce", "Состояние отсутствует"))
-                        type_full_string =  str(title["type"].get("full_string", {}))
-                        self.text.insert(tk.END, "---\n")
-                        self.text.insert(tk.END, "Название: " + ru_name + "\n")
-                        self.text.insert(tk.END, "Название: " + en_name + "\n\n")
-                        self.text.insert(tk.END, "Анонс: " + announce + "\n")
-                        self.text.insert(tk.END, type_full_string + "\n")
-                        self.text.insert(tk.END, "\n")
-                        link_id = f"title_link_{i}"
-                        self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
-                        self.text.insert(tk.END, "\n\n")
-                        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>", lambda event, en=en_name: self.on_title_click(event, en))
-                        
-                        self.get_poster(title)
-                        
-                        episodes_found = False
-                        for episode in title["player"]["list"].values():
-                            if "hls" in episode:
-                                hls = episode["hls"]
-                                selected_quality = self.quality_var.get()
-                                if selected_quality in hls:
-                                    url = hls[selected_quality]
-                                    if url is not None:
-                                        self.text.insert(tk.END, f"Серия {episode['episode']}: ")
-                                        hyperlink_start = self.text.index(tk.END)
-                                        self.text.insert(hyperlink_start, "Смотреть", ("hyperlink_episodes", len(self.discovered_links)))
-                                        hyperlink_end = self.text.index(tk.END)
-                                        self.text.insert(hyperlink_end, "\n")
-                                        self.text.tag_bind("hyperlink_episodes", "<Button-1>", self.on_link_click)
-                                        self.discovered_links.append(url)
-                                        self.text.tag_add("hyperlink_episodes", hyperlink_start, hyperlink_end)
-                                        self.text.tag_config("hyperlink_episodes", foreground="blue")
-                                        episodes_found = True
-                        if not episodes_found:
-                            self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
-                        self.text.insert(tk.END, "\n")
-                        title_start = self.text.index(tk.END)
-                        self.text.tag_add("title_block", title_start, tk.END)
-                        self.text.tag_config("title_block", borderwidth=2, relief=tk.GROOVE)
+                        self.display_title_info(title, i)
         except Exception as e:
             error_message = f"An error occurred while displaying the schedule: {str(e)}"
             self.log_message(error_message)
@@ -575,7 +674,7 @@ class AnimePlayerApp:
 
     def display_info(self):
         try:
-            self.clear_cache_file() 
+            self.clear_cache_file()
             self.title_search_entry.delete(0, tk.END)
             data = self.read_json_data()
             self.text.delete("1.0", tk.END)
@@ -584,51 +683,7 @@ class AnimePlayerApp:
                 self.discovered_links = []
 
                 for i, item in enumerate(data["list"]):
-                    self.text.insert(tk.END, "\n")
-                    ru_name = item["names"].get("ru", "Название отсутствует")
-                    en_name = item["names"].get("en", "Название отсутствует")
-                    description = item.get("description", "Описание отсутствует")
-                    status = item["status"].get("string", "Статус отсутствует")
-                    announce = str(item.get("announce", "Состояние отсутствует"))
-                    genres = ", ".join(item.get("genres", ["Жанры отсутствуют"]))
-                    season_info = item.get("season", {})
-                    type_full_string = item["type"].get("full_string", {})
-                    year_str = str(season_info.get("year", "Год отсутствует"))
-
-                    self.text.insert(tk.END, "Название: " + ru_name + "\n")
-                    self.text.insert(tk.END, "Название: " + en_name + "\n")
-                    self.text.insert(tk.END, "\n")
-                    self.text.insert(tk.END, "Описание: " + description + "\n")
-                    self.text.insert(tk.END, "\n")
-                    self.text.insert(tk.END, "Статус: " + status + "\n")
-                    self.text.insert(tk.END, "Анонс: " + announce + "\n")
-                    self.text.insert(tk.END, "Жанры: " + genres + "\n")
-                    self.text.insert(tk.END, type_full_string + "\n")
-                    self.text.insert(tk.END, "Год: " + year_str + "\n")
-                    self.text.insert(tk.END, "Серии: " + item["type"]["full_string"] + "\n")
-                    self.text.insert(tk.END, "\n")
- 
-                    self.get_poster(item)
-
-                    episodes_found = False
-                    for episode in item["player"]["list"].values():
-                        if "hls" in episode:
-                            hls = episode["hls"]
-                            if selected_quality in hls:
-                                url = hls[selected_quality]
-                                if url is not None:
-                                    self.discovered_links.append(url)
-                                    self.text.insert(tk.END, f"Серия {episode['episode']}: ")
-                                    hyperlink_start = self.text.index(tk.END)
-                                    self.text.insert(hyperlink_start, "Смотреть", ("hyperlink", len(self.discovered_links) - 1))
-                                    hyperlink_end = self.text.index(tk.END)
-                                    self.text.insert(hyperlink_end, "\n")
-                                    self.text.tag_bind("hyperlink", "<Button-1>", self.on_link_click)
-                                    episodes_found = True
-                    self.text.insert(tk.END, "\n")
-                    self.text.insert(tk.END, "--- " + "\n")                    
-                    if not episodes_found:
-                        self.text.insert(tk.END, "\nСерии в выбранном качестве не найдены, выберите другое качество\n")
+                    self.display_title_info(item, i)
         except Exception as e:
             error_message = f"An error occurred while displaying information: {str(e)}"
             self.log_message(error_message)

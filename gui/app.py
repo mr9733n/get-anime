@@ -1,12 +1,6 @@
 # gui/app.py
 import re
-import json
 import subprocess
-import os
-import threading
-
-import requests
-import logging.config
 import tkinter as tk
 from tkinter import ttk
 from tkinter.ttk import Combobox
@@ -16,27 +10,41 @@ from config_manager import ConfigManager
 from api_client import APIClient
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
-#from utils.torrent_manager import TorrentManager
-from PIL import Image, ImageTk
+from utils.torrent_manager import TorrentManager
+from PIL import ImageTk
 
 
 class AnimePlayerApp:
     def __init__(self, window):
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug("Initializing AnimePlayerApp")
         self.window = window
         self.setup_window()
         self.cache_file_path = "poster_cache.txt"
         self.config_manager = ConfigManager('config.ini')
         self.load_config()
-        self.logger = logging.getLogger(__name__)
-        self.logger.debug("Initializing AnimePlayerApp")
+        self.torrent_manager = TorrentManager(
+            torrent_save_path=self.torrent_save_path,
+            torrent_client_path=self.torrent_client_path
+        )
+
+        self.logger.debug(f"Video Player Path: {self.video_player_path}")
+        self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
         self.api_client = APIClient(self.base_url, self.api_version, logger=self.logger)
         self.poster_manager = PosterManager()
         self.playlist_manager = PlaylistManager()
-        #self.torrent_manager = TorrentManager(self.torrent_client_path)
         self.poster_manager = PosterManager(display_callback=self.display_poster)
-
+        self.title_names = []
         self.init_variables()
         self.init_ui()
+
+    def load_config(self):
+        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
+        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
+        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
+        self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
+        self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
+        self.torrent_save_path = "torrents/"
 
     def setup_window(self):
         self.window.title("AnimePlayerApp")
@@ -47,13 +55,6 @@ class AnimePlayerApp:
     def init_variables(self):
         self.discovered_links = []
         self.current_link = None
-
-    def load_config(self):
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
-        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
-        self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
-        self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
 
     def init_ui(self):
         # Создание кнопок дней недели
@@ -83,9 +84,9 @@ class AnimePlayerApp:
         self.display_button.grid(row=1, column=0, sticky="ew")
         self.random_button = ttk.Button(self.window, text="Random", command=self.get_random_title)
         self.random_button.grid(row=1, column=1, sticky="ew")
-        self.save_button = ttk.Button(self.window, text="Сохранить плейлист", command=self.playlist_manager.save_playlist)
+        self.save_button = ttk.Button(self.window, text="Сохранить плейлист", command=self.save_playlist_wrapper)
         self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
-        self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.playlist_manager.all_links_play)
+        self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.play_playlist_wrapper)
         self.play_button.grid(row=5, column=0, columnspan=3, sticky="ew")
 
         # Выбор качества видео
@@ -116,28 +117,32 @@ class AnimePlayerApp:
 
     def on_link_click(self, event, title_name=None, torrent_id=None):
         try:
-            # Получаем индекс ссылки, которая была кликнута
-            link_index = int(event.widget.tag_names(tk.CURRENT)[1])
+            tag_names = event.widget.tag_names(tk.CURRENT)
+            match = re.search(r'(\d+)', tag_names[0])
+            if not match:
+                self.logger.error(f"Could not extract index from tag: {tag_names[0]}")
+                return
+
+            link_index = int(match.group(1))
+            if link_index < 0 or link_index >= len(self.discovered_links):
+                self.logger.error(f"Link index {link_index} out of range.")
+                return
+
             link = self.discovered_links[link_index]
-            print(link)
-            # Проверяем тип ссылки и выполняем соответствующие действия
             if link.endswith('.m3u8'):
-                # Если это видео-ссылка, воспроизводим через VLC
-                vlc_path = self.video_player_path
+                video_plyer_path = self.video_player_path
                 open_link = "https://" + self.stream_video_url + link
-                media_player_command = [vlc_path, open_link]
+                media_player_command = [video_plyer_path, open_link]
                 subprocess.Popen(media_player_command)
                 self.logger.info(f"Playing video link: {open_link}")
             elif '/torrent/download.php' in link:
-                # Передаем название и ID тайтла при обработке торрента
-                self.handle_torrent_link(link, title_name, torrent_id)
+                self.save_torrent_wrapper(link, title_name, torrent_id)
             else:
                 self.logger.error(f"Unknown link type: {link}")
 
         except Exception as e:
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.logger.error(error_message)
-            print(error_message)
 
     def get_schedule(self, day):
         day -= 1
@@ -225,6 +230,7 @@ class AnimePlayerApp:
 
         self.text.insert(tk.END, "Название: " + ru_name + "\n")
         self.text.insert(tk.END, "Название: " + en_name + "\n\n")
+        self.title_names.append(en_name)
         self.text.insert(tk.END, "Анонс: " + announce + "\n")
         self.text.insert(tk.END, type_full_string + "\n")
         self.text.insert(tk.END, "Статус: " + (status if status else "Статус отсутствует") + "\n")
@@ -243,7 +249,7 @@ class AnimePlayerApp:
         # Обработка серий
         episodes_found = False
         selected_quality = self.quality_var.get()
-        for episode in title["player"]["list"].values():
+        for index, episode in enumerate(title["player"]["list"].values()):
             if "hls" in episode:
                 hls = episode["hls"]
                 if selected_quality in hls:
@@ -251,14 +257,15 @@ class AnimePlayerApp:
                     if url is not None:
                         self.text.insert(tk.END, f"Серия {episode['episode']}: ")
                         hyperlink_start = self.text.index(tk.END)
-                        self.text.insert(hyperlink_start, "Смотреть",
-                                         ("hyperlink_episodes", len(self.discovered_links)))
+                        # Embed index in the tag name
+                        tag_name = f"hyperlink_episodes_{len(self.discovered_links)}"
+                        self.text.insert(hyperlink_start, "Смотреть", (tag_name,))
                         hyperlink_end = self.text.index(tk.END)
                         self.text.insert(hyperlink_end, "\n")
-                        self.text.tag_bind("hyperlink_episodes", "<Button-1>", self.on_link_click)
+                        self.text.tag_bind(tag_name, "<Button-1>", self.on_link_click)
                         self.discovered_links.append(url)
-                        self.text.tag_add("hyperlink_episodes", hyperlink_start, hyperlink_end)
-                        self.text.tag_config("hyperlink_episodes", foreground="blue")
+                        self.text.tag_add(tag_name, hyperlink_start, hyperlink_end)
+                        self.text.tag_config(tag_name, foreground="blue")
                         episodes_found = True
         if not episodes_found:
             self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
@@ -354,6 +361,47 @@ class AnimePlayerApp:
             self.logger.error(error_message)
             print(error_message)
 
+
+
+    def save_playlist_wrapper(self):
+        """
+        Wrapper function to handle saving the playlist.
+        Collects title names and links, and passes them to save_playlist.
+        """
+        # Call save_playlist with title names and discovered links
+        if self.discovered_links:
+            self.playlist_manager.save_playlist(self.title_names, self.discovered_links, self.stream_video_url)
+        else:
+            print("Нет доступных ссылок для сохранения в плейлист.")
+
+    def play_playlist_wrapper(self):
+        """
+        Wrapper function to handle playing the playlist.
+        Determines the file name and passes it to play_playlist.
+        """
+        if not self.title_names:
+            print("Плейлист не найден, сохраните плейлист сначала.")
+            return
+
+        # Generate file name based on the title names
+        file_name = "_".join(self.title_names)[:100] + ".m3u"
+        video_player_path = self.video_player_path
+        self.playlist_manager.play_playlist(file_name, video_player_path)
+
+    def save_torrent_wrapper(self, link, title_name, torrent_id):
+        """
+        Wrapper function to handle saving the torrent.
+        Collects title names and links, and passes them to save_torrent_file.
+        """
+        try:
+            # Generate a file name for the torrent
+            file_name = f"{title_name}_{torrent_id}.torrent"
+
+            # Call the save_torrent_file method from TorrentManager
+            self.torrent_manager.save_torrent_file(link, file_name)
+        except Exception as e:
+            error_message = f"Error in save_torrent_wrapper: {str(e)}"
+            self.logger.error(error_message)
+            print(error_message)
+
         pass
-
-

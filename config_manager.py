@@ -9,3 +9,5 @@ class ConfigManager:
 
     def get_setting(self, section, setting, default=None):
         return self.config[section].get(setting, default)
+
+

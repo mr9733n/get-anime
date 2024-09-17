@@ -1,74 +1,73 @@
 import os
-import subprocess
-import threading
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import re
-
 import requests
-from PIL import Image, UnidentifiedImageError
-import io
+import subprocess
 import logging
 
 class TorrentManager:
-    def __init__(self):
-        self.cache_file_path = "utils/poster_cache.txt"
-        self.utils_json = "utils/response.json"  # Path to the response JSON file
-        self.poster_links = []
-        self.poster_images = []
-        self.current_poster_index = 0
+    def __init__(self, torrent_save_path="torrents/", torrent_client_path=None):
+        self.torrent_save_path = torrent_save_path
+        self.torrent_client_path = torrent_client_path
+        os.makedirs(self.torrent_save_path, exist_ok=True)  # Ensure the save directory exists
         self.logger = logging.getLogger(__name__)
 
-    def handle_torrent_link(self, link, title_name=None, torrent_id=None):
+    def save_torrent_file(self, link, file_name):
+        """
+        Download and save the torrent file from the given URL.
+        :param link: URL of the torrent file.
+        :param file_name: The name to save the torrent file as.
+        """
+        file_path = os.path.join(self.torrent_save_path, file_name)
+        if not link.startswith("https://"):
+            url = "https://anilibria.tv" + link
+        else:
+            url = link
+
         try:
-            torrent_client_path = self.torrent_client_path
+            response = requests.get(url, stream=True)
+            response.raise_for_status()  # Raise an exception for HTTP errors
 
-            # Путь для сохранения торрентов
-            torrent_save_path = 'torrents'
-            if not os.path.exists(torrent_save_path):
-                os.makedirs(torrent_save_path)
+            # Save the torrent file
+            with open(file_path, 'wb') as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
 
-            # Исправляем URL для скачивания
-            if not link.startswith("https://"):
-                link = "https://anilibria.tv" + link
+            self.logger.debug(f"Torrent file saved successfully at {file_path}.")
+            print(f"Torrent file saved as {file_name}.")
 
-            # Передаем title_name и torrent_id в download_torrent
-            torrent_path = self.download_torrent(link, torrent_save_path, title_name, torrent_id)
-            if torrent_path:
-                subprocess.run([torrent_client_path, torrent_path], check=True)
-                self.logger.info(f"Torrent saved and opened: {torrent_path}")
-            else:
-                self.logger.error("Failed to download or open torrent.")
+            # Open the saved torrent file in the client
+            self.open_torrent_client(file_path)
+
         except Exception as e:
-            error_message = f"Error handling torrent link: {str(e)}"
+            error_message = f"Failed to save or open torrent file: {str(e)}"
             self.logger.error(error_message)
             print(error_message)
 
-    def download_torrent(self, url, save_path, title_name=None, torrent_id=None):
+    def open_torrent_client(self, file_path):
+        """
+        Opens the saved torrent file using the configured torrent client.
+        :param file_path: The path to the saved torrent file.
+        """
         try:
-            response = requests.get(url)
-            response.raise_for_status()  # Проверка на ошибки при скачивании
+            # Verify if the torrent client path is set correctly
+            if not self.torrent_client_path:
+                raise ValueError("Torrent client path is not set in the configuration.")
 
-            # Формируем безопасное название файла
-            if title_name:
-                # Убираем недопустимые символы из названия файла
-                safe_title = re.sub(r'[<>:"/\\|?*]', '_', title_name)
-            else:
-                safe_title = "torrent"
+            # Log the torrent client path for debugging
+            self.logger.debug(f"Using torrent client path: {self.torrent_client_path}")
 
-            # Добавляем ID тайтла, если он есть
-            filename = f"{safe_title}_{torrent_id}.torrent" if torrent_id else f"{safe_title}.torrent"
+            # Verify that the torrent client exists
+            if not os.path.exists(self.torrent_client_path):
+                raise FileNotFoundError(f"Torrent client not found at path: {self.torrent_client_path}")
 
-            # Путь для сохранения файла
-            torrent_path = os.path.join(save_path, filename)
+            # Verify that the torrent file exists
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Torrent file not found: {file_path}")
 
-            with open(torrent_path, 'wb') as file:
-                file.write(response.content)
+            # Open the saved torrent file in the client
+            subprocess.Popen([self.torrent_client_path, file_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.logger.debug(f"Torrent file opened in the client: {file_path}.")
 
-            self.logger.info(f"Torrent downloaded: {torrent_path}")
-            return torrent_path
         except Exception as e:
-            error_message = f"An error occurred while downloading the torrent: {str(e)}"
+            error_message = f"Error opening torrent client: {str(e)}"
             self.logger.error(error_message)
             print(error_message)
-            return None

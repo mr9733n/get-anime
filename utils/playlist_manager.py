@@ -1,98 +1,73 @@
+import re
 import subprocess
 import os
 import logging
+from config_manager import ConfigManager
+
+
 
 class PlaylistManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.playlist_path = "playlists/"  # Directory where playlists are saved
+        os.makedirs(self.playlist_path, exist_ok=True)  # Ensure the directory exists
 
-    def save_playlist(self):
-        self.logger.debug("Starting to save playlist.")
-        data = self.read_json_data()
-        if data is not None:
-            if "list" in data and isinstance(data["list"], list) and len(data["list"]) > 0:
-                playlists_folder = 'playlists'
-                if not os.path.exists(playlists_folder):
-                    os.makedirs(playlists_folder)
-                    self.logger.debug(f"Created 'playlists' folder.")
-                self.playlist_name = os.path.join(playlists_folder, f"{data['list'][0]['code']}.m3u")
-                self.logger.debug(f"Saving playlist to {self.playlist_name}.")
-                try:
-                    if self.playlist_name is not None:
-                        with open(self.playlist_name, 'w') as file:
-                            for url in self.discovered_links:
-                                full_url = "https://" + self.stream_video_url + url
-                                file.write(f"#EXTINF:-1,{url}\n{full_url}\n")
-                        self.logger.debug(f"Playlist {self.playlist_name} saved successfully.")
-                    else:
-                        error_message = "Playlist name is not set."
-                        self.logger.error(error_message)
-                        print(error_message)
-                        return None
-                    return self.playlist_name
-                except Exception as e:
-                    error_message = f"An error occurred while saving the playlist: {str(e)}"
-                    self.logger.error(error_message)
-                    print(error_message)
-                    return None
-            else:
-                error_message = "No valid data available. Please fetch data first."
-                self.logger.error(error_message)
-                print(error_message)
-        else:
-            error_message = "No data available. Please fetch data first."
-            self.logger.error(error_message)
-            print(error_message)
+    @staticmethod
+    def sanitize_filename(name):
+        """
+        Sanitize the filename by removing special characters that are not allowed in filenames.
+        """
+        # Replace special characters with an underscore
+        return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-    def all_links_play(self):
-        self.logger.debug("Attempting to play all links.")
+    def save_playlist(self, title_names, links, stream_video_url):
+        """
+        Save the playlist of links to an M3U file with a name based on title names.
+        :param stream_video_url: Base URL for constructing the full links.
+        :param title_names: List of title names that will be used in the filename.
+        :param links: List of links to be included in the playlist.
+        """
+        # Generate a sanitized filename based on the title names
+        sanitized_titles = [self.sanitize_filename(name) for name in title_names]
+        file_name = "_".join(sanitized_titles)[:100] + ".m3u"  # Limit the length to avoid file name issues
+        file_path = os.path.join(self.playlist_path, file_name)
+
+        # Check if the file already exists
+        if os.path.exists(file_path):
+            print(f"Плейлист '{file_name}' уже существует. Файл не был сохранен.")
+            self.logger.warning(f"Playlist '{file_name}' already exists. Skipping save.")
+            return  # Skip saving to avoid overwriting
+
         try:
-            vlc_path = self.video_player_path
-            playlists_folder = 'playlists'
-            if not os.path.exists(playlists_folder):
-                os.makedirs(playlists_folder)
-                self.logger.debug(f"Created 'playlists' folder.")
-            if hasattr(self, 'playlist_name') and self.playlist_name is not None:
-                playlist_path = os.path.join(playlists_folder, os.path.basename(self.playlist_name))
-                self.logger.debug(f"Attempting to play playlist from {playlist_path}.")
-                if os.path.exists(playlist_path):
-                    media_player_command = [vlc_path, playlist_path]
-                    subprocess.Popen(media_player_command)
-                    self.logger.debug(f"Playing playlist {playlist_path}.")
-                else:
-                    error_message = "Playlist file not found in playlists folder."
-                    self.logger.error(error_message)
-                    print(error_message)
-            else:
-                error_message = "Please save the playlist first."
-                self.logger.error(error_message)
-                print(error_message)
-        except Exception as e:
-            error_message = f"An error occurred while playing the video: {str(e)}"
-            self.logger.error(error_message)
-            print(error_message)
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write("#EXTM3U\n")  # M3U file header
+                # Filter links that end with .m3u8 and write them to the file
+                filtered_links = [link for link in links if link.endswith('.m3u8')]
+                for link in filtered_links:
+                    full_url = f"https://{stream_video_url}{link}"  # Construct the full URL
+                    file.write(full_url + '\n')
 
-    def play_playlist(self):
-        self.logger.debug("Attempting to play specific playlist.")
-        try:
-            vlc_path = self.video_player_path
-            playlists_folder = 'playlists'
-            if hasattr(self, 'playlist_name') and self.playlist_name:
-                playlist_path = os.path.join(playlists_folder, self.playlist_name)
-                self.logger.debug(f"Attempting to play playlist from {playlist_path}.")
-                if os.path.exists(playlist_path):
-                    media_player_command = [vlc_path, playlist_path]
-                    subprocess.Popen(media_player_command)
-                    self.logger.debug(f"Playing playlist {playlist_path}.")
-                else:
-                    error_message = "Playlist file not found in playlists folder."
-                    self.logger.error(error_message)
-                    print(error_message)
-            else:
-                error_message = "Playlist name is not set."
-                self.logger.error(error_message)
-                print(error_message)
+            self.logger.debug(f"Playlist saved successfully with {len(filtered_links)} links at {file_path}.")
         except Exception as e:
-            error_message = f"An error occurred while trying to play the playlist: {str(e)}"
+            error_message = f"Failed to save playlist: {str(e)}"
             self.logger.error(error_message)
-            print(error_message)
+
+    def play_playlist(self, file_name, video_player_path):
+        """
+        Open the saved M3U playlist in the default media player.
+        :type video_player_path: object
+        :param file_name: The name of the playlist file to be played.
+        """
+        file_path = os.path.join(self.playlist_path, file_name)
+
+        try:
+            if os.path.exists(file_path):
+                media_player_command = [video_player_path, file_path]
+                subprocess.Popen(media_player_command)
+                self.logger.debug(f"Playing playlist: {file_path}.")
+            else:
+                print("Playlist file not found.")
+        except Exception as e:
+            error_message = f"Failed to play playlist: {str(e)}"
+            self.logger.error(error_message)
+

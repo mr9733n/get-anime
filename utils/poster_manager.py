@@ -22,6 +22,7 @@ class PosterManager:
         Add poster URLs to the list and start downloading in the background.
         """
         # Add new links to the existing list, avoiding duplicates
+        self.clear_cache_and_memory()
         self.poster_links.extend([link for link in links if link not in self.poster_links])
         self.logger.debug(f"Added {len(links)} new poster links. Total: {len(self.poster_links)}")
         self.start_background_download()
@@ -80,5 +81,6 @@ class PosterManager:
         Clears the cache file and memory to prepare for new poster data.
         """
         # Clear images in memory
+        self.poster_links.clear()
         self.poster_images.clear()
         self.logger.debug("Poster images cleared from memory.")

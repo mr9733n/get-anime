@@ -10,6 +10,7 @@ if __name__ == "__main__":
 
     dpg.create_context()
     ui_manager.build()
+    dpg.create_viewport(title='Anime App', width=800, height=600)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.start_dearpygui()

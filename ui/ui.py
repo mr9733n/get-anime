@@ -1,3 +1,6 @@
+import logging
+import re
+import subprocess
 
 import dearpygui.dearpygui as dpg
 from docutils.nodes import label
@@ -5,11 +8,21 @@ from docutils.nodes import label
 
 class DisplayController:
     def __init__(self, app):
+        self.logger = logging.getLogger(__name__)
         self.title = None
         self.app = app
         self.logger = app.logger
         self.title_data = None
         self.selected_quality = 'fhd'
+        self.pre = "https://"
+        self.init_ui()
+
+    def init_ui(self):
+        self.app.window.title("Anime Player")
+        self.app.window.geometry("1200x700")
+        self.app.window.grid_rowconfigure(2, weight=1)
+        self.app.window.grid_columnconfigure(0, weight=1)
+        self.display_days()
 
     def display_days(self):
         dpg.delete_item("title_grid", children_only=True)
@@ -26,6 +39,7 @@ class DisplayController:
             dow = self.days_of_week[i]
             dpg.add_image_button(texture_tag=texture_id, width=200, height=200, callback=lambda s, d, day=dow: self.app.get_schedule(day))
             dpg.add_image_button(label=dow, callback=lambda s, d, day=dow: self.app.get_schedule(day), parent="title_grid")
+
     # Example ui
     # import dearpygui.dearpygui as dpg
     #
@@ -52,6 +66,99 @@ class DisplayController:
     #             dpg.add_text("[Click here](https://example.com)")
     #
     #
+
+    def on_link_click(self, event, title_name=None, torrent_id=None):
+        try:
+            tag_names = event.widget.tag_names(tk.CURRENT)
+            match = re.search(r'(\d+)', tag_names[0])
+            if not match:
+                self.logger.error(f"Could not extract index from tag: {tag_names[0]}")
+                return
+
+            link_index = int(match.group(1))
+            if link_index < 0 or link_index >= len(self.app.discovered_links):
+                self.logger.error(f"Link index {link_index} out of range.")
+                return
+
+            link = self.app.discovered_links[link_index]
+            if link.endswith('.m3u8'):
+                video_plyer_path = self.app.video_player_path
+                open_link = self.pre + self.app.stream_video_url + link
+                media_player_command = [video_plyer_path, open_link]
+                subprocess.Popen(media_player_command)
+                self.logger.info(f"Playing video link: {open_link}")
+            elif '/torrent/download.php' in link:
+                self.app.save_torrent_wrapper(link, title_name, torrent_id)
+            else:
+                self.logger.error(f"Unknown link type: {link}")
+
+        except Exception as e:
+            error_message = f"An error occurred while processing the link: {str(e)}"
+            self.logger.error(error_message)
+
+    def on_title_click(self, event, en_name):
+        try:
+            self.title_search_entry.delete(0, tk.END)
+            self.title_search_entry.insert(0, en_name)
+            self.app.get_search_by_title()
+        except Exception as e:
+            error_message = f"An error occurred while clicking on title: {str(e)}"
+            self.logger.error(error_message)
+
+    def display_poster(self, poster_image):
+        try:
+            poster_photo = ImageTk.PhotoImage(poster_image)
+            self.poster_label.configure(image=poster_photo)
+            self.poster_label.image = poster_photo  # Сохраняем ссылку на изображение
+        except Exception as e:
+            error_message = f"An error occurred while displaying the poster: {str(e)}"
+            self.logger.error(error_message)
+
+    def change_poster(self):
+        poster_image = self.app.poster_manager.get_next_poster()
+        if poster_image:
+            self.display_poster(poster_image)
+        else:
+            self.logger.warning("No poster to display.")
+
+    def clear_poster(self):
+        self.poster_label.configure(image='')
+        self.poster_label.image = None
+
+    def display_schedule(self, data):
+        try:
+            self.text.delete("1.0", tk.END)
+            if data is not None:
+                for day_info in data:
+                    day = day_info.get("day")
+                    title_list = day_info.get("list")
+                    day_word = self.days_of_week[day]
+                    self.text.insert(tk.END, f"День недели: {day_word}\n\n")
+                    for i, title in enumerate(title_list):
+                        self.display_title_info(title, i, show_description=False)
+        except Exception as e:
+            error_message = f"An error occurred while displaying the schedule: {str(e)}"
+            self.logger.error(error_message)
+            self.text.delete("1.0", tk.END)
+            self.text.insert(tk.END, error_message)
+
+
+
+    def display_info(self, data):
+        dpg.delete_item("title_grid", children_only=True)
+        if data is not None:
+            self.app.discovered_links = []
+            if "list" in data and isinstance(data["list"], list):
+                titles = data["list"]
+            else:
+                titles = [data] if isinstance(data, dict) else []
+            for i, item in enumerate(titles):
+                self.display_title_info(item, i)
+        except Exception as e:
+            error_message = f"An error occurred while displaying information: {str(e)}"
+            self.logger.error(error_message)
+
+
 
     def display_title(self, title_data):
         self.title_data = title_data

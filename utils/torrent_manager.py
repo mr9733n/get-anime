@@ -5,22 +5,21 @@ import logging
 
 class TorrentManager:
     def __init__(self, torrent_save_path="torrents/", torrent_client_path=None):
+        self.logger = logging.getLogger(__name__)
         self.torrent_save_path = torrent_save_path
         self.torrent_client_path = torrent_client_path
-        os.makedirs(self.torrent_save_path, exist_ok=True)  # Ensure the save directory exists
-        self.logger = logging.getLogger(__name__)
+        self.pre = "https://"
+        os.makedirs(self.torrent_save_path, exist_ok=True)
 
     def save_torrent_file(self, link, file_name):
         """
         Download and save the torrent file from the given URL.
+        :type link: object
         :param link: URL of the torrent file.
         :param file_name: The name to save the torrent file as.
         """
         file_path = os.path.join(self.torrent_save_path, file_name)
-        if not link.startswith("https://"):
-            url = "https://anilibria.tv" + link
-        else:
-            url = link
+        url = f"{self.pre}anilibria.tv" + link
 
         try:
             response = requests.get(url, stream=True)
@@ -32,15 +31,11 @@ class TorrentManager:
                     file.write(chunk)
 
             self.logger.debug(f"Torrent file saved successfully at {file_path}.")
-            print(f"Torrent file saved as {file_name}.")
-
-            # Open the saved torrent file in the client
             self.open_torrent_client(file_path)
 
         except Exception as e:
             error_message = f"Failed to save or open torrent file: {str(e)}"
             self.logger.error(error_message)
-            print(error_message)
 
     def open_torrent_client(self, file_path):
         """
@@ -48,26 +43,20 @@ class TorrentManager:
         :param file_path: The path to the saved torrent file.
         """
         try:
-            # Verify if the torrent client path is set correctly
             if not self.torrent_client_path:
                 raise ValueError("Torrent client path is not set in the configuration.")
 
-            # Log the torrent client path for debugging
             self.logger.debug(f"Using torrent client path: {self.torrent_client_path}")
 
-            # Verify that the torrent client exists
             if not os.path.exists(self.torrent_client_path):
                 raise FileNotFoundError(f"Torrent client not found at path: {self.torrent_client_path}")
 
-            # Verify that the torrent file exists
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"Torrent file not found: {file_path}")
 
-            # Open the saved torrent file in the client
             subprocess.Popen([self.torrent_client_path, file_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.logger.debug(f"Torrent file opened in the client: {file_path}.")
 
         except Exception as e:
             error_message = f"Error opening torrent client: {str(e)}"
             self.logger.error(error_message)
-            print(error_message)

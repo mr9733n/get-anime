@@ -2,11 +2,10 @@
 *.png
 logs/*
 utils/*.json
-
-temp/favicon.ico
+temp/*
 utils/__pycache__/*
 __pycache__/*
-gui/__pycache__/*
+core/__pycache__/*
 .idea/*
 torrents/*
 playlists/*
@@ -21,3 +20,4 @@ playlists/A.I.C.O.
 .idea/misc.xml
 .idea/modules.xml
 .idea/vcs.xml
+temp/response.json

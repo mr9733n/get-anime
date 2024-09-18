@@ -9,19 +9,16 @@ import logging
 
 class PosterManager:
     def __init__(self, display_callback=None):
-        self.cache_file_path = "utils/poster_cache.txt"
-        self.utils_json = "utils/response.json"
+        self.logger = logging.getLogger(__name__)
         self.poster_links = []
         self.poster_images = []
         self.current_poster_index = 0
-        self.logger = logging.getLogger(__name__)
         self.display_callback = display_callback
 
     def write_poster_links(self, links):
         """
         Add poster URLs to the list and start downloading in the background.
         """
-        # Add new links to the existing list, avoiding duplicates
         self.clear_cache_and_memory()
         self.poster_links.extend([link for link in links if link not in self.poster_links])
         self.logger.debug(f"Added {len(links)} new poster links. Total: {len(self.poster_links)}")
@@ -49,7 +46,6 @@ class PosterManager:
                 response.raise_for_status()
                 end_time = time.time()
 
-                # Check if the content is an image
                 if 'image' not in response.headers.get('Content-Type', ''):
                     self.logger.error(f"The URL did not return an image: {link}")
                     continue
@@ -80,7 +76,6 @@ class PosterManager:
         """
         Clears the cache file and memory to prepare for new poster data.
         """
-        # Clear images in memory
         self.poster_links.clear()
         self.poster_images.clear()
         self.logger.debug("Poster images cleared from memory.")

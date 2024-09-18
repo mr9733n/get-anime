@@ -2,49 +2,42 @@ import re
 import subprocess
 import os
 import logging
-from config_manager import ConfigManager
-
 
 
 class PlaylistManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.playlist_path = "playlists/"  # Directory where playlists are saved
-        os.makedirs(self.playlist_path, exist_ok=True)  # Ensure the directory exists
+        self.playlist_path = "playlists/"
+        os.makedirs(self.playlist_path, exist_ok=True)
+        self.pre = "https://"
 
     @staticmethod
     def sanitize_filename(name):
         """
         Sanitize the filename by removing special characters that are not allowed in filenames.
         """
-        # Replace special characters with an underscore
         return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-    def save_playlist(self, title_names, links, stream_video_url):
+    def save_playlist(self, sanitized_titles, links, stream_video_url):
         """
         Save the playlist of links to an M3U file with a name based on title names.
+        :param sanitized_titles: List of title names that will be used in the filename.
         :param stream_video_url: Base URL for constructing the full links.
-        :param title_names: List of title names that will be used in the filename.
         :param links: List of links to be included in the playlist.
         """
-        # Generate a sanitized filename based on the title names
-        sanitized_titles = [self.sanitize_filename(name) for name in title_names]
         file_name = "_".join(sanitized_titles)[:100] + ".m3u"  # Limit the length to avoid file name issues
         file_path = os.path.join(self.playlist_path, file_name)
 
-        # Check if the file already exists
         if os.path.exists(file_path):
-            print(f"Плейлист '{file_name}' уже существует. Файл не был сохранен.")
             self.logger.warning(f"Playlist '{file_name}' already exists. Skipping save.")
-            return  # Skip saving to avoid overwriting
+            return
 
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
-                file.write("#EXTM3U\n")  # M3U file header
-                # Filter links that end with .m3u8 and write them to the file
+                file.write("#EXTM3U\n")
                 filtered_links = [link for link in links if link.endswith('.m3u8')]
                 for link in filtered_links:
-                    full_url = f"https://{stream_video_url}{link}"  # Construct the full URL
+                    full_url = f"{self.pre}{stream_video_url}{link}"
                     file.write(full_url + '\n')
 
             self.logger.debug(f"Playlist saved successfully with {len(filtered_links)} links at {file_path}.")

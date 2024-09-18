@@ -6,24 +6,23 @@ import requests
 import logging
 
 class APIClient:
-    def __init__(self, base_url, api_version, logger=None):
+    def __init__(self, base_url, api_version):
+        self.logger = logging.getLogger(__name__)
         self.base_url = base_url
         self.api_version = api_version
-        self.logger = logger or logging.getLogger(__name__)
+        self.pre = "https://"
+        self.utils_folder = "temp"
+        os.makedirs(self.utils_folder, exist_ok=True)
 
     def send_request(self, endpoint, params=None):
-        url = f"https://api.{self.base_url}/{self.api_version}/{endpoint}"
+        url = f"{self.pre}api.{self.base_url}/{self.api_version}/{endpoint}"
         try:
             start_time = time.time()
             response = requests.get(url, params=params)
             response.raise_for_status()
             end_time = time.time()
             data = response.json()
-            utils_folder = 'utils'
-            if not os.path.exists(utils_folder):
-                os.makedirs(utils_folder)
-                self.logger.debug(f"Created 'utils' folder.")
-            utils_json = os.path.join(utils_folder, 'response.json')
+            utils_json = os.path.join(self.utils_folder, 'response.json')
 
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
@@ -50,7 +49,7 @@ class APIClient:
         params = {'days': day}
         return self.send_request(endpoint, params)
 
-    def search_by_title(self, search_text):
+    def get_search_by_title(self, search_text):
         endpoint = "title/search"
         params = {'search': search_text}
         return self.send_request(endpoint, params)

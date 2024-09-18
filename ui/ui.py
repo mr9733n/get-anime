@@ -1,5 +1,6 @@
 
 import dearpygui.dearpygui as dpg
+from docutils.nodes import label
 
 
 class DisplayController:
@@ -12,9 +13,45 @@ class DisplayController:
 
     def display_days(self):
         dpg.delete_item("title_grid", children_only=True)
-        days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        for day in days_of_week:
-            dpg.add_button(label=day, callback=lambda s, d, day=day: self.app.get_schedule(day), parent="title_grid")
+        self.days_of_week = {
+            0: "Понедельник",
+            1: "Вторник",
+            2: "Среда",
+            3: "Четверг",
+            4: "Пятница",
+            5: "Суббота",
+            6: "Воскресенье"
+        }
+        for i in range(7):
+            dow = self.days_of_week[i]
+            dpg.add_image_button(texture_tag=texture_id, width=200, height=200, callback=lambda s, d, day=dow: self.app.get_schedule(day))
+            dpg.add_image_button(label=dow, callback=lambda s, d, day=dow: self.app.get_schedule(day), parent="title_grid")
+    # Example ui
+    # import dearpygui.dearpygui as dpg
+    #
+    # # Function to handle button clicks
+    # def button_callback():
+    #     print("Button clicked!")
+    #
+    # Load texture (image)
+    # with dpg.texture_registry(show=False):
+    #     width, height, channels, data = dpg.load_image("path_to_image.png")
+    #     dpg.add_static_texture(width, height, data, tag="image_texture")
+    #
+    # Create a window
+    # with dpg.window(label="Image Button with Text"):
+    #
+    # Create a child window to hold the image button and overlay text
+    #     with dpg.child_window(width=300, height=300, autosize_y=False):
+    #         dpg.add_image_button(texture_tag="image_texture", width=300, height=300, callback=button_callback)
+    #
+    #
+    # Layering the text over the button
+    #         with dpg.group():
+    #             dpg.add_text("Title Text on Top")
+    #             dpg.add_text("[Click here](https://example.com)")
+    #
+    #
 
     def display_title(self, title_data):
         self.title_data = title_data

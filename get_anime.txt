@@ -1,0 +1,97 @@
+
+### **Summary of the Refactoring Plan get_anime app 2.0.0 - 3.0.0**:
+
+#### 1. **API Calls Refactoring**:
+- [x] **Separate class/module for API**.
+- [x] **Unified error handling for API responses**.
+
+#### 2. **Project Structure Improvement**:
+- [x] **Separation into modules**.
+- [x] **Object-oriented approach for code clarity**.
+
+#### 3. **File and Directory Handling**:
+- [x] **Use `os.path.join` for paths**.
+- [x] **Create directories at app startup**.
+- [ ] **Use `with` statement for file handling**.
+
+#### 4. **Logging Improvement**:
+- [x] **Log configuration through a config file**.
+- [ ] **Log exceptions with full traceback**.
+- [x] **Remove log duplication**.
+
+#### 5. **Error and Exception Handling**:
+- [ ] **Custom exceptions for specific cases**.
+- [ ] **Use specific exception types**.
+- [ ] **Improve error messages**.
+
+#### 6. **GUI Optimization**:
+- [x] **Create classes for GUI components**.
+- [x] **Avoid global variables**.
+- [x] **Use modern GUI libraries (like Dear PyGui)**.
+
+#### 7. **Image Handling Improvement**:
+- [x] **Cache images in memory**.
+- [x] **Optimize image loading with background threads**.
+- [ ] **Handle errors while loading images (use placeholder)**.
+
+#### 8. **Performance Optimization**:
+- [x] **Use asynchronous requests (`asyncio`, `aiohttp`)**.
+- [x] **Optimize data-heavy operations using threads or async**.
+
+#### 9. **Coding Standards**:
+- [ ] **Follow PEP 8 for readability**.
+- [ ] **Add type hints for functions and methods**.
+
+#### 10. **User Experience**:
+- [ ] **Keyboard shortcuts (e.g., search on Enter)**.
+- [ ] **Loading indicators for data retrieval**.
+- [ ] **Save app state between sessions (quality, last search)**.
+
+#### 11. **Internationalization**:
+- [ ] **Localization support**.
+- [ ] **Handle various data encodings properly**.
+
+#### 12. **Security**:
+- [ ] **Validate and sanitize data from external sources**.
+- [ ] **Use secure methods to launch external apps**.
+
+#### 13. **Documentation and Comments**:
+- [ ] **Add docstrings for classes and methods**.
+- [ ] **Update and maintain comments**.
+
+#### 14. **Testing**:
+- [ ] **Develop unit tests with `unittest` or `pytest`**.
+- [ ] **Test different usage scenarios**.
+
+#### 15. **Modern Libraries**:
+- [x] **Consider using `asyncio` for improved async support**.
+- [ ] **Update libraries to the latest stable versions**.
+
+#### 16. **Network Optimization**:
+- [ ] **Retry failed requests with exponential backoff**.
+- [ ] **Cache frequently requested data**.
+
+#### 17. **Configuration Handling**:
+- [ ] **Use flexible formats (YAML, JSON)**.
+- [ ] **Validate settings at load time**.
+
+#### 18. **Large Data Handling**:
+- [ ] **Paginate results in the UI**.
+- [ ] **Load data as needed with async calls**.
+
+#### 19. **Cross-Platform Compatibility**:
+- [ ] **Test on multiple Python versions**.
+- [ ] **Ensure compatibility with different OSes (Windows, macOS, Linux)**.
+
+#### 20. **User Settings**:
+- [ ] **Allow users to change settings (paths, video quality) in the UI**.
+- [ ] **Persist user settings between app sessions**.
+
+### **Current Status**:
+- You've accomplished a lot in terms of API handling, project structure, logging, performance, and the GUI!
+- **Pending tasks** include improving exception handling, refining error messages, adding testing, and improving user experience with features like keyboard shortcuts and state-saving.
+
+### **Next Steps**:
+- **Error handling**: Work on custom exceptions, clearer error messages, and specific exception types.
+- **User experience**: Add features like keyboard shortcuts, loading indicators, and saving state between sessions.
+- **Testing and security**: Implement unit testing and validate data handling to improve reliability and security.

@@ -4,15 +4,16 @@ import logging.config
 import platform
 import re
 
-from utils.config_manager import ConfigManager
-from utils.api_client import APIClient
-from utils.poster_manager import PosterManager
-from utils.playlist_manager import PlaylistManager
-from utils.torrent_manager import TorrentManager
-from core.ui import FrontManager
+from managers.config_manager import ConfigManager
+from api.api_client import APIClient
+from managers.poster_manager import PosterManager
+from managers.playlist_manager import PlaylistManager
+from managers.torrent_manager import TorrentManager
+from ui.ui import FrontManager
 
 class AnimePlayerApp:
     def __init__(self, window):
+        self.current_data = None
         self.sanitized_titles = []
         self.logger = logging.getLogger(__name__)
         self.logger.debug("Initializing AnimePlayerApp")
@@ -173,6 +174,72 @@ class AnimePlayerApp:
             error_message = f"An error occurred while processing link data: {str(e)}"
             self.logger.error(error_message)
             return None, None, None
+
+    def get_schedule(self, day):
+        data = self.api_client.get_schedule(day)
+        if 'error' in data:
+            self.logger.error(data['error'])
+            return
+        self.get_poster(data)
+        self.ui_manager.display_schedule(data)
+        self.current_data = data
+
+    def get_search_by_title(self):
+        search_text = self.ui_manager.title_search_entry.get()
+        if search_text:
+            data = self.api_client.get_search_by_title(search_text)
+            if 'error' in data:
+                self.logger.error(data['error'])
+                return
+            self.get_poster(data)
+            self.ui_manager.display_info(data)
+            self.current_data = data
+        else:
+            self.logger.error("Search text is empty.")
+
+    def get_random_title(self):
+        data = self.api_client.get_random_title()
+        if 'error' in data:
+            self.logger.error(data['error'])
+            return
+        self.get_poster(data)
+        self.ui_manager.display_info(data)
+        self.current_data = data
+
+    def update_quality_and_refresh(self, event=None):
+        selected_quality = self.ui_manager.quality_var.get()
+        data = self.current_data
+        print(data)  # Debugging: Show current data structure to understand its format
+
+        if not data:
+            error_message = "No data available. Please fetch data first."
+            self.logger.error(error_message)
+            return
+
+        # Handling multiple potential data structures
+        if isinstance(data, dict):
+            # Check if it's a schedule structure
+            if "day" in data and "list" in data and isinstance(data["list"], list):
+                self.logger.debug("Detected schedule data structure.")
+                self.ui_manager.display_schedule([data])  # Wrap in a list to match expected input
+
+            # Check if it's general information with a "list" key
+            elif "list" in data and isinstance(data["list"], list):
+                self.logger.debug("Using cached general information data.")
+                self.ui_manager.display_info(data)
+
+            else:
+                error_message = "No valid data format detected. Please fetch data again."
+                self.logger.error(error_message)
+
+        elif isinstance(data, list):
+            # Assume list structure corresponds to schedule data (multiple days)
+            self.logger.debug("Detected list-based schedule data structure.")
+            self.ui_manager.display_schedule(data)
+
+        else:
+            error_message = "Unsupported data format. Please fetch data first."
+            self.logger.error(error_message)
         
     def save_playlist_wrapper(self):
         """

@@ -3,9 +3,9 @@
 logs/*
 utils/*.json
 temp/*
-utils/__pycache__/*
+managers/__pycache__/*
 __pycache__/*
-core/__pycache__/*
+ui/__pycache__/*
 .idea/*
 torrents/*
 playlists/*

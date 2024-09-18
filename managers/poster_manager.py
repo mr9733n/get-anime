@@ -1,4 +1,4 @@
-# utils/poster_manager.py
+# managers/poster_manager.py
 import os
 import threading
 import time

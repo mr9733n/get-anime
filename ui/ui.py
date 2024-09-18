@@ -36,7 +36,7 @@ class FrontManager:
         self.day_buttons = []
         for i in range(7):
             day_name = self.days_of_week[i]
-            button = ttk.Button(self.app.window, text=day_name, command=lambda i=i: self.get_schedule(i))
+            button = ttk.Button(self.app.window, text=day_name, command=lambda i=i: self.app.get_schedule(i))
             button.grid(row=1, column=3 + i, sticky="ew")
             self.day_buttons.append(button)
 
@@ -47,9 +47,9 @@ class FrontManager:
         self.title_search_entry.grid(row=0, column=3, columnspan=7, sticky="ew")
 
         # Кнопки управления
-        self.display_button = ttk.Button(self.app.window, text="Отобразить информацию", command=self.get_search_by_title)
+        self.display_button = ttk.Button(self.app.window, text="Отобразить информацию", command=self.app.get_search_by_title)
         self.display_button.grid(row=1, column=0, sticky="ew")
-        self.random_button = ttk.Button(self.app.window, text="Random", command=self.get_random_title)
+        self.random_button = ttk.Button(self.app.window, text="Random", command=self.app.get_random_title)
         self.random_button.grid(row=1, column=1, sticky="ew")
         self.save_button = ttk.Button(self.app.window, text="Сохранить плейлист", command=self.app.save_playlist_wrapper)
         self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
@@ -65,7 +65,7 @@ class FrontManager:
         self.quality_dropdown = Combobox(self.app.window, textvariable=self.quality_var, values=quality_options)
         self.quality_dropdown.grid(row=3, column=9)
         self.quality_dropdown.state(['readonly'])
-        self.refresh_button = ttk.Button(self.app.window, text="Обновить", command=self.update_quality_and_refresh)
+        self.refresh_button = ttk.Button(self.app.window, text="Обновить", command=self.app.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
 
         # Настройка столбцов
@@ -127,37 +127,6 @@ class FrontManager:
         else:
             self.logger.warning("No poster to display.")
     
-    def get_schedule(self, day):
-        data = self.app.api_client.get_schedule(day)
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.app.get_poster(data)
-        self.display_schedule(data)
-        self.app.current_data = data
-
-    def get_search_by_title(self):
-        search_text = self.title_search_entry.get()
-        if search_text:
-            data = self.app.api_client.get_search_by_title(search_text)
-            if 'error' in data:
-                self.logger.error(data['error'])
-                return
-            self.app.get_poster(data)
-            self.display_info(data)
-            self.app.current_data = data
-        else:
-            self.logger.error("Search text is empty.")
-
-    def get_random_title(self):
-        data = self.app.api_client.get_random_title()
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.app.get_poster(data)
-        self.display_info(data)
-        self.app.current_data = data
-
     def display_schedule(self, data):
         try:
             self.text.delete("1.0", tk.END)
@@ -198,8 +167,8 @@ class FrontManager:
             items = self.app.get_items_data(data)
 
             # Ensure item is a dictionary and has an "id" key
-            if isinstance(item, dict) and "id" in item:
-                print(f"display_info: Item ID: {item['id']}")
+
+            print(f"display_info: Item ID: {items['id']}")
             if items is not None:
                 for item, i in items:
                     if item is not None:        
@@ -296,46 +265,13 @@ class FrontManager:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
     
-    def update_quality_and_refresh(self, event=None):
-        selected_quality = self.quality_var.get()
-        data = self.app.current_data
-        print(data)  # Debugging: Show current data structure to understand its format
 
-        if not data:
-            error_message = "No data available. Please fetch data first."
-            self.logger.error(error_message)
-            return
-
-        # Handling multiple potential data structures
-        if isinstance(data, dict):
-            # Check if it's a schedule structure
-            if "day" in data and "list" in data and isinstance(data["list"], list):
-                self.logger.debug("Detected schedule data structure.")
-                self.display_schedule([data])  # Wrap in a list to match expected input
-            
-            # Check if it's general information with a "list" key
-            elif "list" in data and isinstance(data["list"], list):
-                self.logger.debug("Using cached general information data.")
-                self.display_info(data)
-
-            else:
-                error_message = "No valid data format detected. Please fetch data again."
-                self.logger.error(error_message)
-
-        elif isinstance(data, list):
-            # Assume list structure corresponds to schedule data (multiple days)
-            self.logger.debug("Detected list-based schedule data structure.")
-            self.display_schedule(data)
-
-        else:
-            error_message = "Unsupported data format. Please fetch data first."
-            self.logger.error(error_message)
 
     def on_title_click(self, event, en_name):
         try:
             self.title_search_entry.delete(0, tk.END)
             self.title_search_entry.insert(0, en_name)
-            self.get_search_by_title()
+            self.app.get_search_by_title()
         except Exception as e:
             error_message = f"An error occurred while clicking on title: {str(e)}"
             self.logger.error(error_message)

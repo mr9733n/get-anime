@@ -1,6 +1,7 @@
 # app.py
 import logging
 import logging.config
+import platform
 import re
 
 from utils.config_manager import ConfigManager
@@ -21,13 +22,19 @@ class AnimePlayerApp:
         self.title_names = []
         self.init_variables()
         self.load_config()
+        self.video_player_path, self.torrent_client_path = self.setup_paths()
+
+        # Initialize TorrentManager with the correct paths
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
             torrent_client_path=self.torrent_client_path
         )
 
+        # Corrected debug logging of paths using setup values
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
+
+        # Initialize other components
         self.ui_manager = FrontManager(self)
         self.api_client = APIClient(self.base_url, self.api_version)
         self.poster_manager = PosterManager()
@@ -35,12 +42,20 @@ class AnimePlayerApp:
         self.poster_manager = PosterManager(display_callback=self.ui_manager.display_poster)
 
     def load_config(self):
+        """Loads the configuration settings needed by the application."""
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
-        self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
-        self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
-        self.torrent_save_path = "torrents/"
+        self.torrent_save_path = "torrents/"  # Ensure this is set correctly
+
+    def setup_paths(self):
+        """Sets up paths based on the current platform and returns them for use."""
+        current_platform = platform.system()
+        video_player_path = self.config_manager.get_video_player_path(current_platform)
+        torrent_client_path = self.config_manager.get_torrent_client_path(current_platform)
+
+        # Return paths to be used in the class
+        return video_player_path, torrent_client_path
 
     def init_variables(self):
         self.discovered_links = []

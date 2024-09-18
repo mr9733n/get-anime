@@ -21,3 +21,4 @@ playlists/A.I.C.O.
 .idea/modules.xml
 .idea/vcs.xml
 temp/response.json
+.DS_Store

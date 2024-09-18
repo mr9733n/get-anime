@@ -16,7 +16,7 @@ class FrontManager:
 
     def init_ui(self):
         self.app.window.title("Anime Player")
-        self.app.window.geometry("1000x700")
+        self.app.window.geometry("1200x700")
         self.app.window.grid_rowconfigure(2, weight=1)
         self.app.window.grid_columnconfigure(0, weight=1)
         self.setup_widgets()

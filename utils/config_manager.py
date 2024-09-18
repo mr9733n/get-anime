@@ -1,24 +1,30 @@
 # config_manager.py
 import configparser
 import os
-import logging
 
 class ConfigManager:
     def __init__(self, config_file):
-        self.logger = logging.getLogger(__name__)
-        self.config_file = config_file
         self.config = configparser.ConfigParser()
-
-        if not os.path.exists(self.config_file):
-            self.logger.debug(f"Config file not found at path: {self.config_file}")
-        else:
-            self.logger.debug(f"Reading config file from: {self.config_file}")
-
-        self.config.read(self.config_file)
-        self.logger.debug(f"Loaded sections: {self.config.sections()}")
-
+        self.config.read(config_file)
+    
     def get_setting(self, section, setting, default=None):
         try:
             return self.config[section].get(setting, default)
         except KeyError as e:
             raise KeyError(f"Missing section '{section}' or setting '{setting}' in config: {e}")
+
+    def get_video_player_path(self, platform_name):
+        if platform_name == "Windows":
+            return self.get_setting('Settings', 'win_video_player_path')
+        elif platform_name == "Darwin":  # macOS
+            return self.get_setting('Settings', 'mac_video_player_path')
+        else:
+            return None  # Handle other platforms if needed
+
+    def get_torrent_client_path(self, platform_name):
+        if platform_name == "Windows":
+            return self.get_setting('Settings', 'win_torrent_client_path')
+        elif platform_name == "Darwin":  # macOS
+            return self.get_setting('Settings', 'mac_torrent_client_path')
+        else:
+            return None

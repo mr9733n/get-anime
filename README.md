@@ -27,7 +27,7 @@ pip install -r requirements.txt
 Запустите приложение, выполнив скрипт Python:
 
 ```bash
-python get-anime.py
+python main.py
 ```
 
 ## Использование приложения:

@@ -21,6 +21,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
 # Suppress Tkinter deprecation warning
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
 
+
 class ConfigManager:
     def __init__(self, config_file):
         self.config = configparser.ConfigParser()
@@ -28,6 +29,7 @@ class ConfigManager:
 
     def get_setting(self, section, setting, default=None):
         return self.config[section].get(setting, default)
+
 
 class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
     def __init__(self, log_dir, log_filename, *args, **kwargs):
@@ -38,11 +40,12 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
     def getLogFileName(self, current_date):
         base_filename, file_extension = os.path.splitext(self.baseFilename)
         return f"{base_filename}_{current_date}.{file_extension}"
-    
+
+
 class AnimePlayerApp:
     def __init__(self, window):
         self.cache_file_path = "poster_cache.txt"
-        self.poster_links = [] 
+        self.poster_links = []
         self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
@@ -56,18 +59,18 @@ class AnimePlayerApp:
         self.window.grid_columnconfigure(0, weight=1)
         self.discovered_links = []
         self.current_link = None
-        self.poster_data = []  
+        self.poster_data = []
         self.current_poster_index = 0
         self.clear_cache_file()
-        
-        atexit.register(self.delete_response_json)        
+
+        atexit.register(self.delete_response_json)
 
     def load_config(self):
         # Get configuration values
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        self.base_url =  self.config_manager.get_setting('Settings', 'base_url')
-        self.api_version =  self.config_manager.get_setting('Settings', 'api_version')
+        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
+        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
         self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
 
@@ -83,8 +86,8 @@ class AnimePlayerApp:
         ]
         self.day_buttons = []
         for i, day in enumerate(self.days_of_week):
-            button = ttk.Button(self.window, text=day, command=lambda i=i: self.get_schedule(i+1))
-            button.grid(row=1, column=3+i, sticky="ew")
+            button = ttk.Button(self.window, text=day, command=lambda i=i: self.get_schedule(i + 1))
+            button.grid(row=1, column=3 + i, sticky="ew")
             self.day_buttons.append(button)
         # Create a label and entry for title search
         self.title_search_label = ttk.Label(self.window, text="Поиск по названию:")
@@ -106,11 +109,11 @@ class AnimePlayerApp:
         self.quality_label = ttk.Label(self.window, text="Качество:")
         self.quality_label.grid(row=3, column=8)
         self.quality_var = tk.StringVar()
-        self.quality_var.set("fhd")  
+        self.quality_var.set("fhd")
         quality_options = ["fhd", "hd", "sd"]
         self.quality_dropdown = Combobox(self.window, textvariable=self.quality_var, values=quality_options)
         self.quality_dropdown.grid(row=3, column=9)
-        self.quality_dropdown.state(['readonly'])  
+        self.quality_dropdown.state(['readonly'])
         self.refresh_button = ttk.Button(self.window, text="Обновить", command=self.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
         self.window.grid_columnconfigure(1, weight=3)
@@ -122,7 +125,7 @@ class AnimePlayerApp:
         self.poster_label.grid(row=2, column=0, columnspan=3)
         self.next_poster_button = ttk.Button(self.window, text="Следующий постер", command=self.change_poster)
         self.next_poster_button.grid(row=3, column=0, columnspan=3, sticky="ew")
-        
+
     def log_message(self, message):
         self.logger.debug(message)
 
@@ -134,10 +137,11 @@ class AnimePlayerApp:
         if not os.path.exists(log_folder):
             os.makedirs(log_folder)
         # Define log file path with current date
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d") 
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         log_file = os.path.join(log_folder, f"{self.log_filename}.txt")
-        print(f"Log file path: {log_file}") 
-        handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1, encoding='utf-8')
+        print(f"Log file path: {log_file}")
+        handler = CustomTimedRotatingFileHandler(log_folder, self.log_filename, log_file, when="midnight", interval=1,
+                                                 encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -176,7 +180,7 @@ class AnimePlayerApp:
         except OSError as e:
             error_message = f"An error occurred while deleting {utils_json}: {str(e)}"
             self.log_message(error_message)
-    
+
     def save_playlist(self):
         self.log_message("Starting to save playlist.")
         data = self.read_json_data()
@@ -345,7 +349,7 @@ class AnimePlayerApp:
             title_name = {title_data['names']['en']}
             self.show_poster(poster_url)
             self.logger.debug(f"Successfully GET poster for title '{title_name}'. URL: '{poster_url}' ")
-                                       
+
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while GET downloading the poster: {str(e)}"
             self.log_message(error_message)
@@ -358,7 +362,8 @@ class AnimePlayerApp:
     def show_poster(self, poster_url):
         try:
             self.clear_poster()
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.660 YaBrowser/23.9.5.660 Yowser/2.5 Safari/537.36'}
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.660 YaBrowser/23.9.5.660 Yowser/2.5 Safari/537.36'}
             params = {'no_cache': 'true', 'timestamp': time.time()}
             start_time = time.time()
             response = requests.get(poster_url, headers=headers, stream=True, params=params)
@@ -373,8 +378,8 @@ class AnimePlayerApp:
             num_bytes = len(response.content) if response.content else 0
             num_kilobytes = num_bytes / 1024
             self.logger.debug(f"Successfully SHOW poster. URL: '{poster_url}', "
-                            f"Time taken: {end_time - start_time:.2f} seconds, "
-                            f"Image size: {num_kilobytes} Kb.")
+                              f"Time taken: {end_time - start_time:.2f} seconds, "
+                              f"Image size: {num_kilobytes} Kb.")
 
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while SHOW downloading the poster: {str(e)}"
@@ -446,8 +451,8 @@ class AnimePlayerApp:
                 current_poster_url = poster_links[self.current_poster_index]
                 # print(current_poster_url)
                 # print(current_poster_filename)
-                self.show_poster(current_poster_url) 
-                self.logger.debug(f"Successfully CHANGE poster. URL: '{current_poster_url}' " )
+                self.show_poster(current_poster_url)
+                self.logger.debug(f"Successfully CHANGE poster. URL: '{current_poster_url}' ")
         except requests.exceptions.RequestException as e:
             error_message = f"An error occurred while CHANGE downloading the poster: {str(e)}"
             self.log_message(error_message)
@@ -469,21 +474,21 @@ class AnimePlayerApp:
     def get_schedule(self, day):
         day -= 1
         api_url = f"https://api.{self.base_url}/{self.api_version}/title/schedule?days={day}"
-        start_time = time.time() 
+        start_time = time.time()
         response = requests.get(api_url)
-        end_time = time.time()  
+        end_time = time.time()
         utils_folder = 'utils'
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
             self.log_message(f"Created 'utils' folder.")
-        utils_json = os.path.join(utils_folder, 'response.json')        
+        utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
             self.display_schedule()
             num_items = len(response.text) if response.text else 0
             self.logger.debug(f"Successfully fetched schedule for day {day}. URL: {api_url}, "
-                            f"Time taken: {end_time - start_time:.2f} seconds.")
+                              f"Time taken: {end_time - start_time:.2f} seconds.")
         else:
             error_message = f"Error {response.status_code}: Unable to fetch schedule data from the API."
             if response.text:
@@ -507,15 +512,15 @@ class AnimePlayerApp:
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'utils' folder.")
-            utils_json = os.path.join(utils_folder, 'response.json')  
+            utils_json = os.path.join(utils_folder, 'response.json')
             if response.status_code == 200:
                 with open(utils_json, 'w', encoding='utf-8') as file:
                     file.write(response.text)
                 self.display_info()
                 num_items = len(response.text) if response.text else 0
                 self.logger.debug(f"Successfully fetched search results for '{search_text}'. URL: {api_url}, "
-                                f"Time taken: {end_time - start_time:.2f} seconds, "
-                                f"Response size: {num_items} bytes.")
+                                  f"Time taken: {end_time - start_time:.2f} seconds, "
+                                  f"Response size: {num_items} bytes.")
             else:
                 error_message = f"Error {response.status_code}: Unable to fetch data from the API."
                 if response.text:
@@ -539,7 +544,7 @@ class AnimePlayerApp:
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
             self.log_message(f"Created 'utils' folder.")
-        utils_json = os.path.join(utils_folder, 'response.json')          
+        utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
@@ -561,8 +566,8 @@ class AnimePlayerApp:
             self.display_info()
             num_items = len(response.text) if response.text else 0
             self.logger.debug(f"Successfully fetched random title. URL: {api_url}, "
-                            f"Time taken: {end_time - start_time:.2f} seconds, "
-                            f"Response size: {num_items} bytes.")
+                              f"Time taken: {end_time - start_time:.2f} seconds, "
+                              f"Response size: {num_items} bytes.")
         else:
             error_message = f"Error {response.status_code}: Unable to fetch data from the API."
             if response.text:
@@ -600,11 +605,12 @@ class AnimePlayerApp:
         self.text.insert(tk.END, "Жанры: " + (genres if genres else "Жанры отсутствуют") + "\n")
         self.text.insert(tk.END, "Год: " + (year_str if year_str else "Год отсутствует") + "\n")
         self.text.insert(tk.END, "---\n\n")
-        
+
         link_id = f"title_link_{index}"
         self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
         self.text.insert(tk.END, "\n\n")
-        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>", lambda event, en=en_name: self.on_title_click(event, en))
+        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
+                           lambda event, en=en_name: self.on_title_click(event, en))
 
         self.get_poster(title)
 
@@ -619,7 +625,8 @@ class AnimePlayerApp:
                     if url is not None:
                         self.text.insert(tk.END, f"Серия {episode['episode']}: ")
                         hyperlink_start = self.text.index(tk.END)
-                        self.text.insert(hyperlink_start, "Смотреть", ("hyperlink_episodes", len(self.discovered_links)))
+                        self.text.insert(hyperlink_start, "Смотреть",
+                                         ("hyperlink_episodes", len(self.discovered_links)))
                         hyperlink_end = self.text.index(tk.END)
                         self.text.insert(hyperlink_end, "\n")
                         self.text.tag_bind("hyperlink_episodes", "<Button-1>", self.on_link_click)
@@ -650,7 +657,7 @@ class AnimePlayerApp:
 
         if not torrents_found:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
-        self.text.insert(tk.END, "\n")      
+        self.text.insert(tk.END, "\n")
 
     def display_schedule(self):
         try:
@@ -714,6 +721,7 @@ class AnimePlayerApp:
             error_message = f"An error occurred while clicking on title: {str(e)}"
             self.log_message(error_message)
             print(error_message)
+
 
 if __name__ == "__main__":
     window = tk.Tk()

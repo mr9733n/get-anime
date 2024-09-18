@@ -65,7 +65,7 @@ class FrontManager:
         self.quality_dropdown = Combobox(self.app.window, textvariable=self.quality_var, values=quality_options)
         self.quality_dropdown.grid(row=3, column=9)
         self.quality_dropdown.state(['readonly'])
-        self.refresh_button = ttk.Button(self.app.window, text="Обновить", command=self.app.update_quality_and_refresh)
+        self.refresh_button = ttk.Button(self.app.window, text="Обновить", command=self.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
 
         # Настройка столбцов
@@ -111,6 +111,15 @@ class FrontManager:
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.logger.error(error_message)
 
+    def on_title_click(self, event, en_name):
+        try:
+            self.title_search_entry.delete(0, tk.END)
+            self.title_search_entry.insert(0, en_name)
+            self.app.get_search_by_title()
+        except Exception as e:
+            error_message = f"An error occurred while clicking on title: {str(e)}"
+            self.logger.error(error_message)
+
     def display_poster(self, poster_image):
         try:
             poster_photo = ImageTk.PhotoImage(poster_image)
@@ -126,33 +135,22 @@ class FrontManager:
             self.display_poster(poster_image)
         else:
             self.logger.warning("No poster to display.")
-    
+
+    def clear_poster(self):
+        self.poster_label.configure(image='')
+        self.poster_label.image = None
+
     def display_schedule(self, data):
         try:
             self.text.delete("1.0", tk.END)
-            day_enum, items = self.app.get_items_data(data)  # Expecting day_enum and items
-            print(f"Days: {day_enum}")
-            print(f"Items count: {len(items)}")  # Check the count of items
-
-            # Iterate over day_enum to print day names
-            for day in day_enum:
-                if day is not None and day in self.days_of_week:
-                    day_name = self.days_of_week.get(day, "Unknown day")
-                    print(f"Day {day}: {day_name}")
-
-            self.text.insert(tk.END, f"День недели: {day_name}\n\n")
-
-            # Check if items exist and process them
-            if items:
-                for i, item in enumerate(items):  # Enumerate to get the index i
-                    if isinstance(item, tuple) and len(item) == 2:  # Unpack if item is a tuple
-                        item, _ = item  # Ignore the second value in the tuple
-                    print(f"display_schedule: Item {i}: {item['id']}")  # Print item id
-
-                    self.display_title_info(item, i, show_description=False)
-            else:
-                self.logger.error("No items found in schedule.")
-
+            if data is not None:
+                for day_info in data:
+                    day = day_info.get("day")
+                    title_list = day_info.get("list")
+                    day_word = self.days_of_week[day]
+                    self.text.insert(tk.END, f"День недели: {day_word}\n\n")
+                    for i, title in enumerate(title_list):
+                        self.display_title_info(title, i, show_description=False)
         except Exception as e:
             error_message = f"An error occurred while displaying the schedule: {str(e)}"
             self.logger.error(error_message)
@@ -166,12 +164,10 @@ class FrontManager:
             self.app.discovered_links = []
             items = self.app.get_items_data(data)
 
-            # Ensure item is a dictionary and has an "id" key
-
-            print(f"display_info: Item ID: {items['id']}")
             if items is not None:
                 for item, i in items:
-                    if item is not None:        
+                    if item is not None:
+                        print(item)
                         self.display_title_info(item, i)
 
             if not items:
@@ -183,9 +179,8 @@ class FrontManager:
     
     def display_title_info(self, title, index, show_description=True):
         """
-        Helper function to display information about a title.
+        Вспомогательная функция для отображения информации о тайтле.
         """
-        print("display_title_info:", title["id"], index)
         self.text.insert(tk.END, "---\n\n")
         ru_name = title["names"].get("ru", "Название отсутствует")
         en_name = title["names"].get("en", "Название отсутствует")
@@ -196,82 +191,134 @@ class FrontManager:
         genres = ", ".join(title.get("genres", ["Жанры отсутствуют"]))
         season_info = title.get("season", {})
         year_str = str(season_info.get("year", "Год отсутствует"))
-        print(ru_name, en_name)
-        print(status, announce)
-        print(season_info, year_str)
-        print(description)
-        print(type_full_string, genres)
-        # Insert title information into the text widget
-        self.text.insert(tk.END, f"Название: {ru_name}\n")
-        self.text.insert(tk.END, f"Название: {en_name}\n\n")
+
+        self.text.insert(tk.END, "Название: " + ru_name + "\n")
+        self.text.insert(tk.END, "Название: " + en_name + "\n\n")
         self.app.title_names.append(en_name)
-        self.text.insert(tk.END, f"Анонс: {announce}\n")
-        self.text.insert(tk.END, f"{type_full_string}\n")
-        self.text.insert(tk.END, f"Статус: {status}\n")
+        self.text.insert(tk.END, "Анонс: " + announce + "\n")
+        self.text.insert(tk.END, type_full_string + "\n")
+        self.text.insert(tk.END, "Статус: " + (status if status else "Статус отсутствует") + "\n")
         if show_description and description:
-            self.text.insert(tk.END, f"Описание: {description}\n")
-        self.text.insert(tk.END, f"Жанры: {genres}\n")
-        self.text.insert(tk.END, f"Год: {year_str}\n")
+            self.text.insert(tk.END, "Описание: " + description + "\n")
+        self.text.insert(tk.END, "Жанры: " + (genres if genres else "Жанры отсутствуют") + "\n")
+        self.text.insert(tk.END, "Год: " + (year_str if year_str else "Год отсутствует") + "\n")
         self.text.insert(tk.END, "---\n\n")
 
-        # Create a hyperlink for opening the title's page
         link_id = f"title_link_{index}"
-        print(link_id)
         self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
         self.text.insert(tk.END, "\n\n")
-        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>", lambda event, en=en_name: self.on_title_click(event, en))
+        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
+                           lambda event, en=en_name: self.on_title_click(event, en))
 
-        # Handle episode links
         episodes_found = False
         selected_quality = self.quality_var.get()
-        print(title['id'], selected_quality)
-    
-        url, episode = self.app.get_links_data(title, selected_quality)
-        if url:
-            episode_number = episode.get('episode', 'Номер эпизода не указан')
-            self.text.insert(tk.END, f"Серия {episode_number}: ")
-            hyperlink_start = self.text.index(tk.END)
-            tag_name = f"hyperlink_episodes_{len(self.app.discovered_links)}"
-            self.text.insert(hyperlink_start, "Смотреть", (tag_name,))
-            hyperlink_end = self.text.index(tk.END)
-            self.text.insert(hyperlink_end, "\n")
-            self.text.tag_bind(tag_name, "<Button-1>", self.on_link_click)
-            self.app.discovered_links.append(url)
-            self.text.tag_add(tag_name, hyperlink_start, hyperlink_end)
-            self.text.tag_config(tag_name, foreground="blue")
-            episodes_found = True
-
+        for index, episode in enumerate(title["player"]["list"].values()):
+            if "hls" in episode:
+                hls = episode["hls"]
+                if selected_quality in hls:
+                    url = hls[selected_quality]
+                    if url is not None:
+                        self.text.insert(tk.END, f"Серия {episode['episode']}: ")
+                        hyperlink_start = self.text.index(tk.END)
+                        tag_name = f"hyperlink_episodes_{len(self.app.discovered_links)}"
+                        self.text.insert(hyperlink_start, "Смотреть", (tag_name,))
+                        hyperlink_end = self.text.index(tk.END)
+                        self.text.insert(hyperlink_end, "\n")
+                        self.text.tag_bind(tag_name, "<Button-1>", self.on_link_click)
+                        self.app.discovered_links.append(url)
+                        self.text.tag_add(tag_name, hyperlink_start, hyperlink_end)
+                        self.text.tag_config(tag_name, foreground="blue")
+                        episodes_found = True
         if not episodes_found:
             self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
         self.text.insert(tk.END, "\n")
 
-        # Handle torrent links
         torrents_found = False
-        link_index = len(self.app.discovered_links)
-        url, quality, torrent_id = self.app.get_links_data(title)
-        if url:
-            self.text.insert(tk.END, f"Скачать ({quality})", (f"hyperlink_torrents_{link_index}",))
-            hyperlink_start = self.text.index(tk.END)
-            hyperlink_end = self.text.index(tk.END)
-            self.text.insert(hyperlink_end, "\n")
-            self.app.discovered_links.append(url)
-            self.text.tag_bind(f"hyperlink_torrents_{link_index}", "<Button-1>",
-                            lambda e, tn=en_name, tid=torrent_id: self.on_link_click(e, tn, tid))
-            self.text.tag_add(f"hyperlink_torrents_{link_index}", hyperlink_start, hyperlink_end)
-            self.text.tag_config(f"hyperlink_torrents_{link_index}", foreground="blue")
-            torrents_found = True
+        if "torrents" in title and "list" in title["torrents"]:
+            for torrent in title["torrents"]["list"]:
+                url = torrent.get("url")
+                quality = torrent["quality"].get("string", "Качество не указано")
+                torrent_id = torrent.get("torrent_id")
+                if url:
+                    hyperlink_start = self.text.index(tk.END)
+                    link_index = len(self.app.discovered_links)
+                    self.text.insert(tk.END, f"Скачать ({quality})", (f"hyperlink_torrents_{link_index}",))
+                    hyperlink_end = self.text.index(tk.END)
+                    self.text.insert(hyperlink_end, "\n")
+                    self.app.discovered_links.append(url)
+
+                    self.text.tag_bind(f"hyperlink_torrents_{link_index}", "<Button-1>",
+                                       lambda e, tn=en_name, tid=torrent_id: self.on_link_click(e, tn, tid))
+                    self.text.tag_add(f"hyperlink_torrents_{link_index}", hyperlink_start, hyperlink_end)
+                    self.text.tag_config(f"hyperlink_torrents_{link_index}", foreground="blue")
+                    torrents_found = True
 
         if not torrents_found:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
-    
+        self.app.get_poster(title)
 
+    def display_schedule(self, data):
+        try:
+            self.text.delete("1.0", tk.END)
+            if data is not None:
+                for day_info in data:
+                    day = day_info.get("day")
+                    title_list = day_info.get("list")
+                    day_word = self.days_of_week[day]
+                    self.text.insert(tk.END, f"День недели: {day_word}\n\n")
+                    for i, title in enumerate(title_list):
+                        self.display_title_info(title, i, show_description=False)
+        except Exception as e:
+            error_message = f"An error occurred while displaying the schedule: {str(e)}"
+            self.logger.error(error_message)
+            self.text.delete("1.0", tk.END)
+            self.text.insert(tk.END, error_message)
 
-    def on_title_click(self, event, en_name):
+    def display_info(self, data):
         try:
             self.title_search_entry.delete(0, tk.END)
-            self.title_search_entry.insert(0, en_name)
-            self.app.get_search_by_title()
+            self.text.delete("1.0", tk.END)
+            if data is not None:
+                self.app.discovered_links = []
+                if "list" in data and isinstance(data["list"], list):
+                    titles = data["list"]
+                else:
+                    titles = [data] if isinstance(data, dict) else []
+                for i, item in enumerate(titles):
+                    self.display_title_info(item, i)
         except Exception as e:
-            error_message = f"An error occurred while clicking on title: {str(e)}"
+            error_message = f"An error occurred while displaying information: {str(e)}"
+            self.logger.error(error_message)
+
+    def update_quality_and_refresh(self, event=None):
+        selected_quality = self.quality_var.get()
+        data = self.app.current_data
+
+        if not data:
+            error_message = "No data available. Please fetch data first."
+            self.logger.error(error_message)
+            return
+
+        # Handling multiple potential data structures
+        if isinstance(data, dict):
+            # Check if it's a schedule data structure
+            if "day" in data and "list" in data and isinstance(data["list"], list):
+                self.logger.debug("Detected schedule data structure.")
+                self.display_schedule([data])  # Wrap in a list to match expected input
+
+            # Check if it's the general information structure
+            elif "list" in data and isinstance(data["list"], list):
+                self.logger.debug("Using cached general information data.")
+                self.display_info(data)
+
+            else:
+                error_message = "No valid data format detected. Please fetch data again."
+                self.logger.error(error_message)
+        elif isinstance(data, list):
+            # Assume list structure corresponds to schedule data
+            self.logger.debug("Detected list-based schedule data structure.")
+            self.display_schedule(data)
+        else:
+            error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)

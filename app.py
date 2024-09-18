@@ -55,46 +55,27 @@ class AnimePlayerApp:
         self.discovered_links = []
         self.current_link = None
 
-    def get_poster(self, data):
-        """
-        Fetches and caches poster URLs based on the input data structure.
-        """
+    def get_poster(self, title_data):
         try:
-            poster_urls = []
+            # Construct the poster URL
+            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
 
-            # Fetch poster URLs from the items in the data
-            items = self.get_items_data(data)
-            item = self.get_item_data(items)
+            # Standardize the poster URL
+            standardized_url = self.standardize_url(poster_url)
 
-            # Correctly get the poster URL from the item
-            if isinstance(item, dict):  # Ensure item is a dictionary
-                poster_url = self.pre + self.base_url + item.get("posters", {}).get("small", {}).get("url")
-                if poster_url:
-                    poster_urls.append(poster_url)
+            # Check if the standardized URL is already in the cached poster links
+            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
+                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+                return
 
-            # Clear the current poster and add the new poster links to the cache
-            self.poster_manager.clear_cache_and_memory()
-            self.poster_manager.write_poster_links(poster_urls)
+            # Clear the current poster and add the new poster link to the cache
+            self.ui_manager.clear_poster()
+            self.poster_manager.write_poster_links([standardized_url])
 
         except Exception as e:
             error_message = f"An error occurred while getting the poster: {str(e)}"
             self.logger.error(error_message)
 
-    def get_item_data(self, items):
-        """
-        Iterates over a list of items and returns both the item and its index.
-        """
-        for item in items:
-            # Handle tuples with different lengths
-            if len(item) == 1:  # (item, index)
-                item = item
-                print(item["id"])
-                return item
-            elif len(item) == 2:  # (day, item, index)
-                _, item = item
-                print(item["id"])
-                return item
-        
     def get_items_data(self, data):
         """
         Returns a list of valid items based on the structure of the input data.
@@ -141,6 +122,7 @@ class AnimePlayerApp:
         Handles all links: poster, playlist, torrent.
         """
         try:
+            print(title)
             # Handle torrent links
             print("total episodes counted:", len(title['player']['list']))
             print(selected_quality)
@@ -155,8 +137,8 @@ class AnimePlayerApp:
 
             # Handle HLS (video) links
             if "player" in title and isinstance(title["player"].get("list"), dict):
-                # Since 'list' is a dictionary, iterate over its values
                 for episode in title["player"]["list"].values():
+
                     if "hls" in episode:
                         hls = episode["hls"]
                         print(hls, episode)
@@ -206,41 +188,6 @@ class AnimePlayerApp:
         self.ui_manager.display_info(data)
         self.current_data = data
 
-    def update_quality_and_refresh(self, event=None):
-        selected_quality = self.ui_manager.quality_var.get()
-        data = self.current_data
-        print(data)  # Debugging: Show current data structure to understand its format
-
-        if not data:
-            error_message = "No data available. Please fetch data first."
-            self.logger.error(error_message)
-            return
-
-        # Handling multiple potential data structures
-        if isinstance(data, dict):
-            # Check if it's a schedule structure
-            if "day" in data and "list" in data and isinstance(data["list"], list):
-                self.logger.debug("Detected schedule data structure.")
-                self.ui_manager.display_schedule([data])  # Wrap in a list to match expected input
-
-            # Check if it's general information with a "list" key
-            elif "list" in data and isinstance(data["list"], list):
-                self.logger.debug("Using cached general information data.")
-                self.ui_manager.display_info(data)
-
-            else:
-                error_message = "No valid data format detected. Please fetch data again."
-                self.logger.error(error_message)
-
-        elif isinstance(data, list):
-            # Assume list structure corresponds to schedule data (multiple days)
-            self.logger.debug("Detected list-based schedule data structure.")
-            self.ui_manager.display_schedule(data)
-
-        else:
-            error_message = "Unsupported data format. Please fetch data first."
-            self.logger.error(error_message)
-        
     def save_playlist_wrapper(self):
         """
         Wrapper function to handle saving the playlist.

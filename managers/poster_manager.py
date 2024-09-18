@@ -64,7 +64,6 @@ class PosterManager:
             except Exception as e:
                 self.logger.error(f"An error occurred while downloading the poster from {link}: {str(e)}")
 
-
     def get_next_poster(self):
         if not self.poster_images:
             self.logger.warning("No posters available to show.")

@@ -294,15 +294,31 @@ class FrontManager:
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_var.get()
         data = self.app.current_data
-        if data:
-            if "list" in data and isinstance(data["list"], list) and len(data["list"]) > 0:
-                self.logger.debug("Using cached data, skipping API call.")
+
+        if not data:
+            error_message = "No data available. Please fetch data first."
+            self.logger.error(error_message)
+            return
+
+        # Handling multiple potential data structures
+        if isinstance(data, dict):
+            # Check if it's a schedule structure
+            if "day" in data and "list" in data:
+                self.logger.debug("Detected schedule data structure.")
+                self.display_schedule([data])  # Wrap in a list to match expected input
+            # Check if it's the general information structure
+            elif "list" in data and isinstance(data["list"], list):
+                self.logger.debug("Using cached general information data.")
                 self.display_info(data)
             else:
-                error_message = "No valid data available. Please fetch data first."
+                error_message = "No valid data format detected. Please fetch data again."
                 self.logger.error(error_message)
+        elif isinstance(data, list):
+            # Assume list structure corresponds to schedule data
+            self.logger.debug("Detected list-based schedule data structure.")
+            self.display_schedule(data)
         else:
-            error_message = "No data available. Please fetch data first."
+            error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
     def on_title_click(self, event, en_name):

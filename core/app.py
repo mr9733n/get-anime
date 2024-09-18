@@ -29,8 +29,8 @@ class AnimePlayerApp:
             torrent_save_path=self.torrent_save_path,
             torrent_client_path=self.torrent_client_path
         )
-
         # Corrected debug logging of paths using setup values
+        self.pre = "https://"
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
@@ -60,6 +60,27 @@ class AnimePlayerApp:
     def init_variables(self):
         self.discovered_links = []
         self.current_link = None
+
+    def get_poster(self, title_data):
+        try:
+            # Construct the poster URL
+            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
+
+            # Standardize the poster URL
+            standardized_url = self.standardize_url(poster_url)
+
+            # Check if the standardized URL is already in the cached poster links
+            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
+                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+                return
+
+            # Clear the current poster and add the new poster link to the cache
+            self.ui_manager.clear_poster()
+            self.poster_manager.write_poster_links([standardized_url])
+
+        except Exception as e:
+            error_message = f"An error occurred while getting the poster: {str(e)}"
+            self.logger.error(error_message)
 
     def save_playlist_wrapper(self):
         """
@@ -108,5 +129,13 @@ class AnimePlayerApp:
         Sanitize the filename by removing special characters that are not allowed in filenames.
         """
         return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+    def standardize_url(self, url):
+        """
+        Standardizes the URL for consistent comparison.
+        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
+        """
+        # Basic URL standardization example: stripping spaces and removing query parameters
+        return url.strip().split('?')[0]
 
     pass

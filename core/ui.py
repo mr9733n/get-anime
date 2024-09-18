@@ -120,19 +120,7 @@ class FrontManager:
         self.display_schedule(data)
         self.app.current_data = data
 
-    def get_poster(self, title_data):
-        try:
-            poster_url = self.pre + self.app.base_url + title_data["posters"]["small"]["url"]
-            if poster_url in self.app.poster_manager.poster_links:
-                self.logger.debug(f"Poster URL already cached: {poster_url}. Skipping fetch.")
-                return
 
-            self.clear_poster()
-            self.app.poster_manager.write_poster_links([poster_url])
-
-        except Exception as e:
-            error_message = f"An error occurred while getting the poster: {str(e)}"
-            self.logger.error(error_message)
 
     def display_poster(self, poster_image):
         try:
@@ -255,7 +243,7 @@ class FrontManager:
         if not torrents_found:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
-        self.get_poster(title)
+        self.app.get_poster(title)
 
     def display_schedule(self, data):
         try:
@@ -271,7 +259,6 @@ class FrontManager:
         except Exception as e:
             error_message = f"An error occurred while displaying the schedule: {str(e)}"
             self.logger.error(error_message)
-            print(error_message)
             self.text.delete("1.0", tk.END)
             self.text.insert(tk.END, error_message)
 
@@ -302,14 +289,16 @@ class FrontManager:
 
         # Handling multiple potential data structures
         if isinstance(data, dict):
-            # Check if it's a schedule structure
-            if "day" in data and "list" in data:
+            # Check if it's a schedule data structure
+            if "day" in data and "list" in data and isinstance(data["list"], list):
                 self.logger.debug("Detected schedule data structure.")
                 self.display_schedule([data])  # Wrap in a list to match expected input
+
             # Check if it's the general information structure
             elif "list" in data and isinstance(data["list"], list):
                 self.logger.debug("Using cached general information data.")
                 self.display_info(data)
+
             else:
                 error_message = "No valid data format detected. Please fetch data again."
                 self.logger.error(error_message)

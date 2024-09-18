@@ -1,12 +1,18 @@
-# main.py
+import dearpygui.dearpygui as dpg
+from dearpygui.dearpygui import window
 
-import logging.config
-import tkinter as tk
 from app import AnimePlayerApp
+from ui.ui import FrontManager
 
 if __name__ == "__main__":
-    logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
+    app = AnimePlayerApp(window())  # No 'window' argument
+    ui_manager = FrontManager(app)
 
-    window = tk.Tk()
-    app = AnimePlayerApp(window)
-    window.mainloop()
+    dpg.create_context()
+    ui_manager.build()
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+    dpg.start_dearpygui()
+    dpg.destroy_context()
+
+

@@ -1,12 +1,13 @@
 
 import dearpygui.dearpygui as dpg
+from app import AnimePlayerApp
 
 
 class DisplayController:
     def __init__(self, app):
-        self.title = None
         self.app = app
         self.logger = app.logger
+        self.poster_manager = app.poster_manager
         self.title_data = None
         self.selected_quality = 'fhd'
 
@@ -23,12 +24,12 @@ class DisplayController:
         # Display title details (name, description, etc.)
         for title in title_data['list']:
             title_name = title.get("names", {}).get("en", "Unknown Title")
-            dpg.add_button(label=title_name, callback=lambda s, d, title=self.title: self.show_title_info(title), parent="title_grid")
+            dpg.add_button(label=title_name, callback=lambda s, d, title=title: self.show_title_info(title), parent="title_grid")
 
     def show_title_info(self, title):
         dpg.delete_item("title_grid", children_only=True)
-        title_info = f"Title: {title.get('names', {}).get('en', 'Unknown')}\nDescription: {title.get('description', 'No description')}"
-
+        title_info = f"Title: {title.get('names', {}).get('en', 'Unknown')}
+Description: {title.get('description', 'No description')}"
         dpg.add_text(title_info, parent="title_grid")
 
         # Get and display the poster for the title
@@ -54,7 +55,6 @@ class DisplayController:
 
 class FrontManager:
     def __init__(self, app):
-        self.display_poster = None
         self.app = app
         self.display_controller = DisplayController(app)
 
@@ -81,3 +81,14 @@ class FrontManager:
     def refresh_page(self):
         self.display_controller.display_days()
 
+
+if __name__ == '__main__':
+    app = AnimePlayerApp()
+    dpg.create_context()
+    ui_manager = FrontManager(app)
+    ui_manager.build()
+    dpg.create_viewport(title='Anime App', width=800, height=600)
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+    dpg.start_dearpygui()
+    dpg.destroy_context()

@@ -13,11 +13,10 @@ from ui.ui import FrontManager
 
 class AnimePlayerApp:
     def __init__(self, window):
+        self.logger = logging.getLogger(__name__)
         self.current_data = None
         self.sanitized_titles = []
-        self.logger = logging.getLogger(__name__)
         self.logger.debug("Initializing AnimePlayerApp")
-        self.window = window
         self.config_manager = ConfigManager('config.ini')
         self.title_names = []
         self.init_variables()

@@ -153,6 +153,7 @@ class AnimePlayerApp:
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'managers' folder.")
+
             utils_json = os.path.join(utils_folder, 'response.json')
             self.log_message(f"Attempting to read {utils_json}.")
             with open(utils_json, 'r', encoding='utf-8') as file:
@@ -169,6 +170,7 @@ class AnimePlayerApp:
 
     def delete_response_json(self):
         try:
+
             utils_folder = 'managers'
             utils_json = os.path.join(utils_folder, 'response.json')
             if os.path.exists(utils_json):
@@ -392,10 +394,12 @@ class AnimePlayerApp:
 
     def clear_cache_file(self):
         try:
+
             utils_folder = 'managers'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'managers' folder.")
+
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             if os.path.exists(cache_file):
                 os.remove(cache_file)
@@ -408,10 +412,12 @@ class AnimePlayerApp:
     def read_poster_links(self):
         poster_links = []
         try:
+
             utils_folder = 'managers'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'managers' folder.")
+
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             if os.path.exists(cache_file):
                 with open(cache_file, "r") as file:
@@ -426,10 +432,12 @@ class AnimePlayerApp:
 
     def write_poster_links(self, poster_links):
         try:
+
             utils_folder = 'managers'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'managers' folder.")
+
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             with open(cache_file, "a") as file:
                 for link in poster_links:
@@ -481,6 +489,7 @@ class AnimePlayerApp:
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
             self.log_message(f"Created 'managers' folder.")
+
         utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:
@@ -508,10 +517,12 @@ class AnimePlayerApp:
             start_time = time.time()
             response = requests.get(api_url)
             end_time = time.time()
+
             utils_folder = 'managers'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'managers' folder.")
+
             utils_json = os.path.join(utils_folder, 'response.json')
             if response.status_code == 200:
                 with open(utils_json, 'w', encoding='utf-8') as file:
@@ -540,10 +551,12 @@ class AnimePlayerApp:
         start_time = time.time()
         response = requests.get(api_url)
         end_time = time.time()
+
         utils_folder = 'managers'
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
             self.log_message(f"Created 'managers' folder.")
+
         utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:

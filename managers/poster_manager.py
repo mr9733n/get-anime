@@ -1,4 +1,4 @@
-# utils/poster_manager.py
+# managers/poster_manager.py
 import os
 import threading
 import time
@@ -63,7 +63,6 @@ class PosterManager:
                 self.logger.error(f"Failed to identify and process the image data from: {link}")
             except Exception as e:
                 self.logger.error(f"An error occurred while downloading the poster from {link}: {str(e)}")
-
 
     def get_next_poster(self):
         if not self.poster_images:

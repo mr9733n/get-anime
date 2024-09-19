@@ -1,0 +1,110 @@
+Dear PyGui (DPG) is primarily designed for building high-performance GPU-accelerated graphical user interfaces (GUIs) but **does not natively support video streaming or playback** like `.m3u8` files, which are commonly used for HTTP Live Streaming (HLS) where the video is split into `.ts` segments.
+
+However, you can still handle video streams by integrating external libraries that support video playback and rendering the video frames in the Dear PyGui interface. Here are some ways you can work around this:
+
+### 1. **Use External Libraries for Video Streaming**:
+To open and play `.m3u8` video streams (which include `.ts` segments), you can integrate a video processing library like **OpenCV**, **ffmpeg**, or **vlc-python** with Dear PyGui.
+
+#### Approach with `OpenCV` and `ffmpeg`:
+1. **Capture the Video Stream**: Use OpenCV to process the `.m3u8` video stream and decode the `.ts` files.
+2. **Render the Video in Dear PyGui**: Once you capture the video frames, you can render them in Dear PyGui by updating the texture for each frame.
+
+Here’s an example of how you can achieve this with **OpenCV** and Dear PyGui:
+
+#### Example: Playing `.m3u8` Stream with OpenCV and Dear PyGui
+
+```python
+import cv2
+import dearpygui.dearpygui as dpg
+import threading
+
+def stream_video(url):
+    cap = cv2.VideoCapture(url)
+
+    # Ensure the stream is opened
+    if not cap.isOpened():
+        print("Error: Unable to open video stream.")
+        return
+
+    # Read frames from the video stream
+    while cap.isOpened():
+        ret, frame = cap.read()
+
+        if ret:
+            # Convert the frame (OpenCV loads in BGR format, convert to RGB)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Resize the frame if needed
+            height, width, channels = frame_rgb.shape
+
+            # Create a texture and display it in Dear PyGui
+            texture_id = dpg.generate_uuid()
+            dpg.add_static_texture(width, height, frame_rgb.tobytes(), tag=texture_id)
+
+            with dpg.window(label="Video Stream"):
+                dpg.add_image(texture_id)
+
+        else:
+            print("Stream ended or error.")
+            break
+
+    cap.release()
+
+# Run the video stream in a separate thread
+def start_video_thread(url):
+    threading.Thread(target=stream_video, args=(url,)).start()
+
+# Create the GUI and start the stream
+dpg.create_context()
+with dpg.window(label="Stream Controller"):
+    dpg.add_button(label="Start Video Stream", callback=lambda: start_video_thread("your_m3u8_url_here"))
+
+dpg.create_viewport(title='Video Stream', width=800, height=600)
+dpg.setup_dearpygui()
+dpg.show_viewport()
+dpg.start_dearpygui()
+dpg.destroy_context()
+```
+
+### 2. **Using VLC or `vlc-python` Library**:
+You can use the **VLC media player** and its Python bindings (`vlc-python`) to handle video streams, including `.m3u8` files. VLC can decode the stream and provide you with the video frames.
+
+Here’s how to integrate VLC with Dear PyGui:
+
+```python
+import vlc
+import dearpygui.dearpygui as dpg
+import threading
+
+def play_m3u8_vlc(url):
+    player = vlc.MediaPlayer(url)
+    player.play()
+
+# Run the VLC player in a thread to avoid blocking the GUI
+def start_vlc_thread(url):
+    threading.Thread(target=play_m3u8_vlc, args=(url,)).start()
+
+dpg.create_context()
+with dpg.window(label="VLC Video Stream"):
+    dpg.add_button(label="Play Video", callback=lambda: start_vlc_thread("your_m3u8_url_here"))
+
+dpg.create_viewport(title='VLC Video Stream', width=800, height=600)
+dpg.setup_dearpygui()
+dpg.show_viewport()
+dpg.start_dearpygui()
+dpg.destroy_context()
+```
+
+### 3. **Direct Frame Control in Dear PyGui**:
+Dear PyGui allows you to control textures, so by periodically updating the image or texture widget with video frames from a stream, you can simulate video playback.
+
+### Key Features of Dear PyGui:
+- **High-Performance UI Rendering**: Uses GPU acceleration to render complex interfaces quickly.
+- **Customizable Widgets**: Provides various widgets (buttons, text, sliders, images) and allows customization with textures (images).
+- **Real-Time Updates**: Supports real-time updates, so you can display changing data like video frames or dynamic UIs.
+- **Multi-threading**: Works well with multi-threading, which is helpful when integrating long-running operations like video streaming.
+
+### Conclusion:
+While Dear PyGui does not support video streaming directly, you can integrate it with external libraries like OpenCV or VLC to handle the video stream and render frames in the interface. This allows you to play `.m3u8` streams, showing `.ts` segments inside your application.
+
+Let me know if you'd like more detailed examples or help integrating video playback!

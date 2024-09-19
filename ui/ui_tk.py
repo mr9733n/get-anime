@@ -1,12 +1,15 @@
-# ui.py
+# ui_v_2.3.2.py
+from operator import index
 import re
 import subprocess
 import logging
 import logging.config
-from PIL import ImageTk
-import tkinter as tk
 from tkinter import ttk
 from tkinter.ttk import Combobox
+
+from PIL import ImageTk
+from PIL._tkinter_finder import tk
+
 
 class FrontManager:
     def __init__(self, app):
@@ -23,19 +26,19 @@ class FrontManager:
         self.pre = "https://"
 
     def setup_widgets(self):
-        # Создание кнопок дней недели
-        self.days_of_week = [
-            "Понедельник",
-            "Вторник",
-            "Среда",
-            "Четверг",
-            "Пятница",
-            "Суббота",
-            "Воскресенье"
-        ]
+        self.days_of_week = {
+            0: "Понедельник",
+            1: "Вторник",
+            2: "Среда",
+            3: "Четверг",
+            4: "Пятница",
+            5: "Суббота",
+            6: "Воскресенье"
+        }
         self.day_buttons = []
-        for i, day in enumerate(self.days_of_week):
-            button = ttk.Button(self.app.window, text=day, command=lambda i=i: self.get_schedule(i + 1))
+        for i in range(7):
+            day_name = self.days_of_week[i]
+            button = ttk.Button(self.app.window, text=day_name, command=lambda i=i: self.app.get_schedule(i))
             button.grid(row=1, column=3 + i, sticky="ew")
             self.day_buttons.append(button)
 
@@ -46,9 +49,9 @@ class FrontManager:
         self.title_search_entry.grid(row=0, column=3, columnspan=7, sticky="ew")
 
         # Кнопки управления
-        self.display_button = ttk.Button(self.app.window, text="Отобразить информацию", command=self.get_search_by_title)
+        self.display_button = ttk.Button(self.app.window, text="Отобразить информацию", command=self.app.get_search_by_title)
         self.display_button.grid(row=1, column=0, sticky="ew")
-        self.random_button = ttk.Button(self.app.window, text="Random", command=self.get_random_title)
+        self.random_button = ttk.Button(self.app.window, text="Random", command=self.app.get_random_title)
         self.random_button.grid(row=1, column=1, sticky="ew")
         self.save_button = ttk.Button(self.app.window, text="Сохранить плейлист", command=self.app.save_playlist_wrapper)
         self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
@@ -110,17 +113,14 @@ class FrontManager:
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.logger.error(error_message)
 
-    def get_schedule(self, day):
-        day -= 1
-        data = self.app.api_client.get_schedule(day)
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.app.poster_manager.clear_cache_and_memory()
-        self.display_schedule(data)
-        self.app.current_data = data
-
-
+    def on_title_click(self, event, en_name):
+        try:
+            self.title_search_entry.delete(0, tk.END)
+            self.title_search_entry.insert(0, en_name)
+            self.app.get_search_by_title()
+        except Exception as e:
+            error_message = f"An error occurred while clicking on title: {str(e)}"
+            self.logger.error(error_message)
 
     def display_poster(self, poster_image):
         try:
@@ -131,10 +131,6 @@ class FrontManager:
             error_message = f"An error occurred while displaying the poster: {str(e)}"
             self.logger.error(error_message)
 
-    def clear_poster(self):
-        self.poster_label.configure(image='')
-        self.poster_label.image = None
-
     def change_poster(self):
         poster_image = self.app.poster_manager.get_next_poster()
         if poster_image:
@@ -142,28 +138,47 @@ class FrontManager:
         else:
             self.logger.warning("No poster to display.")
 
-    def get_search_by_title(self):
-        search_text = self.title_search_entry.get()
-        if search_text:
-            data = self.app.api_client.get_search_by_title(search_text)
-            if 'error' in data:
-                self.logger.error(data['error'])
-                return
-            self.app.poster_manager.clear_cache_and_memory()
-            self.display_info(data)
-            self.app.current_data = data
-        else:
-            self.logger.error("Search text is empty.")
+    def clear_poster(self):
+        self.poster_label.configure(image='')
+        self.poster_label.image = None
 
-    def get_random_title(self):
-        data = self.app.api_client.get_random_title()
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.app.poster_manager.clear_cache_and_memory()
-        self.display_info(data)
-        self.app.current_data = data
+    def display_schedule(self, data):
+        try:
+            self.text.delete("1.0", tk.END)
+            if data is not None:
+                for day_info in data:
+                    day = day_info.get("day")
+                    title_list = day_info.get("list")
+                    day_word = self.days_of_week[day]
+                    self.text.insert(tk.END, f"День недели: {day_word}\n\n")
+                    for i, title in enumerate(title_list):
+                        self.display_title_info(title, i, show_description=False)
+        except Exception as e:
+            error_message = f"An error occurred while displaying the schedule: {str(e)}"
+            self.logger.error(error_message)
+            self.text.delete("1.0", tk.END)
+            self.text.insert(tk.END, error_message)
 
+    def display_info(self, data):
+        try:
+            self.title_search_entry.delete(0, tk.END)
+            self.text.delete("1.0", tk.END)
+            self.app.discovered_links = []
+            items = self.app.get_items_data(data)
+
+            if items is not None:
+                for item, i in items:
+                    if item is not None:
+                        print(item)
+                        self.display_title_info(item, i)
+
+            if not items:
+                self.logger.error("Failed to retrieve information data. Please check the input format.")
+
+        except Exception as e:
+            error_message = f"An error occurred while displaying information: {str(e)}"
+            self.logger.error(error_message)
+    
     def display_title_info(self, title, index, show_description=True):
         """
         Вспомогательная функция для отображения информации о тайтле.
@@ -246,6 +261,10 @@ class FrontManager:
         self.app.get_poster(title)
 
     def display_schedule(self, data):
+        """
+
+        :rtype: object
+        """
         try:
             self.text.delete("1.0", tk.END)
             if data is not None:
@@ -308,13 +327,4 @@ class FrontManager:
             self.display_schedule(data)
         else:
             error_message = "Unsupported data format. Please fetch data first."
-            self.logger.error(error_message)
-
-    def on_title_click(self, event, en_name):
-        try:
-            self.title_search_entry.delete(0, tk.END)
-            self.title_search_entry.insert(0, en_name)
-            self.get_search_by_title()
-        except Exception as e:
-            error_message = f"An error occurred while clicking on title: {str(e)}"
             self.logger.error(error_message)

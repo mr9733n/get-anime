@@ -1,0 +1,58 @@
+### Components in the Project:
+1. **`main.py`**: Initializes the app, creates the UI, and starts the Dear PyGui context【150†source】.
+2. **`AnimePlayerApp` (`app.py`)**: Manages API calls, torrent saving, playlist management, and handles user actions such as getting schedules, searching titles, and saving or playing playlists【158†source】.
+3. **`APIClient` (`api_client.py`)**: Handles API calls to fetch schedule data, title searches, and random title generation【155†source】.
+4. **`PosterManager` (`poster_manager.py`)**: Downloads and caches poster images asynchronously【156†source】.
+5. **`TorrentManager` (`torrent_manager.py`)**: Saves torrent files and opens them with the configured torrent client【154†source】.
+6. **`PlaylistManager` (`playlist_manager.py`)**: Manages saving and playing playlists in `.m3u` format【157†source】.
+7. **`ConfigManager` (`config_manager.py`)**: Handles configuration loading for paths, settings, and other configurations【152†source】.
+8. **`LoggingHandlers` (`logging_handlers.py`)**: Manages logging for the application【151†source】.
+
+### Flow Overview:
+1. **Initialization**:
+   - `main.py` starts the app by initializing `AnimePlayerApp`.
+   - `AnimePlayerApp` initializes various managers: `APIClient`, `PosterManager`, `PlaylistManager`, `TorrentManager`, and loads configurations using `ConfigManager`.
+
+2. **User Interactions** (UI-driven):
+   - User actions trigger API calls through `AnimePlayerApp` (e.g., searching for titles, fetching schedules).
+   - Posters are downloaded and cached in the background via `PosterManager`.
+   - Torrents and playlists are saved and opened via `TorrentManager` and `PlaylistManager`.
+
+3. **API and Data Handling**:
+   - The `APIClient` sends API requests and processes the response, sending data back to `AnimePlayerApp` to update the UI (e.g., display titles, posters, or schedules).
+
+4. **Poster and Media Management**:
+   - The `PosterManager` downloads posters asynchronously, and the UI is updated when the poster is ready.
+   - Playlists are saved in `.m3u` format and opened in a video player.
+   - Torrents are downloaded and opened with a torrent client.
+
+### **Flow of Data and Interactions:**
+
+1. **User Interactions (UI Layer)**:
+   - Users interact with the interface (Dear PyGui), which triggers different actions such as searching for titles, fetching schedules, or playing a playlist.
+
+2. **AnimePlayerApp (Controller)**:
+   - Receives user actions from the UI.
+   - Coordinates the response by interacting with different managers like `APIClient`, `PosterManager`, `PlaylistManager`, and `TorrentManager`.
+
+3. **APIClient**:
+   - Sends requests to the API to fetch schedules, search for titles, or retrieve a random title.
+   - Passes the received data back to `AnimePlayerApp` for further processing and UI updates.
+
+4. **PosterManager**:
+   - Downloads posters asynchronously in the background when requested by `AnimePlayerApp`.
+   - Updates the UI to display the downloaded poster.
+
+5. **PlaylistManager**:
+   - Saves playlists in `.m3u` format and plays them using the configured video player.
+   - Receives instructions from `AnimePlayerApp` to either save or play a playlist.
+
+6. **TorrentManager**:
+   - Downloads and saves torrent files based on user action.
+   - Opens the torrent client to handle the downloaded torrent.
+
+7. **ConfigManager**:
+   - Loads and provides configuration settings such as paths for the video player and torrent client, as well as base URLs for API requests.
+
+---
+

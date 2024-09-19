@@ -8,7 +8,13 @@ poster_cache.txt
 .idea/*
 logs/*
 temp/*
+feature/2.3.0
+managers/__pycache__/*
+__pycache__/*
+ui/__pycache__/*
+.idea/*
 legacy-1.8.0/*
+
 torrents/*
 playlists/*
 

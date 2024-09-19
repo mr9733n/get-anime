@@ -22,3 +22,5 @@ helper/__pycache__/*
 utils/__pycache__/*
 __pycache__/*
 core/__pycache__/*
+managers/__pycache__/*
+ui/__pycache__/*

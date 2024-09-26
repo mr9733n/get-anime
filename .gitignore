@@ -29,3 +29,5 @@ utils/__pycache__/*
 __pycache__/*
 core/__pycache__/*
 api/__pycache__/*
+api/__pycache__/__init__.cpython-312.pyc
+api/__pycache__/api_client.cpython-312.pyc

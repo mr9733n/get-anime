@@ -2,6 +2,7 @@
 import os
 import threading
 import time
+
 import requests
 from PIL import Image, UnidentifiedImageError
 import io
@@ -10,6 +11,7 @@ import logging
 class PosterManager:
     def __init__(self, display_callback=None):
         self.logger = logging.getLogger(__name__)
+        self.logger.debug(f"Initializing PosterManager")
         self.poster_links = []
         self.poster_images = []
         self.current_poster_index = 0

@@ -8,6 +8,7 @@ import logging
 class APIClient:
     def __init__(self, base_url, api_version):
         self.logger = logging.getLogger(__name__)
+        self.logger.debug(f"Initializing APIClient")
         self.base_url = base_url
         self.api_version = api_version
         self.pre = "https://"
@@ -27,7 +28,7 @@ class APIClient:
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
             num_items = len(response.text) if response.text else 0
-            self.logger.debug(f"Successful API call to URL: {url}, "
+            self.logger.debug(f"Successful API call to URL: {url}{params}, "
                             f"Time taken: {end_time - start_time:.2f} seconds, "
                             f"Response size: {num_items} bytes.")
             return data
@@ -45,6 +46,11 @@ class APIClient:
             return {'error': error_message}
 
     def get_schedule(self, day):
+        """
+
+        :type day: 1
+        """
+        print("get_schedule in api client:", day)
         endpoint = "title/schedule"
         params = {'days': day}
         return self.send_request(endpoint, params)

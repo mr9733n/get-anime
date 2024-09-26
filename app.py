@@ -6,21 +6,26 @@ import re
 
 from managers.config_manager import ConfigManager
 from api.api_client import APIClient
+from managers.data_manager import Poster, Torrent, Episode, Title, ScheduleParser, TitleParser, RandomTitleParser
 from managers.poster_manager import PosterManager
 from managers.playlist_manager import PlaylistManager
 from managers.torrent_manager import TorrentManager
-from ui.ui import FrontManager
+from ui.ui_dearpygui import FrontManager
 
 class AnimePlayerApp:
-    def __init__(self, window):
+    def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.current_data = None
         self.sanitized_titles = []
+
         self.logger.debug("Initializing AnimePlayerApp")
         self.config_manager = ConfigManager('config.ini')
         self.title_names = []
         self.init_variables()
-        self.load_config()
+        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
+        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
+        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
+        self.torrent_save_path = "torrents/"
         self.video_player_path, self.torrent_client_path = self.setup_paths()
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
@@ -31,16 +36,13 @@ class AnimePlayerApp:
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
         self.ui_manager = FrontManager(self)
         self.api_client = APIClient(self.base_url, self.api_version)
-        self.poster_manager = PosterManager()
         self.playlist_manager = PlaylistManager()
         self.poster_manager = PosterManager(display_callback=self.ui_manager.display_poster)
 
+
     def load_config(self):
         """Loads the configuration settings needed by the application."""
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
-        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
-        self.torrent_save_path = "torrents/"  # Ensure this is set correctly
+# Ensure this is set correctly
 
     def setup_paths(self):
         """Sets up paths based on the current platform and returns them for use."""
@@ -54,138 +56,73 @@ class AnimePlayerApp:
         self.discovered_links = []
         self.current_link = None
 
-    def get_poster(self, title_data):
+    def get_poster(self, poster_data):
         try:
-            # Construct the poster URL
-            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
-
-            # Standardize the poster URL
-            standardized_url = self.standardize_url(poster_url)
-
-            # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+            # Check if poster_data is a list or dictionary and access it properly
+            if isinstance(poster_data, list):
+                # Assuming the poster URL is in the first item of the list
+                poster_url = poster_data[0].get("url", None) if poster_data else None
+            elif isinstance(poster_data, dict):
+                poster_url = poster_data.get("url", None)
+            else:
+                self.logger.error("Unexpected poster data format")
                 return
 
-            # Clear the current poster and add the new poster link to the cache
-            self.ui_manager.clear_poster()
-            self.poster_manager.write_poster_links([standardized_url])
-
+            if poster_url:
+                # Process the poster URL (e.g., download, display, etc.)
+                self.logger.debug(f"Poster URL: {poster_url}")
+            else:
+                self.logger.error("No valid poster URL found")
         except Exception as e:
-            error_message = f"An error occurred while getting the poster: {str(e)}"
-            self.logger.error(error_message)
-
-    def get_items_data(self, data):
-        """
-        Returns a list of valid items based on the structure of the input data.
-        Handles both general title data and schedule data.
-        """
-        items = []  # Initialize an empty list for items
-        day_enum = []  # Initialize a list for days (used for schedule data)
-        
-        try:
-            # Check if data is structured as general title data (dictionary with "list" key)
-            if isinstance(data, dict) and "list" in data:
-                title_list = data["list"]
-                for i, item in enumerate(title_list):
-                    items.append(item)  # Add index and item
-
-                return None, items
-
-            # Handle the case where data is a single title (a dictionary, not a list)
-            elif isinstance(data, dict):
-                title_list = [data]  # Wrap the single title in a list
-                for item in title_list:
-                    if isinstance(item, dict) and "id" in item:
-                        items.append(item)
-                return None, items
-
-            # Check if data is structured as schedule data (a list of day_info)
-            elif isinstance(data, list):
-                for day_info in data:
-                    day = day_info.get("day")
-                    title_list = day_info.get("list")
-                    for i, item in enumerate(title_list):
-                        items.append(item)  # Add index and item
-                    day_enum.append(day)
-                return day_enum, items
-
-        except Exception as e:
-            error_message = f"An error occurred while processing item data: {str(e)}"
-            self.logger.error(error_message)
-            return None, None
-        
-    def get_links_data(self, title, selected_quality):
-        """
-        Returns a list of links based on the structure of the title data.
-        Handles all links: poster, playlist, torrent.
-        """
-        try:
-            print(title)
-            # Handle torrent links
-            print("total episodes counted:", len(title['player']['list']))
-            print(selected_quality)
-            if "torrents" in title and isinstance(title["torrents"].get("list"), list):
-                for torrent in title["torrents"]["list"]:
-                    url = torrent.get("url")
-                    quality = torrent.get("quality", {}).get("string", "Качество не указано")
-                    torrent_id = torrent.get("torrent_id")
-                    if url and torrent_id:
-                        print("torrents:", url, torrent_id)
-                        return url, quality, torrent_id
-
-            # Handle HLS (video) links
-            if "player" in title and isinstance(title["player"].get("list"), dict):
-                for episode in title["player"]["list"].values():
-
-                    if "hls" in episode:
-                        hls = episode["hls"]
-                        print(hls, episode)
-                        if selected_quality in hls:
-                            url = hls[selected_quality]
-                            if url:
-                                print(url)
-                                return url, episode
-
-            # If no links found, return None
-            self.logger.error("No valid links found in the provided data.")
-            return None, None, None
-
-        except Exception as e:
-            error_message = f"An error occurred while processing link data: {str(e)}"
-            self.logger.error(error_message)
-            return None, None, None
+            self.logger.error(f"An error occurred while getting the poster: {str(e)}")
 
     def get_schedule(self, day):
-        data = self.api_client.get_schedule(day)
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.get_poster(data)
-        self.ui_manager.display_schedule(data)
-        self.current_data = data
+        try:
+            data = self.api_client.get_schedule(day)
+            parsed_schedule = ScheduleParser.parse_schedule(data)
+            self.display_schedule(parsed_schedule)
+        except Exception as e:
+            self.logger.error(f"Error fetching schedule for {day}: {str(e)}")
+
+
 
     def get_search_by_title(self):
-        search_text = self.ui_manager.title_search_entry.get()
+        """Search for a title synchronously."""
+        search_text = self.ui_manager.get_search_input()
+
         if search_text:
-            data = self.api_client.get_search_by_title(search_text)
-            if 'error' in data:
-                self.logger.error(data['error'])
-                return
-            self.get_poster(data)
-            self.ui_manager.display_info(data)
-            self.current_data = data
+            try:
+                data = self.api_client.get_search_by_title(search_text)
+                if 'error' in data:
+                    self.logger.error(data['error'])
+                    return
+
+                # Fetch the poster and display search results
+                self.get_poster(data)
+                title_data = TitleParser.parse_title(data)
+                self.ui_manager.display_controller.display_info(title_data)
+                self.current_data = data
+            except Exception as e:
+                self.logger.error(f"Error searching for title '{search_text}': {str(e)}")
         else:
             self.logger.error("Search text is empty.")
 
     def get_random_title(self):
-        data = self.api_client.get_random_title()
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        self.get_poster(data)
-        self.ui_manager.display_info(data)
-        self.current_data = data
+        """Fetches a random title from the API, retrieves its poster, and displays it."""
+        try:
+            # Fetch the random title data from the API
+            data = self.api_client.get_random_title()
+            if 'error' in data:
+                self.logger.error(data['error'])
+                return
+
+            # Fetch the poster and display the title information
+            self.get_poster(data)
+            title_data = RandomTitleParser.parse_random_title(data)
+            self.ui_manager.display_controller.display_info(title_data)
+            self.current_data = data
+        except Exception as e:
+            self.logger.error(f"Error fetching random title: {str(e)}")
 
     def save_playlist_wrapper(self):
         """
@@ -244,3 +181,6 @@ class AnimePlayerApp:
         return url.strip().split('?')[0]
 
     pass
+
+    def display_schedule(self, parsed_schedule):
+        pass

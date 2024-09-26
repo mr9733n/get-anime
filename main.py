@@ -1,19 +1,33 @@
 import dearpygui.dearpygui as dpg
-from dearpygui.dearpygui import window
-
+import logging.config
 from app import AnimePlayerApp
-from ui.ui import FrontManager
+from ui.ui_dearpygui import FrontManager
 
 if __name__ == "__main__":
-    app = AnimePlayerApp(window())  # No 'window' argument
-    ui_manager = FrontManager(app)
+    logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
+    logger = logging.getLogger(__name__)
+    logger.info("Starting application")
 
-    dpg.create_context()
-    ui_manager.build()
-    dpg.create_viewport(title='Anime App', width=800, height=600)
-    dpg.setup_dearpygui()
-    dpg.show_viewport()
-    dpg.start_dearpygui()
-    dpg.destroy_context()
+    try:
+        dpg.create_context()
 
+        # Initialize the application and UI manager
+        app = AnimePlayerApp()
+        ui_manager = FrontManager(app)
 
+        # Build the UI (UI now handles window creation)
+        ui_manager.build()
+
+        dpg.create_viewport(title="Anime App", width=1200, height=600)
+        dpg.setup_dearpygui()
+        logger.debug("Showing viewport")
+        dpg.show_viewport()
+
+        logger.debug("Starting DearPyGui event loop")
+        dpg.start_dearpygui()
+
+    except Exception as e:
+        logger.error(f"Error occurred: {str(e)}")
+    finally:
+        dpg.destroy_context()
+        logger.info("Destroyed context, exiting application")

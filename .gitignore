@@ -22,3 +22,12 @@ helper/__pycache__/*
 utils/__pycache__/*
 __pycache__/*
 core/__pycache__/*
+managers/__pycache__/__init__.cpython-312.pyc
+managers/__pycache__/config_manager.cpython-312.pyc
+managers/__pycache__/data_manager.cpython-312.pyc
+managers/__pycache__/playlist_manager.cpython-312.pyc
+managers/__pycache__/poster_manager.cpython-312.pyc
+managers/__pycache__/torrent_manager.cpython-312.pyc
+ui/__pycache__/__init__.cpython-312.pyc
+ui/__pycache__/ui_dearpygui.cpython-312.pyc
+get_anime.zip

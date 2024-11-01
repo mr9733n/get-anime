@@ -6,7 +6,9 @@ import re
 import subprocess
 import logging
 import logging.config
-from PIL import ImageTk
+from io import BytesIO
+
+from PIL import ImageTk, Image
 import tkinter as tk
 from tkinter import ttk
 from tkinter.ttk import Combobox
@@ -123,13 +125,18 @@ class FrontManager:
         self.display_schedule(data)
         self.app.current_data = data
 
+    def display_poster(self, poster_image, title_id):
+        if title_id is None:
+            self.logger.error("Title ID not provided, unable to save poster.")
+            return
 
-
-    def display_poster(self, poster_image):
         try:
             poster_photo = ImageTk.PhotoImage(poster_image)
             self.poster_label.configure(image=poster_photo)
             self.poster_label.image = poster_photo  # Сохраняем ссылку на изображение
+
+            # Сохранение в базу данных
+            self.app.save_poster_to_db(title_id, poster_image.tobytes())
         except Exception as e:
             error_message = f"An error occurred while displaying the poster: {str(e)}"
             self.logger.error(error_message)
@@ -139,11 +146,12 @@ class FrontManager:
         self.poster_label.image = None
 
     def change_poster(self):
-        poster_image = self.app.poster_manager.get_next_poster()
-        if poster_image:
-            self.display_poster(poster_image)
+        next_poster = self.app.poster_manager.next_poster()
+        if next_poster:
+            poster_image, title_id = next_poster
+            self.display_poster(poster_image, title_id)
         else:
-            self.logger.warning("No poster to display.")
+            self.logger.warning("No more posters to display.")
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.get()
@@ -214,6 +222,18 @@ class FrontManager:
         self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
                            lambda event, en=en_name: self.on_title_click(event, en))
 
+        poster_links = []
+
+        if "posters" in title and title.get("posters", {}).get("small"):
+            poster_url = self.app.get_poster(title)
+            if poster_url:
+                poster_links.append((title['id'], poster_url))
+                self.logger.debug(f"Poster url: {poster_url}")
+
+
+        # Add all collected poster links at once
+        self.app.poster_manager.write_poster_links(poster_links)
+
         episodes_found = False
         selected_quality = self.quality_var.get()
         for index, episode in enumerate(title["player"]["list"].values()):
@@ -245,14 +265,14 @@ class FrontManager:
                                         'title_id': title.get('id'),
                                         'episode_number': episode.get('episode'),
                                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
+                                        'uuid': episode.get('uuid'),
+                                        'created_timestamp': episode.get('created_timestamp'),
                                         'hls_fhd': episode.get('hls', {}).get('fhd'),
                                         'hls_hd': episode.get('hls', {}).get('hd'),
                                         'hls_sd': episode.get('hls', {}).get('sd'),
-                                        'preview_path': episode.get('preview', {}).get('url') if isinstance(
-                                            episode.get('preview'), dict) else None,
-                                        'skips': json.dumps(episode.get('skips')) if isinstance(episode.get('skips'),
-                                                                                                dict) else None
-
+                                        'preview_path': episode.get('preview'),
+                                        'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
+                                        'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
                                     }
                                     self.app.db_manager.save_episode(episode_data)
 
@@ -282,28 +302,78 @@ class FrontManager:
                     self.text.tag_config(f"hyperlink_torrents_{link_index}", foreground="blue")
                     torrents_found = True
 
+                    # Сохранение данных о торренте в базу данных через DatabaseManager
+                    try:
+                        torrent_data = {
+                            'torrent_id': torrent.get('torrent_id'),
+                            'title_id': title.get('id'),
+                            'episodes_range': torrent.get('episodes', {}).get('string', 'Неизвестный диапазон'),
+                            'quality': torrent.get('quality', {}).get('string', 'Качество не указано'),
+                            'quality_type': torrent.get('quality', {}).get('type'),
+                            'resolution': torrent.get('quality', {}).get('resolution'),
+                            'encoder': torrent.get('quality', {}).get('encoder'),
+                            'leechers': torrent.get('leechers'),
+                            'seeders': torrent.get('seeders'),
+                            'downloads': torrent.get('downloads'),
+                            'total_size': torrent.get('total_size'),
+                            'size_string': torrent.get('size_string'),
+                            'url': torrent.get('url'),
+                            'magnet_link': torrent.get('magnet'),
+                            'uploaded_timestamp': torrent.get('uploaded_timestamp'),
+                            'hash': torrent.get('hash'),
+                            'torrent_metadata': torrent.get('metadata'),
+                            'raw_base64_file': torrent.get('raw_base64_file')
+                        }
+                        self.app.db_manager.save_torrent(torrent_data)
+                    except Exception as e:
+                        self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
+
         if not torrents_found:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
-        self.app.get_poster(title)
+        # self.app.get_poster(title)
 
         # Сохранение данных в базу данных через DatabaseManager
         try:
             # Сохранение тайтла
             if isinstance(title, dict):
-                # print(f"DEBUG: title = {title}")
-                # print(f"DEBUG: names = {title.get('names')}")
-                self.app.db_manager.save_title({
+                title_data = {
                     'title_id': title.get('id'),
+                    'code': title.get('code'),
                     'name_ru': title.get('names', {}).get('ru'),
                     'name_en': title.get('names', {}).get('en'),
                     'alternative_name': title.get('names', {}).get('alternative'),
-                    'poster_path': title.get('posters', {}).get('small', {}).get('url'),
+                    'franchises': json.dumps(title.get('franchises', [])),
+                    'announce': title.get('announce'),
+                    'status_string': title.get('status', {}).get('string'),
+                    'status_code': title.get('status', {}).get('code'),
+                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
+                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
+                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
+                    'updated': title.get('updated'),
+                    'last_change': title.get('last_change'),
+                    'type_full_string': title.get('type', {}).get('full_string'),
+                    'type_code': title.get('type', {}).get('code'),
+                    'type_string': title.get('type', {}).get('string'),
+                    'type_episodes': title.get('type', {}).get('episodes'),
+                    'type_length': title.get('type', {}).get('length'),
+                    'genres': json.dumps(title.get('genres', [])),
+                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
+                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
+                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
+                    'season_string': title.get('season', {}).get('string'),
+                    'season_code': title.get('season', {}).get('code'),
+                    'season_year': title.get('season', {}).get('year'),
+                    'season_week_day': title.get('season', {}).get('week_day'),
                     'description': title.get('description'),
-                    'type': title.get('type', {}).get('string'),
-                    'episodes_count': title.get('episodes_count'),
+                    'in_favorites': title.get('in_favorites'),
+                    'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
+                    'blocked_geoip': title.get('blocked', {}).get('geoip'),
+                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
                     'last_updated': datetime.utcnow()  # Использование метода utcnow()
-                })
+                }
+
+                self.app.db_manager.save_title(title_data)
         except Exception as e:
             self.logger.error(f"Failed to save title to database: {e}")
 
@@ -314,6 +384,10 @@ class FrontManager:
                 for day_info in data:
                     day = day_info.get("day")
                     title_list = day_info.get("list")
+                    for title in title_list:
+                        title_id = title.get('id')
+                        if title_id:
+                            self.app.db_manager.save_schedule(day, title_id)
                     day_word = self.days_of_week[day]
                     self.text.insert(tk.END, f"День недели: {day_word}\n\n")
                     for i, title in enumerate(title_list):

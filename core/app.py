@@ -1,9 +1,12 @@
 # app.py
+
 import logging
 import logging.config
 import platform
 import re
+from datetime import datetime
 
+from core.database_manager import Poster
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
@@ -40,7 +43,10 @@ class AnimePlayerApp:
         self.api_client = APIClient(self.base_url, self.api_version)
         self.poster_manager = PosterManager()
         self.playlist_manager = PlaylistManager()
-        self.poster_manager = PosterManager(display_callback=self.ui_manager.display_poster)
+        self.poster_manager = PosterManager(
+            display_callback=self.ui_manager.display_poster,
+            save_callback=self.save_poster_to_db
+        )
 
     def load_config(self):
         """Loads the configuration settings needed by the application."""
@@ -69,19 +75,40 @@ class AnimePlayerApp:
 
             # Standardize the poster URL
             standardized_url = self.standardize_url(poster_url)
+            self.logger.debug(f"Standardize the poster URL: {standardized_url}")
 
             # Check if the standardized URL is already in the cached poster links
             if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
                 self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
-                return
+                return None
 
             # Clear the current poster and add the new poster link to the cache
             self.ui_manager.clear_poster()
-            self.poster_manager.write_poster_links([standardized_url])
+            # self.poster_manager.write_poster_links([standardized_url])
+            return standardized_url
 
         except Exception as e:
             error_message = f"An error occurred while getting the poster: {str(e)}"
             self.logger.error(error_message)
+            return None
+
+    def save_poster_to_db(self, title_id, poster_blob):
+        try:
+            # Проверяем, существует ли уже постер для данного title_id
+            existing_poster = self.db_manager.session.query(Poster).filter_by(title_id=title_id).first()
+            if not existing_poster:
+                # Создаем новый объект Poster и добавляем в базу
+                new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
+                self.db_manager.session.add(new_poster)
+            else:
+                # Обновляем существующий постер
+                existing_poster.poster_blob = poster_blob
+                existing_poster.last_updated = datetime.utcnow()
+
+            self.db_manager.session.commit()
+        except Exception as e:
+            self.db_manager.session.rollback()
+            self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
     def save_playlist_wrapper(self):
         """

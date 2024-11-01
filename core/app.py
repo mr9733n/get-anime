@@ -12,11 +12,12 @@ from utils.torrent_manager import TorrentManager
 from core.ui import FrontManager
 
 class AnimePlayerApp:
-    def __init__(self, window):
+    def __init__(self, window, db_manager):
         self.sanitized_titles = []
         self.logger = logging.getLogger(__name__)
         self.logger.debug("Initializing AnimePlayerApp")
         self.window = window
+        self.db_manager = db_manager
         self.cache_file_path = "poster_cache.txt"
         self.config_manager = ConfigManager('config.ini')
         self.title_names = []

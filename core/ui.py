@@ -1,4 +1,7 @@
 # ui.py
+import asyncio
+import json
+from datetime import datetime
 import re
 import subprocess
 import logging
@@ -168,11 +171,25 @@ class FrontManager:
         """
         Вспомогательная функция для отображения информации о тайтле.
         """
+        # Проверка типа title
+        if not isinstance(title, dict):
+            self.logger.error(f"Invalid type for title. Expected dict, got {type(title)}")
+            return
+
+        names = title.get("names", {})
+        if not isinstance(names, dict):
+            names = {}
+
         self.text.insert(tk.END, "---\n\n")
-        ru_name = title["names"].get("ru", "Название отсутствует")
-        en_name = title["names"].get("en", "Название отсутствует")
+        ru_name = names.get("ru", "Название отсутствует")
+        en_name = names.get("en", "Название отсутствует")
         announce = str(title.get("announce", "Состояние отсутствует"))
-        type_full_string = str(title["type"].get("full_string", {}))
+
+        type_info = title.get('type', {})
+        if not isinstance(type_info, dict):
+            type_info = {}
+        type_full_string = type_info.get('full_string', "Тип отсутствует")
+
         status = title["status"].get("string", "Статус отсутствует")
         description = title.get("description", "Описание отсутствует")
         genres = ", ".join(title.get("genres", ["Жанры отсутствуют"]))
@@ -200,6 +217,10 @@ class FrontManager:
         episodes_found = False
         selected_quality = self.quality_var.get()
         for index, episode in enumerate(title["player"]["list"].values()):
+            if not isinstance(episode, dict):
+                self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
+                continue
+
             if "hls" in episode:
                 hls = episode["hls"]
                 if selected_quality in hls:
@@ -216,6 +237,27 @@ class FrontManager:
                         self.text.tag_add(tag_name, hyperlink_start, hyperlink_end)
                         self.text.tag_config(tag_name, foreground="blue")
                         episodes_found = True
+                        # Сохранение данных в базу данных через DatabaseManager
+                        try:
+                                if isinstance(episode, dict):
+                                    episode_data = {
+                                        'episode_id': episode.get('id'),
+                                        'title_id': title.get('id'),
+                                        'episode_number': episode.get('episode'),
+                                        'name': episode.get('name', f'Серия {episode.get("episode")}'),
+                                        'hls_fhd': episode.get('hls', {}).get('fhd'),
+                                        'hls_hd': episode.get('hls', {}).get('hd'),
+                                        'hls_sd': episode.get('hls', {}).get('sd'),
+                                        'preview_path': episode.get('preview', {}).get('url') if isinstance(
+                                            episode.get('preview'), dict) else None,
+                                        'skips': json.dumps(episode.get('skips')) if isinstance(episode.get('skips'),
+                                                                                                dict) else None
+
+                                    }
+                                    self.app.db_manager.save_episode(episode_data)
+
+                        except Exception as e:
+                            self.logger.error(f"Failed to save episode to database: {e}")
         if not episodes_found:
             self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
         self.text.insert(tk.END, "\n")
@@ -244,6 +286,26 @@ class FrontManager:
             self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
         self.app.get_poster(title)
+
+        # Сохранение данных в базу данных через DatabaseManager
+        try:
+            # Сохранение тайтла
+            if isinstance(title, dict):
+                # print(f"DEBUG: title = {title}")
+                # print(f"DEBUG: names = {title.get('names')}")
+                self.app.db_manager.save_title({
+                    'title_id': title.get('id'),
+                    'name_ru': title.get('names', {}).get('ru'),
+                    'name_en': title.get('names', {}).get('en'),
+                    'alternative_name': title.get('names', {}).get('alternative'),
+                    'poster_path': title.get('posters', {}).get('small', {}).get('url'),
+                    'description': title.get('description'),
+                    'type': title.get('type', {}).get('string'),
+                    'episodes_count': title.get('episodes_count'),
+                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
+                })
+        except Exception as e:
+            self.logger.error(f"Failed to save title to database: {e}")
 
     def display_schedule(self, data):
         try:

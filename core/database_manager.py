@@ -127,6 +127,7 @@ class DatabaseManager:
             self.session.close()
 
     def get_titles_for_day(self, day_of_week):
+        """Загружает тайтлы для указанного дня недели из базы данных."""
         try:
             return self.session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
         except Exception as e:

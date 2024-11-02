@@ -230,7 +230,6 @@ class FrontManager:
                 poster_links.append((title['id'], poster_url))
                 self.logger.debug(f"Poster url: {poster_url}")
 
-
         # Add all collected poster links at once
         self.app.poster_manager.write_poster_links(poster_links)
 

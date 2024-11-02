@@ -1,5 +1,6 @@
 requests>=2.25.1
 Pillow>=8.1.0
-SQLAlchemy
+SQLAlchemy~=2.0.36
 pydantic
 aiohttp
+PyQt5~=5.15.11

@@ -3,6 +3,7 @@ import json
 import logging
 import platform
 import re
+import subprocess
 import time
 from datetime import datetime
 from time import sleep
@@ -11,10 +12,10 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl
 from PyQt5.QtGui import QPixmap
 
-from core.database_manager import Title, Schedule, Episode
+from core.database_manager import Title, Schedule, Episode, Torrent
 from sqlalchemy.orm import joinedload
 import base64
 
@@ -30,6 +31,8 @@ class AnimePlayerAppVer2(QWidget):
     def __init__(self, database_manager):
         super().__init__()
 
+        self.play_playlist_button = None
+        self.save_playlist_button = None
         self.current_data = None
         self.display_button = None
         self.discovered_links = []
@@ -197,6 +200,18 @@ class AnimePlayerAppVer2(QWidget):
         # Добавляем контролы в основной layout
         main_layout.addLayout(controls_layout)
 
+        # Кнопка "Save Playlist"
+        self.save_playlist_button = QPushButton('Save Playlist', self)
+        self.save_playlist_button.setStyleSheet(button_style)
+        self.save_playlist_button.clicked.connect(self.save_playlist_wrapper)  # Подключаем к обертке
+        controls_layout.addWidget(self.save_playlist_button)
+
+        # Кнопка "Play Playlist"
+        self.play_playlist_button = QPushButton('Play Playlist', self)
+        self.play_playlist_button.setStyleSheet(button_style)
+        self.play_playlist_button.clicked.connect(self.play_playlist_wrapper)  # Подключаем к обертке
+        controls_layout.addWidget(self.play_playlist_button)
+
         # Устанавливаем основной layout для виджета
         self.setLayout(main_layout)
 
@@ -225,34 +240,37 @@ class AnimePlayerAppVer2(QWidget):
             self.logger.error(error_message)
             return
 
-        # Handling multiple potential data structures
-        if isinstance(data, dict):
-            # If data contains 'list', handle it as a list of titles
+        # Проверка, если отображается расписание для конкретного дня
+        if isinstance(data, list):
+            for day_info in data:
+                day = day_info.get("day")
+                if isinstance(day, int):
+                    self.display_titles_for_day(day)
+                else:
+                    self.logger.error("Invalid day value found, expected an integer.")
+
+        # Проверка, если отображается информация об одном тайтле
+        elif isinstance(data, dict):
+            # Если это информация об одном тайтле или общем списке
             if "list" in data and isinstance(data["list"], list):
                 title_list = data["list"]
 
-                # Iterate through the list and display each title's info
+                # Обновление информации для каждого тайтла в списке
                 for title_data in title_list:
                     title_id = title_data.get('id')
                     if isinstance(title_id, int):
                         self.display_info(title_id)
                     else:
                         self.logger.error("Invalid title ID found in list, expected an integer.")
-
             else:
-                error_message = "No valid data format detected. Please fetch data again."
-                self.logger.error(error_message)
+                # Если это один тайтл
+                title_id = data.get('id')
+                if isinstance(title_id, int):
+                    self.display_info(title_id)
+                else:
+                    error_message = "No valid title ID found. Please fetch data again."
+                    self.logger.error(error_message)
 
-        elif isinstance(data, list):
-            # Assume list structure corresponds to schedule data and handle accordingly
-            for day_info in data:
-                title_list = day_info.get("list", [])
-                for title_data in title_list:
-                    title_id = title_data.get('id')
-                    if isinstance(title_id, int):
-                        self.display_info(title_id)
-                    else:
-                        self.logger.error("Invalid title ID found in list, expected an integer.")
         else:
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
@@ -346,12 +364,9 @@ class AnimePlayerAppVer2(QWidget):
         html_content = self.get_title_html(title, show_description)
         title_browser.setHtml(html_content)
 
+        title_browser.anchorClicked.connect(self.on_link_click)
+
         return title_browser
-
-
-    def play_episode(self, episode):
-        # Заглушка для функции воспроизведения эпизода
-        self.logger.info(f"Воспроизведение серии: {episode.name}")
 
 
     def get_title_html(self, title, show_description=False):
@@ -365,6 +380,7 @@ class AnimePlayerAppVer2(QWidget):
         description_html = self.generate_description_html(title) if show_description else ""
         year_html = self.generate_year_html(title)
         type_html = self.generate_type_html(title)
+        torrents_html = self.generate_torrents_html(title)
 
         # Добавляем информацию об эпизодах
         episodes_html = self.generate_episodes_html(title)
@@ -493,6 +509,10 @@ class AnimePlayerAppVer2(QWidget):
                         <p>Эпизоды:</p>
                         {episodes_html}
                     </div>
+                    <div>
+                        <p>Torrents:</p>
+                        {torrents_html}
+                    </div>
                 </div>
                     <div>
                         <br><br><br><br><br><br><br><br><br>
@@ -501,6 +521,23 @@ class AnimePlayerAppVer2(QWidget):
         </html>
         """
         return html_content
+
+
+    def generate_torrents_html(self, title):
+        """Generates HTML to display a list of torrents for a title."""
+        torrents = self.db_manager.session.query(Torrent).filter_by(title_id=title.title_id).all()
+
+        if not torrents:
+            return "<p>Torrents not available</p>"
+
+        torrents_html = "<ul>"
+        for torrent in torrents:
+            torrent_quality = torrent.quality if torrent.quality else "Unknown Quality"
+            torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
+            torrent_link = torrent.url if torrent.url else "#"
+            torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a></li>'
+        torrents_html += "</ul>"
+        return torrents_html
 
 
     def generate_poster_html(self, title):
@@ -591,15 +628,47 @@ class AnimePlayerAppVer2(QWidget):
 
 
     def generate_episodes_html(self, title):
-        """Генерирует HTML для отображения списка эпизодов."""
-        if not title.episodes:
-            return "<p>Эпизоды отсутствуют</p>"
+        """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
+        selected_quality = self.quality_dropdown.currentText()  # Получаем выбранное качество
 
+        # Подготовка HTML для эпизодов
         episodes_html = "<ul>"
+
+        # Очищаем списки для ссылок и заголовков перед заполнением
+        self.discovered_links = []
+        self.sanitized_titles = []
+
         for i, episode in enumerate(title.episodes):
             episode_name = episode.name if episode.name else f'Серия {i + 1}'
-            episodes_html += f'<li><a href="#">{episode_name}</a></li>'
+
+            # Выбор ссылки на основе выбранного качества
+            if selected_quality == 'fhd':
+                link = episode.hls_fhd
+            elif selected_quality == 'hd':
+                link = episode.hls_hd
+            elif selected_quality == 'sd':
+                link = episode.hls_sd
+            else:
+                self.logger.error(f"Неизвестное качество: {selected_quality}")
+                continue
+
+            # Проверяем, что ссылка существует
+            if link:
+                episodes_html += f'<li><a href="{link}">{episode_name}</a></li>'
+                # Добавляем ссылку в discovered_links
+                self.discovered_links.append(link)
+
+            else:
+                episodes_html += f'<li>{episode_name} (нет ссылки для качества {selected_quality})</li>'
+
+
         episodes_html += "</ul>"
+        # Добавляем имя эпизода в sanitized_titles
+        sanitized_name = self.sanitize_filename(title.code)
+        self.sanitized_titles.append(sanitized_name)
+        self.logger.debug(f"discovered_links: {self.discovered_links}")
+        self.logger.debug(f"sanitized_name: {sanitized_name}")
+
         return episodes_html
 
 
@@ -854,17 +923,48 @@ class AnimePlayerAppVer2(QWidget):
             return None
 
 
+    def on_link_click(self, url):
+        try:
+            link = url.toString()  # Преобразуем объект QUrl в строку
+
+            if link.endswith('.m3u8'):
+                video_player_path = self.video_player_path
+                open_link = self.pre + self.stream_video_url + link
+                media_player_command = [video_player_path, open_link]
+                subprocess.Popen(media_player_command)
+                self.logger.info(f"Playing video link: {open_link}")
+            elif '/torrent/download.php' in link:
+                # Здесь нужно извлечь название тайтла и идентификатор торрента из ссылки
+                # title_name и torrent_id можно передать дополнительно, если нужно
+                title_name = "Unknown Title"  # Вы можете настроить это значение
+                torrent_id = None  # Если возможно, извлеките ID из ссылки
+                self.save_torrent_wrapper(link, title_name, torrent_id)
+            else:
+                self.logger.error(f"Unknown link type: {link}")
+
+
+        except Exception as e:
+            error_message = f"An error occurred while processing the link: {str(e)}"
+            self.logger.error(error_message)
+
+
     def save_playlist_wrapper(self):
         """
         Wrapper function to handle saving the playlist.
         Collects title names and links, and passes them to save_playlist.
         """
+        # Проверим, есть ли ссылки, которые были найдены
         if self.discovered_links:
-            self.sanitized_titles = [self.sanitize_filename(name) for name in self.title_names]
+            # Убедимся, что есть и названия
+            if not self.sanitized_titles:
+                self.logger.error("Title names not found. Please generate the titles before saving playlist.")
+                return
+
+            self.logger.debug(f"Saving playlist with links: {self.discovered_links}")
             self.playlist_manager.save_playlist(self.sanitized_titles, self.discovered_links, self.stream_video_url)
-            self.logger.debug("Links was sent for saving playlist...")
+            self.logger.debug("Links were sent for saving playlist...")
         else:
-            self.logger.error("No links was found for saving playlist.")
+            self.logger.error("No links were found for saving playlist.")
 
 
     def play_playlist_wrapper(self):
@@ -878,6 +978,7 @@ class AnimePlayerAppVer2(QWidget):
 
         file_name = "_".join(self.sanitized_titles)[:100] + ".m3u"
         video_player_path = self.video_player_path
+        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
         self.playlist_manager.play_playlist(file_name, video_player_path)
         self.logger.debug("Opening video player...")
 

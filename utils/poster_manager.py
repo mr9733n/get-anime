@@ -18,6 +18,7 @@ class PosterManager:
         self.display_callback = display_callback
         self.save_callback = save_callback
 
+
     def write_poster_links(self, links):
         """
         Add poster URLs (with title_id) to the list and start downloading in the background.
@@ -69,11 +70,11 @@ class PosterManager:
                 poster_image = Image.open(link_io)
 
                 # Display and save poster
-                if self.display_callback:
-                    self.display_callback(poster_image, title_id)
 
                 if self.save_callback:
                     self.save_callback(title_id, response.content)
+                if self.display_callback:
+                    self.display_callback(title_id)
 
                 self.poster_images.append((poster_image, title_id))
             except UnidentifiedImageError:

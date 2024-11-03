@@ -3,19 +3,16 @@ import json
 import logging
 import platform
 import re
+import time
 from datetime import datetime
+from time import sleep
 
-from PIL.Image import frombytes
-#from PyQt5.QtNfc import title
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QByteArray, QBuffer
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
 from PyQt5.QtGui import QPixmap
-import sys
-
-from requests import session
 
 from core.database_manager import Title, Schedule, Episode
 from sqlalchemy.orm import joinedload
@@ -51,15 +48,12 @@ class AnimePlayerAppVer2(QWidget):
         self.sanitized_titles = []
         self.title_names = []
 
-        
-
         self.logger = logging.getLogger(__name__)
 
         self.logger.debug("Initializing AnimePlayerApp Version 2")
 
         self.cache_file_path = "poster_cache.txt"
         self.config_manager = ConfigManager('config.ini')
-
 
         """Loads the configuration settings needed by the application."""
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
@@ -79,17 +73,13 @@ class AnimePlayerAppVer2(QWidget):
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
         # Initialize other components
-
         self.api_client = APIClient(self.base_url, self.api_version)
         self.poster_manager = PosterManager()
-        
         self.playlist_manager = PlaylistManager()
         self.poster_manager = PosterManager(
-            display_callback=self.display_poster,
-            save_callback=self.save_poster_to_db
+            save_callback=self.save_poster_to_db,
+            #display_callback=self.display_poster,
         )
-        
-
         self.db_manager = database_manager
         self.init_ui()
 
@@ -157,7 +147,6 @@ class AnimePlayerAppVer2(QWidget):
         self.random_button.clicked.connect(self.get_random_title)
         controls_layout.addWidget(self.random_button)
 
-
         # Метка "QLTY:"
         self.quality_label = QLabel('QLTY:', self)
         self.quality_label.setStyleSheet("""
@@ -189,6 +178,7 @@ class AnimePlayerAppVer2(QWidget):
         # Кнопка "Refresh"
         self.refresh_button = QPushButton('Refresh', self)
         self.refresh_button.setStyleSheet(button_style)
+        self.refresh_button.clicked.connect(self.update_quality_and_refresh)
         controls_layout.addWidget(self.refresh_button)
 
         # Дни недели
@@ -224,12 +214,53 @@ class AnimePlayerAppVer2(QWidget):
         # Устанавливаем основной layout для окна
         self.setLayout(main_layout)
 
+    def update_quality_and_refresh(self, event=None):
+        selected_quality = self.quality_dropdown.currentText()
+        data = self.current_data
+
+        if not data:
+            error_message = "No data available. Please fetch data first."
+            self.logger.error(error_message)
+            return
+
+        # Handling multiple potential data structures
+        if isinstance(data, dict):
+            # If data contains 'list', handle it as a list of titles
+            if "list" in data and isinstance(data["list"], list):
+                title_list = data["list"]
+
+                # Iterate through the list and display each title's info
+                for title_data in title_list:
+                    title_id = title_data.get('id')
+                    if isinstance(title_id, int):
+                        self.display_info(title_id)
+                    else:
+                        self.logger.error("Invalid title ID found in list, expected an integer.")
+
+            else:
+                error_message = "No valid data format detected. Please fetch data again."
+                self.logger.error(error_message)
+
+        elif isinstance(data, list):
+            # Assume list structure corresponds to schedule data and handle accordingly
+            for day_info in data:
+                title_list = day_info.get("list", [])
+                for title_data in title_list:
+                    title_id = title_data.get('id')
+                    if isinstance(title_id, int):
+                        self.display_info(title_id)
+                    else:
+                        self.logger.error("Invalid title ID found in list, expected an integer.")
+        else:
+            error_message = "Unsupported data format. Please fetch data first."
+            self.logger.error(error_message)
+
 
     def display_info(self, title_id):
         self.clear_previous_posters()
         session = self.db_manager.session
         try:
-            # Загружаем тайтлы для определенного дня недели и загружаем связанные эпизоды
+            # Загружаем тайтл и загружаем связанные эпизоды
             title = (
                 session.query(Title)
                 .filter(Title.title_id == title_id)
@@ -237,6 +268,10 @@ class AnimePlayerAppVer2(QWidget):
             )
         except Exception as e:
             self.logger.error(f"Ошибка при загрузке тайтлов: {e}")
+            return
+
+        if title is None:
+            self.logger.error(f"Title with title_id {title_id} not found in the database.")
             return
 
         # Обновление UI с загруженными данными
@@ -303,6 +338,8 @@ class AnimePlayerAppVer2(QWidget):
         title_browser = QTextBrowser(self)
         title_browser.setOpenExternalLinks(True)
         title_browser.setFixedSize(455, 650)  # Размер плитки
+
+        title_browser.setProperty('title_id', title.title_id)
 
         html_content = self.get_title_html(title, show_description)
         title_browser.setHtml(html_content)
@@ -619,6 +656,7 @@ class AnimePlayerAppVer2(QWidget):
         self.current_data = data
         return True
 
+
     def get_search_by_title(self):
         search_text = self.title_search_entry.get()
         if not search_text:
@@ -675,38 +713,13 @@ class AnimePlayerAppVer2(QWidget):
                 existing_poster.last_updated = datetime.utcnow()
 
             self.db_manager.session.commit()
+            # Display the poster after a successful save
+            # time.sleep(10)
+            # self.display_info(title_id)
+
         except Exception as e:
             self.db_manager.session.rollback()
             self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
-
-
-    def display_poster(self, poster_image, title_id):
-        if poster_image:
-            try:
-                pixmap = QPixmap()
-                if not pixmap.loadFromData(poster_image):
-                    self.logger.error(f"Ошибка: Не удалось загрузить изображение для title_id: {title_id}")
-                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
-
-                # Используем QBuffer для сохранения в байтовый массив
-                byte_array = QByteArray()
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.WriteOnly)
-                if not pixmap.save(buffer, 'PNG'):
-                    self.logger.error(
-                        f"Ошибка: Не удалось сохранить изображение в формат PNG для title_id: {title_id}")
-                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
-
-                # Преобразуем данные в Base64
-                poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-                self.logger.debug(f"Base64 изображение (часть): {poster_base64[:16]}...")  # Вывести первые 16 символов
-                return poster_base64
-            except Exception as e:
-                self.logger.error(f"Ошибка при обработке постера для title_id: {title_id} - {e}")
-                return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
-        else:
-            self.logger.warning(f"Предупреждение: Нет данных для постера для title_id: {title_id}")
-            return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
 
 
     def process_titles(self, title_data):

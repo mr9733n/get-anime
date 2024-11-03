@@ -107,22 +107,6 @@ class AnimePlayerAppVer2(QWidget):
         # Верхняя часть контролов
         controls_layout = QHBoxLayout()
 
-        # Поле для поиска
-        self.title_search_entry = QLineEdit(self)
-        self.title_search_entry.setPlaceholderText('Enter title name')
-        self.title_search_entry.setMinimumWidth(100)
-        self.title_search_entry.setMaximumWidth(150)
-        self.title_search_entry.setStyleSheet("""
-            QLineEdit {
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 4px;
-                font-size: 14px;
-            }
-        """)
-        controls_layout.addWidget(self.title_search_entry)
-
         # Общий стиль для кнопок
         button_style = """
             QPushButton {
@@ -139,14 +123,45 @@ class AnimePlayerAppVer2(QWidget):
             }
         """
 
+        # Поле для поиска
+        self.title_search_entry = QLineEdit(self)
+        self.title_search_entry.setPlaceholderText('TITLE NAME')
+        self.title_search_entry.setMinimumWidth(100)
+        self.title_search_entry.setMaximumWidth(150)
+        self.title_search_entry.setStyleSheet("""
+            QLineEdit {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px;
+                font-size: 14px;
+            }
+        """)
+        controls_layout.addWidget(self.title_search_entry)
+
         # Кнопка "Find"
-        self.display_button = QPushButton('Find', self)
+        self.display_button = QPushButton('FIND', self)
         self.display_button.setStyleSheet(button_style)
         self.display_button.clicked.connect(self.get_search_by_title)
         controls_layout.addWidget(self.display_button)
 
+        # Дни недели
+        self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+        self.day_buttons = []
+
+        for i, day in enumerate(self.days_of_week):
+            button = QPushButton(day, self)
+            button.clicked.connect(
+                lambda checked, i=i: self.display_titles_for_day(i))
+            button.setStyleSheet(button_style)
+            controls_layout.addWidget(button)
+            self.day_buttons.append(button)
+
+        # Добавляем контролы в основной layout
+        main_layout.addLayout(controls_layout)
+
         # Кнопка "Random"
-        self.random_button = QPushButton('Random', self)
+        self.random_button = QPushButton('RANDOM', self)
         self.random_button.setStyleSheet(button_style)
         self.random_button.clicked.connect(self.get_random_title)
         controls_layout.addWidget(self.random_button)
@@ -180,34 +195,19 @@ class AnimePlayerAppVer2(QWidget):
         controls_layout.addWidget(self.quality_dropdown)
 
         # Кнопка "Refresh"
-        self.refresh_button = QPushButton('Refresh', self)
+        self.refresh_button = QPushButton('REFRESH', self)
         self.refresh_button.setStyleSheet(button_style)
         self.refresh_button.clicked.connect(self.update_quality_and_refresh)
         controls_layout.addWidget(self.refresh_button)
 
-        # Дни недели
-        self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-        self.day_buttons = []
-
-        for i, day in enumerate(self.days_of_week):
-            button = QPushButton(day, self)
-            button.clicked.connect(
-                lambda checked, i=i: self.display_titles_for_day(i))
-            button.setStyleSheet(button_style)
-            controls_layout.addWidget(button)
-            self.day_buttons.append(button)
-
-        # Добавляем контролы в основной layout
-        main_layout.addLayout(controls_layout)
-
         # Кнопка "Save Playlist"
-        self.save_playlist_button = QPushButton('Save Playlist', self)
+        self.save_playlist_button = QPushButton('SAVE', self)
         self.save_playlist_button.setStyleSheet(button_style)
         self.save_playlist_button.clicked.connect(self.save_playlist_wrapper)  # Подключаем к обертке
         controls_layout.addWidget(self.save_playlist_button)
 
         # Кнопка "Play Playlist"
-        self.play_playlist_button = QPushButton('Play Playlist', self)
+        self.play_playlist_button = QPushButton('PLAY', self)
         self.play_playlist_button.setStyleSheet(button_style)
         self.play_playlist_button.clicked.connect(self.play_playlist_wrapper)  # Подключаем к обертке
         controls_layout.addWidget(self.play_playlist_button)
@@ -239,6 +239,9 @@ class AnimePlayerAppVer2(QWidget):
             error_message = "No data available. Please fetch data first."
             self.logger.error(error_message)
             return
+
+        self.logger.debug(f"DATA: {data}")
+
 
         # Проверка, если отображается расписание для конкретного дня
         if isinstance(data, list):

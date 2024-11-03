@@ -5,7 +5,7 @@ import platform
 import re
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import sleep
 
 from PyQt5.QtWidgets import (
@@ -242,9 +242,8 @@ class AnimePlayerAppVer2(QWidget):
 
         self.logger.debug(f"DATA: {data}")
 
-
-        # Проверка, если отображается расписание для конкретного дня
-        if isinstance(data, list):
+        # Если текущие данные из расписания, обновляем расписание из базы данных
+        if isinstance(data, list) and all(isinstance(day_info, dict) and "day" in day_info for day_info in data):
             for day_info in data:
                 day = day_info.get("day")
                 if isinstance(day, int):
@@ -301,7 +300,6 @@ class AnimePlayerAppVer2(QWidget):
         title_browser = self.create_title_browser(title, show_description=True)
         self.posters_layout.addWidget(title_browser)
 
-
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
@@ -311,14 +309,14 @@ class AnimePlayerAppVer2(QWidget):
 
         if session is not None:
             try:
-                # Проверка наличия тайтлов в базе данных
-                titles = (
-                    session.query(Title)
-                    .options(joinedload(Title.episodes))  # Загрузка эпизодов вместе с тайтлом
-                    .join(Schedule)
-                    .filter(Schedule.day_of_week == day_of_week)
-                    .all()
-                )
+                # Проверка наличия тайтлов в базе данных для данного дня недели
+                titles = self.get_titles_from_db(day_of_week)
+
+                # Проверка, нужно ли обновить расписание (например, устаревшие данные)
+                if not self.is_schedule_up_to_date(titles, day_of_week):
+                    self.logger.info(f"Расписание для дня {day_of_week} устарело, обновляем...")
+                    titles = self.update_schedule_for_day(day_of_week)
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
 
@@ -326,17 +324,11 @@ class AnimePlayerAppVer2(QWidget):
         if not titles:
             try:
                 data = self.get_schedule(day_of_week)
-                self.logger.debug(f"{data}")
+                self.logger.debug(f"Получены данные с сервера: {data}")
                 # Обработка данных и добавление их в базу данных
                 if data is True:
                     # После сохранения данных в базе получаем их снова
-                    titles = (
-                        session.query(Title)
-                        .options(joinedload(Title.episodes))
-                        .join(Schedule)
-                        .filter(Schedule.day_of_week == day_of_week)
-                        .all()
-                    )
+                    titles = self.get_titles_from_db(day_of_week)
             except Exception as e:
                 self.logger.error(f"Ошибка при получении тайтлов через get_schedule: {e}")
                 return
@@ -347,6 +339,70 @@ class AnimePlayerAppVer2(QWidget):
             title_browser = self.create_title_browser(title, show_description=False)
             self.posters_layout.addWidget(title_browser, index // num_columns, index % num_columns)
 
+        # Проверяем и обновляем расписание после отображения
+        self.check_and_update_schedule_after_display(day_of_week, titles)
+
+    def check_and_update_schedule_after_display(self, day_of_week, current_titles):
+        """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
+        try:
+            # Получаем актуальные данные из API
+            new_data = self.get_schedule(day_of_week)
+            if new_data:
+                for day_info in new_data:
+                    day = day_info.get("day")
+                    if day == day_of_week:
+                        new_titles = day_info.get("list", [])
+
+                        # Проверяем, изменилось ли количество эпизодов или другие данные
+                        if len(new_titles) != len(current_titles):
+                            self.logger.info(
+                                f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных...")
+                            self.invoke_database_save(new_titles)
+                        else:
+                            # Дополнительная проверка на изменения в данных
+                            for new_title, current_title in zip(new_titles, current_titles):
+                                if new_title.get('id') != current_title.title_id or \
+                                        new_title.get('name') != current_title.name_en or \
+                                        new_title.get('announce') != current_title.announce:
+                                    self.logger.info(
+                                        f"Обнаружены изменения в тайтле {new_title.get('name')}, обновляем базу данных...")
+                                    self.invoke_database_save([new_title])
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
+
+    def is_schedule_up_to_date(self, titles, day_of_week):
+        """Проверяет, актуально ли расписание в базе данных."""
+        # Простая проверка: если расписание отсутствует или если с момента последнего обновления прошло слишком много времени
+        if not titles:
+            return False
+
+        last_updated_time = max(title.last_updated for title in titles)
+        current_time = datetime.utcnow()
+        delta = current_time - last_updated_time
+        # Например, обновлять расписание, если прошло больше 24 часов с момента последнего обновления
+        if delta > timedelta(hours=24):
+            return False
+
+        return True
+
+
+
+    def get_titles_from_db(self, day_of_week):
+        """Получает список тайтлов для определенного дня недели из базы данных."""
+        session = self.db_manager.session
+        titles = []
+        if session is not None:
+            try:
+                titles = (
+                    session.query(Title)
+                    .options(joinedload(Title.episodes))  # Загрузка эпизодов вместе с тайтлом
+                    .join(Schedule)
+                    .filter(Schedule.day_of_week == day_of_week)
+                    .all()
+                )
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+        return titles
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие постеры из сетки."""
@@ -710,26 +766,28 @@ class AnimePlayerAppVer2(QWidget):
         self.display_info(title_id)
         self.current_data = data
 
-
     def get_schedule(self, day):
-        data = self.api_client.get_schedule(day)
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        if data is not None:
-            for day_info in data:
-                day = day_info.get("day")
-                title_list = day_info.get("list")
-                for title in title_list:
-                    title_id = title.get('id')
-                    if title_id:
-                        self.db_manager.save_schedule(day, title_id)
+        try:
+            data = self.api_client.get_schedule(day)
+            if 'error' in data:
+                self.logger.error(data['error'])
+                return None
+            if data is not None:
+                for day_info in data:
+                    day = day_info.get("day")
+                    title_list = day_info.get("list")
+                    for title in title_list:
+                        title_id = title.get('id')
+                        if title_id:
+                            self.db_manager.save_schedule(day, title_id)
 
-                self.invoke_database_save(title_list)
+                    self.invoke_database_save(title_list)
 
-        self.current_data = data
-        return True
-
+            self.current_data = data
+            return data  # Возвращаем данные вместо True
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении расписания: {e}")
+            return None
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.text()

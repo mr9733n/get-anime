@@ -85,7 +85,7 @@ class AnimePlayerAppVer2(QWidget):
         
         self.playlist_manager = PlaylistManager()
         self.poster_manager = PosterManager(
-            # display_callback=self.display_poster,
+            display_callback=self.display_poster,
             save_callback=self.save_poster_to_db
         )
         
@@ -102,109 +102,6 @@ class AnimePlayerAppVer2(QWidget):
 
         # Return paths to be used in the class
         return video_player_path, torrent_client_path
-
-
-    def get_poster(self, title_data):
-        try:
-            # Construct the poster URL
-            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
-
-            # Standardize the poster URL
-            standardized_url = self.standardize_url(poster_url)
-            self.logger.debug(f"Standardize the poster URL: {standardized_url}")
-
-            # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
-                return None
-
-
-            return standardized_url
-
-        except Exception as e:
-            error_message = f"An error occurred while getting the poster: {str(e)}"
-            self.logger.error(error_message)
-            return None
-
-
-    def save_poster_to_db(self, title_id, poster_blob):
-        try:
-            # Проверяем, существует ли уже постер для данного title_id
-            existing_poster = self.db_manager.session.query(Poster).filter_by(title_id=title_id).first()
-            if not existing_poster:
-                # Создаем новый объект Poster и добавляем в базу
-                new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
-                self.db_manager.session.add(new_poster)
-            else:
-                # Обновляем существующий постер
-                existing_poster.poster_blob = poster_blob
-                existing_poster.last_updated = datetime.utcnow()
-
-            self.db_manager.session.commit()
-        except Exception as e:
-            self.db_manager.session.rollback()
-            self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
-
-
-    def save_playlist_wrapper(self):
-        """
-        Wrapper function to handle saving the playlist.
-        Collects title names and links, and passes them to save_playlist.
-        """
-        if self.discovered_links:
-            self.sanitized_titles = [self.sanitize_filename(name) for name in self.title_names]
-            self.playlist_manager.save_playlist(self.sanitized_titles, self.discovered_links, self.stream_video_url)
-            self.logger.debug("Links was sent for saving playlist...")
-        else:
-            self.logger.error("No links was found for saving playlist.")
-
-
-    def play_playlist_wrapper(self):
-        """
-        Wrapper function to handle playing the playlist.
-        Determines the file name and passes it to play_playlist.
-        """
-        if not self.sanitized_titles:
-            self.logger.error("Playlist not found, please save playlist first.")
-            return
-
-        file_name = "_".join(self.sanitized_titles)[:100] + ".m3u"
-        video_player_path = self.video_player_path
-        self.playlist_manager.play_playlist(file_name, video_player_path)
-        self.logger.debug("Opening video player...")
-
-
-    def save_torrent_wrapper(self, link, title_name, torrent_id):
-        """
-        Wrapper function to handle saving the torrent.
-        Collects title names and links, and passes them to save_torrent_file.
-        """
-        try:
-            sanitized_title_name = self.sanitize_filename(title_name)
-            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
-
-            self.torrent_manager.save_torrent_file(link, file_name)
-            self.logger.debug("Opening torrent client ..")
-        except Exception as e:
-            error_message = f"Error in save_torrent_wrapper: {str(e)}"
-            self.logger.error(error_message)
-
-
-    @staticmethod
-    def sanitize_filename(name):
-        """
-        Sanitize the filename by removing special characters that are not allowed in filenames.
-        """
-        return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-
-    def standardize_url(self, url):
-        """
-        Standardizes the URL for consistent comparison.
-        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
-        """
-        # Basic URL standardization example: stripping spaces and removing query parameters
-        return url.strip().split('?')[0]
 
 
     def init_ui(self):
@@ -257,7 +154,9 @@ class AnimePlayerAppVer2(QWidget):
         # Кнопка "Random"
         self.random_button = QPushButton('Random', self)
         self.random_button.setStyleSheet(button_style)
+        self.random_button.clicked.connect(self.get_random_title)
         controls_layout.addWidget(self.random_button)
+
 
         # Метка "QLTY:"
         self.quality_label = QLabel('QLTY:', self)
@@ -331,20 +230,19 @@ class AnimePlayerAppVer2(QWidget):
         session = self.db_manager.session
         try:
             # Загружаем тайтлы для определенного дня недели и загружаем связанные эпизоды
-            titles = (
+            title = (
                 session.query(Title)
-                .options(joinedload(Title.episodes))  # Загрузка эпизодов вместе с тайтлом
-                 .filter(Title.title_id == title_id)  # Используем значение day_of_week
-                .all()
+                .filter(Title.title_id == title_id)
+                .one_or_none()  # Либо .first() для первого результата
             )
         except Exception as e:
             self.logger.error(f"Ошибка при загрузке тайтлов: {e}")
             return
 
         # Обновление UI с загруженными данными
-        for index, title in enumerate(titles):
-            title_browser = self.create_title_browser(title, show_description=False)
-            self.posters_layout.addWidget(title_browser, index // 2, index % 2)
+        title_browser = self.create_title_browser(title, show_description=True)
+        self.posters_layout.addWidget(title_browser)
+
 
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
@@ -390,6 +288,7 @@ class AnimePlayerAppVer2(QWidget):
         for index, title in enumerate(titles):
             title_browser = self.create_title_browser(title, show_description=False)
             self.posters_layout.addWidget(title_browser, index // num_columns, index % num_columns)
+
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие постеры из сетки."""
@@ -651,6 +550,7 @@ class AnimePlayerAppVer2(QWidget):
         title_type = title.type_full_string if title.type_full_string else ""
         return f"""<p>{title_type}</p>"""
 
+
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения списка эпизодов."""
         if not title.episodes:
@@ -662,6 +562,43 @@ class AnimePlayerAppVer2(QWidget):
             episodes_html += f'<li><a href="#">{episode_name}</a></li>'
         episodes_html += "</ul>"
         return episodes_html
+
+
+    def invoke_database_save(self, title_list):
+        for i, title_data in enumerate(title_list):
+            # Обработка постеров
+            self.process_poster_links(title_data)
+            # Обработка эпизодов
+            self.process_episodes(title_data)
+            # Обработка торрентов
+            self.process_torrents(title_data)
+            self.process_titles(title_data)
+
+
+    def get_random_title(self):
+        data = self.api_client.get_random_title()
+        if 'error' in data:
+            self.logger.error(data['error'])
+            return
+        self.logger.debug(f"Full response data: {data}")
+        # Получаем список тайтлов из ответа
+        title_list = data.get('list', [])
+        if not title_list:
+            self.logger.error("No titles found in the response.")
+            return
+
+        # Извлекаем первый элемент из списка и получаем его ID
+        title_data = title_list[0]
+        title_id = title_data.get('id')
+        self.invoke_database_save(title_list)
+
+        if title_id is None:
+            self.logger.error("Title ID not found in response.")
+            return
+
+        self.display_info(title_id)
+        self.current_data = data
+
 
     def get_schedule(self, day):
         data = self.api_client.get_schedule(day)
@@ -677,65 +614,8 @@ class AnimePlayerAppVer2(QWidget):
                     if title_id:
                         self.db_manager.save_schedule(day, title_id)
 
+                self.invoke_database_save(title_list)
 
-                for i, title_data in enumerate(title_list):
-
-
-                    # Обработка постеров
-                    self.process_poster_links(title_data)
-
-                    # Обработка эпизодов
-                    self.process_episodes(title_data)
-
-                    # Обработка торрентов
-                    self.process_torrents(title_data)
-
-                    title = title_data
-                    # Сохранение данных в базу данных через DatabaseManager
-                    try:
-                        # Сохранение тайтла
-                        if isinstance(title, dict):
-                            title_data = {
-                                'title_id': title.get('id'),
-                                'code': title.get('code'),
-                                'name_ru': title.get('names', {}).get('ru'),
-                                'name_en': title.get('names', {}).get('en'),
-                                'alternative_name': title.get('names', {}).get('alternative'),
-                                'franchises': json.dumps(title.get('franchises', [])),
-                                'announce': title.get('announce'),
-                                'status_string': title.get('status', {}).get('string'),
-                                'status_code': title.get('status', {}).get('code'),
-                                'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
-                                'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
-                                'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
-                                'updated': title.get('updated'),
-                                'last_change': title.get('last_change'),
-                                'type_full_string': title.get('type', {}).get('full_string'),
-                                'type_code': title.get('type', {}).get('code'),
-                                'type_string': title.get('type', {}).get('string'),
-                                'type_episodes': title.get('type', {}).get('episodes'),
-                                'type_length': title.get('type', {}).get('length'),
-                                'genres': json.dumps(title.get('genres', [])),
-                                'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
-                                'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
-                                'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
-                                'season_string': title.get('season', {}).get('string'),
-                                'season_code': title.get('season', {}).get('code'),
-                                'season_year': title.get('season', {}).get('year'),
-                                'season_week_day': title.get('season', {}).get('week_day'),
-                                'description': title.get('description'),
-                                'in_favorites': title.get('in_favorites'),
-                                'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
-                                'blocked_geoip': title.get('blocked', {}).get('geoip'),
-                                'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                                'last_updated': datetime.utcnow()  # Использование метода utcnow()
-                            }
-
-                            self.db_manager.save_title(title_data)
-                    except Exception as e:
-                        self.logger.error(f"Failed to save title to database: {e}")
-
-        self.poster_manager.clear_cache_and_memory()
         self.current_data = data
         return True
 
@@ -749,25 +629,25 @@ class AnimePlayerAppVer2(QWidget):
             self.logger.error(data['error'])
             return
 
-        title_data = data.get('list', {})
-        if not isinstance(title_data, dict):
-            self.logger.error(f"Invalid type for title. Expected dict, got {type(title_data)}")
+        # Получаем список тайтлов из ответа
+        title_list = data.get('list', [])
+        if not title_list:
+            self.logger.error("No titles found in the response.")
             return
+        self.invoke_database_save(title_list)
+        # Перебираем каждый тайтл в списке и обрабатываем его
+        for title_data in title_list:
+            title_id = title_data.get('id')
+            if title_id is None:
+                self.logger.error("Title ID not found in response.")
+                continue
 
-        title_id = title_data.get('title_id', {})
+            # Вызываем метод display_info для каждого тайтла
+            self.display_info(title_id)
 
-        # Обработка постеров
-        self.process_poster_links(title_data)
-
-        # Обработка эпизодов
-        self.process_episodes(title_data)
-
-        # Обработка торрентов
-        self.process_torrents(title_data)
-
-        self.poster_manager.clear_cache_and_memory()
-        self.display_info(title_id)
+        # Сохраняем текущие данные
         self.current_data = data
+
 
     def process_poster_links(self, title_data):
         poster_links = []
@@ -779,6 +659,102 @@ class AnimePlayerAppVer2(QWidget):
 
         if poster_links:
             self.poster_manager.write_poster_links(poster_links)
+
+
+    def save_poster_to_db(self, title_id, poster_blob):
+        try:
+            # Проверяем, существует ли уже постер для данного title_id
+            existing_poster = self.db_manager.session.query(Poster).filter_by(title_id=title_id).first()
+            if not existing_poster:
+                # Создаем новый объект Poster и добавляем в базу
+                new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
+                self.db_manager.session.add(new_poster)
+            else:
+                # Обновляем существующий постер
+                existing_poster.poster_blob = poster_blob
+                existing_poster.last_updated = datetime.utcnow()
+
+            self.db_manager.session.commit()
+        except Exception as e:
+            self.db_manager.session.rollback()
+            self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+
+
+    def display_poster(self, poster_image, title_id):
+        if poster_image:
+            try:
+                pixmap = QPixmap()
+                if not pixmap.loadFromData(poster_image):
+                    self.logger.error(f"Ошибка: Не удалось загрузить изображение для title_id: {title_id}")
+                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+
+                # Используем QBuffer для сохранения в байтовый массив
+                byte_array = QByteArray()
+                buffer = QBuffer(byte_array)
+                buffer.open(QBuffer.WriteOnly)
+                if not pixmap.save(buffer, 'PNG'):
+                    self.logger.error(
+                        f"Ошибка: Не удалось сохранить изображение в формат PNG для title_id: {title_id}")
+                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+
+                # Преобразуем данные в Base64
+                poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
+                self.logger.debug(f"Base64 изображение (часть): {poster_base64[:16]}...")  # Вывести первые 16 символов
+                return poster_base64
+            except Exception as e:
+                self.logger.error(f"Ошибка при обработке постера для title_id: {title_id} - {e}")
+                return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+        else:
+            self.logger.warning(f"Предупреждение: Нет данных для постера для title_id: {title_id}")
+            return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+
+
+    def process_titles(self, title_data):
+        title = title_data
+        # Сохранение данных в базу данных через DatabaseManager
+        try:
+            # Сохранение тайтла
+            if isinstance(title, dict):
+                title_data = {
+                    'title_id': title.get('id'),
+                    'code': title.get('code'),
+                    'name_ru': title.get('names', {}).get('ru'),
+                    'name_en': title.get('names', {}).get('en'),
+                    'alternative_name': title.get('names', {}).get('alternative'),
+                    'franchises': json.dumps(title.get('franchises', [])),
+                    'announce': title.get('announce'),
+                    'status_string': title.get('status', {}).get('string'),
+                    'status_code': title.get('status', {}).get('code'),
+                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
+                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
+                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
+                    'updated': title.get('updated'),
+                    'last_change': title.get('last_change'),
+                    'type_full_string': title.get('type', {}).get('full_string'),
+                    'type_code': title.get('type', {}).get('code'),
+                    'type_string': title.get('type', {}).get('string'),
+                    'type_episodes': title.get('type', {}).get('episodes'),
+                    'type_length': title.get('type', {}).get('length'),
+                    'genres': json.dumps(title.get('genres', [])),
+                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
+                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
+                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
+                    'season_string': title.get('season', {}).get('string'),
+                    'season_code': title.get('season', {}).get('code'),
+                    'season_year': title.get('season', {}).get('year'),
+                    'season_week_day': title.get('season', {}).get('week_day'),
+                    'description': title.get('description'),
+                    'in_favorites': title.get('in_favorites'),
+                    'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
+                    'blocked_geoip': title.get('blocked', {}).get('geoip'),
+                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
+                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
+                }
+
+                self.db_manager.save_title(title_data)
+        except Exception as e:
+            self.logger.error(f"Failed to save title to database: {e}")
+
 
     def process_episodes(self, title_data):
         selected_quality = self.quality_dropdown.currentText()
@@ -806,6 +782,7 @@ class AnimePlayerAppVer2(QWidget):
                     self.db_manager.save_episode(episode_data)
                 except Exception as e:
                     self.logger.error(f"Failed to save episode to database: {e}")
+
 
     def process_torrents(self, title_data):
         if "torrents" in title_data and "list" in title_data["torrents"]:
@@ -837,11 +814,87 @@ class AnimePlayerAppVer2(QWidget):
                     except Exception as e:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
 
-    def get_random_title(self):
-        data = self.api_client.get_random_title()
-        if 'error' in data:
-            self.logger.error(data['error'])
+
+
+    def get_poster(self, title_data):
+        try:
+            # Construct the poster URL
+            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
+
+            # Standardize the poster URL
+            standardized_url = self.standardize_url(poster_url)
+            self.logger.debug(f"Standardize the poster URL: {standardized_url}")
+
+            # Check if the standardized URL is already in the cached poster links
+            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
+                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+                return None
+
+
+            return standardized_url
+
+        except Exception as e:
+            error_message = f"An error occurred while getting the poster: {str(e)}"
+            self.logger.error(error_message)
+            return None
+
+
+    def save_playlist_wrapper(self):
+        """
+        Wrapper function to handle saving the playlist.
+        Collects title names and links, and passes them to save_playlist.
+        """
+        if self.discovered_links:
+            self.sanitized_titles = [self.sanitize_filename(name) for name in self.title_names]
+            self.playlist_manager.save_playlist(self.sanitized_titles, self.discovered_links, self.stream_video_url)
+            self.logger.debug("Links was sent for saving playlist...")
+        else:
+            self.logger.error("No links was found for saving playlist.")
+
+
+    def play_playlist_wrapper(self):
+        """
+        Wrapper function to handle playing the playlist.
+        Determines the file name and passes it to play_playlist.
+        """
+        if not self.sanitized_titles:
+            self.logger.error("Playlist not found, please save playlist first.")
             return
-        self.poster_manager.clear_cache_and_memory()
-        self.display_info(data)
-        self.current_data = data
+
+        file_name = "_".join(self.sanitized_titles)[:100] + ".m3u"
+        video_player_path = self.video_player_path
+        self.playlist_manager.play_playlist(file_name, video_player_path)
+        self.logger.debug("Opening video player...")
+
+
+    def save_torrent_wrapper(self, link, title_name, torrent_id):
+        """
+        Wrapper function to handle saving the torrent.
+        Collects title names and links, and passes them to save_torrent_file.
+        """
+        try:
+            sanitized_title_name = self.sanitize_filename(title_name)
+            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
+
+            self.torrent_manager.save_torrent_file(link, file_name)
+            self.logger.debug("Opening torrent client ..")
+        except Exception as e:
+            error_message = f"Error in save_torrent_wrapper: {str(e)}"
+            self.logger.error(error_message)
+
+
+    @staticmethod
+    def sanitize_filename(name):
+        """
+        Sanitize the filename by removing special characters that are not allowed in filenames.
+        """
+        return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+
+    def standardize_url(self, url):
+        """
+        Standardizes the URL for consistent comparison.
+        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
+        """
+        # Basic URL standardization example: stripping spaces and removing query parameters
+        return url.strip().split('?')[0]

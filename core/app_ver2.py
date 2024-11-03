@@ -139,6 +139,7 @@ class AnimePlayerAppVer2(QWidget):
         # Кнопка "Find"
         self.display_button = QPushButton('Find', self)
         self.display_button.setStyleSheet(button_style)
+        self.display_button.clicked.connect(self.get_search_by_title)
         controls_layout.addWidget(self.display_button)
 
         # Кнопка "Random"
@@ -213,6 +214,7 @@ class AnimePlayerAppVer2(QWidget):
 
         # Устанавливаем основной layout для окна
         self.setLayout(main_layout)
+
 
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_dropdown.currentText()
@@ -658,7 +660,7 @@ class AnimePlayerAppVer2(QWidget):
 
 
     def get_search_by_title(self):
-        search_text = self.title_search_entry.get()
+        search_text = self.title_search_entry.text()
         if not search_text:
             return
 

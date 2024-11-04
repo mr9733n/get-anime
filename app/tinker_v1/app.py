@@ -44,6 +44,7 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
 
 class AnimePlayerAppVer1:
     def __init__(self, window):
+
         self.cache_file_path = "poster_cache.txt"
         self.poster_links = []
         self.config_manager = ConfigManager('config.ini')
@@ -392,10 +393,10 @@ class AnimePlayerAppVer1:
 
     def clear_cache_file(self):
         try:
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils' folder.")
+                self.log_message(f"Created 'temp' folder.")
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             if os.path.exists(cache_file):
                 os.remove(cache_file)
@@ -408,10 +409,10 @@ class AnimePlayerAppVer1:
     def read_poster_links(self):
         poster_links = []
         try:
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils' folder.")
+                self.log_message(f"Created 'temp' folder.")
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             if os.path.exists(cache_file):
                 with open(cache_file, "r") as file:
@@ -426,10 +427,10 @@ class AnimePlayerAppVer1:
 
     def write_poster_links(self, poster_links):
         try:
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils' folder.")
+                self.log_message(f"Created 'temp' folder.")
             cache_file = os.path.join(utils_folder, self.cache_file_path)
             with open(cache_file, "a") as file:
                 for link in poster_links:

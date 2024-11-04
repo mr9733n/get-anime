@@ -45,7 +45,7 @@ class AnimePlayerAppVer2:
         self.playlist_manager = PlaylistManager()
         self.poster_manager = PosterManager(
             display_callback=self.ui_manager.display_poster,
-            save_callback=self.save_poster_to_db
+            save_callback=self.db_manager.save_poster_to_db
         )
 
     def load_config(self):

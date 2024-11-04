@@ -14,13 +14,13 @@ from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 def run_tkinter_app_v1():
     import tkinter as tk
     window = tk.Tk()
-    app_tk_v1 = AnimePlayerAppVer1(window)
+    app = AnimePlayerAppVer1(window)
     window.mainloop()
 
 def run_tkinter_app_v2(db_manager):
     import tkinter as tk
     window = tk.Tk()
-    app_tk_v2 = AnimePlayerAppVer2(window, db_manager)
+    app = AnimePlayerAppVer2(window, db_manager)
     window.mainloop()
 
 def run_pyqt_app(db_manager):

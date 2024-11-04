@@ -267,9 +267,7 @@ class FrontManager:
                 self.logger.debug(f"Poster url: {poster_url}")
 
         if poster_links:
-
-
-        # Add all collected poster links at once
+            # Add all collected poster links at once
             self.app.poster_manager.write_poster_links(poster_links)
 
         episodes_found = False

@@ -5,6 +5,7 @@ import os
 import platform
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 
@@ -14,6 +15,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
+
+from core import database_manager
 from core.database_manager import Title, Schedule, Episode, Torrent
 from sqlalchemy.orm import joinedload
 import base64
@@ -51,7 +54,8 @@ class CreateTitleBrowserTask(QRunnable):
 
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
-    def __init__(self, database_manager):
+
+    def __init__(self, db_manager):
         super().__init__()
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(2)
@@ -109,10 +113,11 @@ class AnimePlayerAppVer3(QWidget):
         self.api_client = APIClient(self.base_url, self.api_version)
         self.poster_manager = PosterManager()
         self.playlist_manager = PlaylistManager()
+        self.db_manager = db_manager
         self.poster_manager = PosterManager(
-            save_callback=self.save_poster_to_db,
+            save_callback=self.db_manager.save_poster_to_db,
         )
-        self.db_manager = database_manager
+
         self.init_ui()
 
     @pyqtSlot(QTextBrowser, int, int)
@@ -269,6 +274,7 @@ class AnimePlayerAppVer3(QWidget):
         #  Load 4 titles on start from DB
         self.display_titles()
 
+
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_dropdown.currentText()
         data = self.current_data
@@ -315,11 +321,10 @@ class AnimePlayerAppVer3(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
-
     def display_titles(self):
         """Отображение первых тайтлов при старте."""
         # Загружаем первую партию тайтлов
-        titles = self.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+        titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
 
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
@@ -341,7 +346,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def load_more_titles(self):
         """Загружает и отображает следующие тайтлы."""
-        titles = self.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+        titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
 
         # Если тайтлы закончились, прекращаем загрузку
         if not titles:
@@ -370,7 +375,7 @@ class AnimePlayerAppVer3(QWidget):
         self.clear_previous_posters()
 
         # Получаем тайтл из базы данных по его идентификатору
-        titles = self.get_titles_from_db(title_id=title_id)
+        titles = self.db_manager.get_titles_from_db(title_id=title_id)
 
         if not titles or titles[0] is None:
             self.logger.error(f"Title with title_id {title_id} not found in the database.")
@@ -392,7 +397,7 @@ class AnimePlayerAppVer3(QWidget):
         if session is not None:
             try:
                 # Проверка наличия тайтлов в базе данных для данного дня недели
-                titles = self.get_titles_from_db(day_of_week)
+                titles = self.db_manager.get_titles_from_db(day_of_week)
 
                 # Проверка, нужно ли обновить расписание (например, устаревшие данные)
                 if not self.is_schedule_up_to_date(titles, day_of_week):
@@ -410,7 +415,7 @@ class AnimePlayerAppVer3(QWidget):
                 # Обработка данных и добавление их в базу данных
                 if data is True:
                     # После сохранения данных в базе получаем их снова
-                    titles = self.get_titles_from_db(day_of_week)
+                    titles = self.db_manager.get_titles_from_db(day_of_week)
             except Exception as e:
                 self.logger.error(f"Ошибка при получении тайтлов через get_schedule: {e}")
                 return
@@ -466,20 +471,6 @@ class AnimePlayerAppVer3(QWidget):
             return False
 
         return True
-
-    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
-        """Gets titles from the database using the DatabaseManager."""
-        titles = []
-        if self.db_manager.session is not None:
-            try:
-                query = self.db_manager.get_titles_query(day_of_week=day_of_week, show_all=show_all, title_id=title_id)
-                if batch_size:
-                    query = query.offset(offset).limit(batch_size)
-                titles = query.all()
-            except Exception as e:
-                self.logger.error(f"Error fetching titles from the database: {e}")
-
-        return titles
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие постеры из сетки."""
@@ -785,18 +776,15 @@ class AnimePlayerAppVer3(QWidget):
 
         return f"""<p>Жанры: {genres}</p>"""
 
-
     def generate_announce_html(self, title):
         """Генерирует HTML для отображения анонса."""
         title_announced = title.announce if title.announce else 'Анонс отсутствует'
         return f"""<p>Анонс: {title_announced}</p>"""
 
-
     def generate_status_html(self, title):
         """Генерирует HTML для отображения статуса."""
         title_status = title.status_string if title.status_string else "Статус отсутствует"
         return f"""<p>Статус: {title_status}</p>"""
-
 
     def generate_description_html(self, title):
         """Генерирует HTML для отображения описания, если оно есть."""
@@ -805,18 +793,15 @@ class AnimePlayerAppVer3(QWidget):
         else:
             return ""
 
-
     def generate_year_html(self, title):
         """Генерирует HTML для отображения года выпуска."""
         title_year = title.season_year if title.season_year else "Год отсутствует"
         return f"""<p>Год выпуска: {title_year}</p>"""
 
-
     def generate_type_html(self, title):
         """Генерирует HTML для отображения типа аниме."""
         title_type = title.type_full_string if title.type_full_string else ""
         return f"""<p>{title_type}</p>"""
-
 
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
@@ -868,17 +853,15 @@ class AnimePlayerAppVer3(QWidget):
 
         return episodes_html
 
-
     def invoke_database_save(self, title_list):
         for i, title_data in enumerate(title_list):
             # Обработка постеров
             self.process_poster_links(title_data)
             # Обработка эпизодов
-            self.process_episodes(title_data)
+            self.db_manager.process_episodes(title_data)
             # Обработка торрентов
-            self.process_torrents(title_data)
-            self.process_titles(title_data)
-
+            self.db_manager.process_torrents(title_data)
+            self.db_manager.process_titles(title_data)
 
     def get_random_title(self):
         data = self.api_client.get_random_title()
@@ -902,6 +885,7 @@ class AnimePlayerAppVer3(QWidget):
             return
 
         self.display_info(title_id)
+
         self.current_data = data
 
     def get_schedule(self, day):
@@ -956,7 +940,6 @@ class AnimePlayerAppVer3(QWidget):
         # Сохраняем текущие данные
         self.current_data = data
 
-
     def process_poster_links(self, title_data):
         poster_links = []
         if "posters" in title_data and title_data.get("posters", {}).get("small"):
@@ -967,137 +950,6 @@ class AnimePlayerAppVer3(QWidget):
 
         if poster_links:
             self.poster_manager.write_poster_links(poster_links)
-
-
-    def save_poster_to_db(self, title_id, poster_blob):
-        try:
-            # Проверяем, существует ли уже постер для данного title_id
-            existing_poster = self.db_manager.session.query(Poster).filter_by(title_id=title_id).first()
-            if not existing_poster:
-                # Создаем новый объект Poster и добавляем в базу
-                new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
-                self.db_manager.session.add(new_poster)
-            else:
-                # Обновляем существующий постер
-                existing_poster.poster_blob = poster_blob
-                existing_poster.last_updated = datetime.utcnow()
-
-            self.db_manager.session.commit()
-            # Display the poster after a successful save
-            # time.sleep(10)
-            # self.display_info(title_id)
-
-        except Exception as e:
-            self.db_manager.session.rollback()
-            self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
-
-
-    def process_titles(self, title_data):
-        title = title_data
-        # Сохранение данных в базу данных через DatabaseManager
-        try:
-            # Сохранение тайтла
-            if isinstance(title, dict):
-                title_data = {
-                    'title_id': title.get('id'),
-                    'code': title.get('code'),
-                    'name_ru': title.get('names', {}).get('ru'),
-                    'name_en': title.get('names', {}).get('en'),
-                    'alternative_name': title.get('names', {}).get('alternative'),
-                    'franchises': json.dumps(title.get('franchises', [])),
-                    'announce': title.get('announce'),
-                    'status_string': title.get('status', {}).get('string'),
-                    'status_code': title.get('status', {}).get('code'),
-                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
-                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
-                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
-                    'updated': title.get('updated'),
-                    'last_change': title.get('last_change'),
-                    'type_full_string': title.get('type', {}).get('full_string'),
-                    'type_code': title.get('type', {}).get('code'),
-                    'type_string': title.get('type', {}).get('string'),
-                    'type_episodes': title.get('type', {}).get('episodes'),
-                    'type_length': title.get('type', {}).get('length'),
-                    'genres': json.dumps(title.get('genres', [])),
-                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
-                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
-                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
-                    'season_string': title.get('season', {}).get('string'),
-                    'season_code': title.get('season', {}).get('code'),
-                    'season_year': title.get('season', {}).get('year'),
-                    'season_week_day': title.get('season', {}).get('week_day'),
-                    'description': title.get('description'),
-                    'in_favorites': title.get('in_favorites'),
-                    'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
-                    'blocked_geoip': title.get('blocked', {}).get('geoip'),
-                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
-                }
-
-                self.db_manager.save_title(title_data)
-        except Exception as e:
-            self.logger.error(f"Failed to save title to database: {e}")
-
-
-    def process_episodes(self, title_data):
-        selected_quality = self.quality_dropdown.currentText()
-        for episode in title_data.get("player", {}).get("list", {}).values():
-            if not isinstance(episode, dict):
-                self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
-                continue
-
-            if "hls" in episode and selected_quality in episode["hls"]:
-                try:
-                    episode_data = {
-                        'episode_id': episode.get('id'),
-                        'title_id': title_data.get('id'),
-                        'episode_number': episode.get('episode'),
-                        'name': episode.get('name', f'Серия {episode.get("episode")}'),
-                        'uuid': episode.get('uuid'),
-                        'created_timestamp': episode.get('created_timestamp'),
-                        'hls_fhd': episode.get('hls', {}).get('fhd'),
-                        'hls_hd': episode.get('hls', {}).get('hd'),
-                        'hls_sd': episode.get('hls', {}).get('sd'),
-                        'preview_path': episode.get('preview'),
-                        'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
-                        'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
-                    }
-                    self.db_manager.save_episode(episode_data)
-                except Exception as e:
-                    self.logger.error(f"Failed to save episode to database: {e}")
-
-
-    def process_torrents(self, title_data):
-        if "torrents" in title_data and "list" in title_data["torrents"]:
-            for torrent in title_data["torrents"]["list"]:
-                url = torrent.get("url")
-                if url:
-                    try:
-                        torrent_data = {
-                            'torrent_id': torrent.get('torrent_id'),
-                            'title_id': title_data.get('id'),
-                            'episodes_range': torrent.get('episodes', {}).get('string', 'Неизвестный диапазон'),
-                            'quality': torrent.get('quality', {}).get('string', 'Качество не указано'),
-                            'quality_type': torrent.get('quality', {}).get('type'),
-                            'resolution': torrent.get('quality', {}).get('resolution'),
-                            'encoder': torrent.get('quality', {}).get('encoder'),
-                            'leechers': torrent.get('leechers'),
-                            'seeders': torrent.get('seeders'),
-                            'downloads': torrent.get('downloads'),
-                            'total_size': torrent.get('total_size'),
-                            'size_string': torrent.get('size_string'),
-                            'url': torrent.get('url'),
-                            'magnet_link': torrent.get('magnet'),
-                            'uploaded_timestamp': torrent.get('uploaded_timestamp'),
-                            'hash': torrent.get('hash'),
-                            'torrent_metadata': torrent.get('metadata'),
-                            'raw_base64_file': torrent.get('raw_base64_file')
-                        }
-                        self.db_manager.save_torrent(torrent_data)
-                    except Exception as e:
-                        self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
-
-
 
     def get_poster(self, title_data):
         try:
@@ -1120,7 +972,6 @@ class AnimePlayerAppVer3(QWidget):
             error_message = f"An error occurred while getting the poster: {str(e)}"
             self.logger.error(error_message)
             return None
-
 
     def on_link_click(self, url):
         try:
@@ -1226,14 +1077,12 @@ class AnimePlayerAppVer3(QWidget):
             error_message = f"Error in save_torrent_wrapper: {str(e)}"
             self.logger.error(error_message)
 
-
     @staticmethod
     def sanitize_filename(name):
         """
         Sanitize the filename by removing special characters that are not allowed in filenames.
         """
         return re.sub(r'[<>:"/\\|?*]', '_', name)
-
 
     def standardize_url(self, url):
         """
@@ -1242,3 +1091,9 @@ class AnimePlayerAppVer3(QWidget):
         """
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = AnimePlayerAppVer3(database_manager)
+    window.show()
+    sys.exit(app.exec_())

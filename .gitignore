@@ -1,7 +1,5 @@
 *.m3u
-
 *.json
-
 .DS_Store
 poster_cache.txt
 
@@ -11,32 +9,26 @@ temp/*
 legacy-1.8.0/*
 torrents/*
 playlists/*
+db/*
 
 utils/*.json
 playlists/A.I.C.O.
 shared/get_data.py
-temp/response.json
+
 idea/get-anime.iml
 
+__pycache__/*
 helper/__pycache__/*
 utils/__pycache__/*
-__pycache__/*
 core/__pycache__/*
-managers/__pycache__/__init__.cpython-312.pyc
-managers/__pycache__/config_manager.cpython-312.pyc
-managers/__pycache__/data_manager.cpython-312.pyc
-managers/__pycache__/playlist_manager.cpython-312.pyc
-managers/__pycache__/poster_manager.cpython-312.pyc
-managers/__pycache__/torrent_manager.cpython-312.pyc
-ui/__pycache__/__init__.cpython-312.pyc
-ui/__pycache__/ui_dearpygui.cpython-312.pyc
+managers/__pycache__/*
+ui/__pycache__/*
+app/__pycache__/*
+app/qt/__pycache__/*
+app/tinker_v1/__pycache__/*
+app/tinker_v2/__pycache__/*
+app/tinker_v3/__pycache__/*
+
 get_anime.zip
-345435435.db
-anime_player.db
-345435.db
-432432432.db
-43534543.db
-453543543.db
-56465464.db
-435435343.db
+
 

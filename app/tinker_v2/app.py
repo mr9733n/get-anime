@@ -12,9 +12,9 @@ from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
-from core.ui import FrontManager
+from app.tinker_v2.ui import FrontManager
 
-class AnimePlayerApp:
+class AnimePlayerAppVer2:
     def __init__(self, window, db_manager):
         self.sanitized_titles = []
         self.logger = logging.getLogger(__name__)

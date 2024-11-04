@@ -70,11 +70,12 @@ class PosterManager:
                 poster_image = Image.open(link_io)
 
                 # Display and save poster
+                if self.display_callback:
+                    self.display_callback(title_id=title_id, poster_image=poster_image)
 
                 if self.save_callback:
                     self.save_callback(title_id, response.content)
-                if self.display_callback:
-                    self.display_callback(title_id)
+
 
                 self.poster_images.append((poster_image, title_id))
             except UnidentifiedImageError:

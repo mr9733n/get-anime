@@ -5,19 +5,26 @@ import threading
 from PyQt5.QtWidgets import QApplication
 
 # Импортируем классы версий приложения
-from core.app import AnimePlayerApp  # Tkinter версия
+from app.tinker_v1.app import AnimePlayerAppVer1 # Tinker version 1
+from app.tinker_v2.app import AnimePlayerAppVer2  # Tkinter версия 2
 from core.database_manager import DatabaseManager  # База данных
-from app_ver2 import AnimePlayerAppVer2  # PyQt версия
+from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 
-def run_tkinter_app(db_manager):
+def run_tkinter_app_v1():
     import tkinter as tk
     window = tk.Tk()
-    app_tk = AnimePlayerApp(window, db_manager)
+    app_tk_v1 = AnimePlayerAppVer2(window)
+    window.mainloop()
+
+def run_tkinter_app_v2(db_manager):
+    import tkinter as tk
+    window = tk.Tk()
+    app_tk_v2 = AnimePlayerAppVer2(window, db_manager)
     window.mainloop()
 
 def run_pyqt_app(db_manager):
     app_pyqt = QApplication(sys.argv)
-    window_pyqt = AnimePlayerAppVer2(db_manager)
+    window_pyqt = AnimePlayerAppVer3(db_manager)
     window_pyqt.show()
     sys.exit(app_pyqt.exec_())
 
@@ -30,18 +37,23 @@ if __name__ == "__main__":
 
     # Парсим аргументы командной строки
     parser = argparse.ArgumentParser(description="Запуск версий Anime Player")
-    parser.add_argument('--tkinter', action='store_true', help="Запустить версию с Tkinter")
-    parser.add_argument('--pyqt', action='store_true', help="Запустить версию с PyQt")
+    parser.add_argument('--version1', action='store_true', help="Запустить версию с Tkinter version 1.0.0")
+    parser.add_argument('--version2', action='store_true', help="Запустить версию с Tkinter version 2.0.0")
+    parser.add_argument('--version3', action='store_true', help="Запустить версию с PyQt version 3.0.0")
     args = parser.parse_args()
 
     # Запуск выбранных версий в разных потоках
     threads = []
 
-    if args.tkinter:
-        thread_tk = threading.Thread(target=run_tkinter_app, args=(db_manager,))
-        threads.append(thread_tk)
+    if args.version1:
+        thread_tk_v1 = threading.Thread(target=run_tkinter_app_v1, args=(db_manager,))
+        threads.append(thread_tk_v1)
 
-    if args.pyqt:
+    if args.version2:
+        thread_tk_v2 = threading.Thread(target=run_tkinter_app_v2, args=(db_manager,))
+        threads.append(thread_tk_v2)
+
+    if args.version3:
         thread_pyqt = threading.Thread(target=run_pyqt_app, args=(db_manager,))
         threads.append(thread_pyqt)
 

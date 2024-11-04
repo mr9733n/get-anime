@@ -175,6 +175,28 @@ class FrontManager:
         self.display_info(data)
         self.app.current_data = data
 
+    def get_poster(self, title_data):
+        try:
+            # Construct the poster URL
+            poster_url = self.pre + self.app.base_url + title_data["posters"]["small"]["url"]
+
+            # Standardize the poster URL
+            standardized_url = self.app.standardize_url(poster_url)
+            self.logger.debug(f"Standardize the poster URL: {standardized_url}")
+
+            # Check if the standardized URL is already in the cached poster links
+            if standardized_url in map(self.app.standardize_url, self.app.poster_manager.poster_links):
+                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+                return None
+
+
+            return standardized_url
+
+        except Exception as e:
+            error_message = f"An error occurred while getting the poster: {str(e)}"
+            self.logger.error(error_message)
+            return None
+
     def display_title_info(self, title, index, show_description=True):
         """
         Вспомогательная функция для отображения информации о тайтле.
@@ -223,15 +245,17 @@ class FrontManager:
                            lambda event, en=en_name: self.on_title_click(event, en))
 
         poster_links = []
-
         if "posters" in title and title.get("posters", {}).get("small"):
-            poster_url = self.app.get_poster(title)
+            poster_url = self.get_poster(title)
             if poster_url:
                 poster_links.append((title['id'], poster_url))
                 self.logger.debug(f"Poster url: {poster_url}")
 
+        if poster_links:
+
+
         # Add all collected poster links at once
-        self.app.poster_manager.write_poster_links(poster_links)
+            self.app.poster_manager.write_poster_links(poster_links)
 
         episodes_found = False
         selected_quality = self.quality_var.get()

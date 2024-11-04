@@ -21,7 +21,29 @@ class DatabaseManager:
         self.session = SessionLocal()
 
     def initialize_tables(self):
+        # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(engine)
+
+        # Добавляем заглушку изображения, если оно не добавлено
+        session = SessionLocal()
+        try:
+            placeholder_poster = session.query(Poster).filter_by(title_id=-1).first()
+            if not placeholder_poster:
+                with open('static/no_image.png', 'rb') as image_file:
+                    poster_blob = image_file.read()
+                    placeholder_poster = Poster(
+                        title_id=-1,  # Используем отрицательный идентификатор для заглушки
+                        poster_blob=poster_blob,
+                        last_updated=datetime.utcnow()
+                    )
+                    session.add(placeholder_poster)
+                    session.commit()
+                    self.logger.info("Placeholder image 'no_image.png' was added to posters table.")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Error initializing placeholder image in posters table: {e}")
+        finally:
+            session.close()
 
     def save_title(self, title_data):
         try:

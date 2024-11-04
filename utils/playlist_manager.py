@@ -25,7 +25,7 @@ class PlaylistManager:
         :param stream_video_url: Base URL for constructing the full links.
         :param links: List of links to be included in the playlist.
         """
-        file_name = "_".join(sanitized_titles)[:100] + ".m3u"  # Limit the length to avoid file name issues
+        file_name = "".join(sanitized_titles)[:100] + ".m3u"  # Limit the length to avoid file name issues
         file_path = os.path.join(self.playlist_path, file_name)
 
         if os.path.exists(file_path):
@@ -44,6 +44,8 @@ class PlaylistManager:
         except Exception as e:
             error_message = f"Failed to save playlist: {str(e)}"
             self.logger.error(error_message)
+
+        return file_name
 
     def play_playlist(self, file_name, video_player_path):
         """

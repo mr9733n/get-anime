@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy
+    QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
@@ -57,8 +57,9 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager):
         super().__init__()
+        self.load_more_button = None
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
-        self.thread_pool.setMaxThreadCount(2)
+        self.thread_pool.setMaxThreadCount(4)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.playlist_filename = None
         self.play_playlist_button = None
@@ -143,62 +144,98 @@ class AnimePlayerAppVer3(QWidget):
         # Верхняя часть контролов
         controls_layout = QHBoxLayout()
 
-        # Общий стиль для кнопок
-        button_style = """
-            QPushButton {
-                background-color: #4CAF50;  /* Зеленый фон */
-                border: none;
-                color: white;
-                padding: 6px 12px;
-                text-align: center;
-                font-size: 14px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """
-
         # Поле для поиска
         self.title_search_entry = QLineEdit(self)
         self.title_search_entry.setPlaceholderText('TITLE NAME')
         self.title_search_entry.setMinimumWidth(100)
-        self.title_search_entry.setMaximumWidth(150)
+        self.title_search_entry.setMaximumWidth(200)
         self.title_search_entry.setStyleSheet("""
             QLineEdit {
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 4px;
+                background-color: #f7f7f7;
+                border: 1px solid #dcdcdc;
+                border-radius: 6px;
+                padding: 6px;
                 font-size: 14px;
+                color: #333;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0078d4;
+                background-color: #ffffff;
             }
         """)
         controls_layout.addWidget(self.title_search_entry)
 
+        # Универсальный стиль для кнопок
+        button_style_template = """
+            QPushButton {{
+                background-color: {background_color};
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+                border: 1px solid #888;
+            }}
+            QPushButton:pressed {{
+                background-color: {pressed_color};
+                border: 1px solid #555;
+            }}
+        """
+
+        # Цвета для различных кнопок - все в оттенках серого
+        button_colors = [
+            ("#4a4a4a", "#5c5c5c", "#3b3b3b"),  # Темно-серый для "FIND"
+            ("#6e6e6e", "#7f7f7f", "#595959"),  # Светло-серый для "MON"
+            ("#7a7a7a", "#8a8a8a", "#626262"),  # Средний серый для "TUE"
+            ("#9a9a9a", "#ababab", "#7b7b7b"),  # Серый для "WED"
+            ("#555555", "#666666", "#3e3e3e"),  # Темный для "THU"
+            ("#8c8c8c", "#9e9e9e", "#767676"),  # Более светлый для "FRI"
+            ("#7e7e7e", "#8f8f8f", "#6a6a6a"),  # Насыщенный для "SAT"
+            ("#6b6b6b", "#7c7c7c", "#525252"),  # Средний для "SUN"
+            ("#5a5a5a", "#6c6c6c", "#474747")   # Темный для других кнопок
+        ]
+
         # Кнопка "Find"
+        find_style = button_style_template.format(
+            background_color=button_colors[0][0],
+            hover_color=button_colors[0][1],
+            pressed_color=button_colors[0][2]
+        )
         self.display_button = QPushButton('FIND', self)
-        self.display_button.setStyleSheet(button_style)
+        self.display_button.setStyleSheet(find_style)
         self.display_button.clicked.connect(self.get_search_by_title)
         controls_layout.addWidget(self.display_button)
 
-        # Дни недели
+
+
+        # Дни недели с индивидуальными стилями
         self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
         self.day_buttons = []
 
         for i, day in enumerate(self.days_of_week):
             button = QPushButton(day, self)
-            button.clicked.connect(
-                lambda checked, i=i: self.display_titles_for_day(i))
+            button_style = button_style_template.format(
+                background_color=button_colors[i + 1][0],
+                hover_color=button_colors[i + 1][1],
+                pressed_color=button_colors[i + 1][2]
+            )
             button.setStyleSheet(button_style)
+            button.clicked.connect(lambda checked, i=i: self.display_titles_for_day(i))
             controls_layout.addWidget(button)
             self.day_buttons.append(button)
 
-        # Добавляем контролы в основной layout
-        main_layout.addLayout(controls_layout)
-
         # Кнопка "Random"
+        random_style = button_style_template.format(
+            background_color=button_colors[5][0],
+            hover_color=button_colors[5][1],
+            pressed_color=button_colors[5][2]
+        )
         self.random_button = QPushButton('RANDOM', self)
-        self.random_button.setStyleSheet(button_style)
+        self.random_button.setStyleSheet(random_style)
         self.random_button.clicked.connect(self.get_random_title)
         controls_layout.addWidget(self.random_button)
 
@@ -206,8 +243,10 @@ class AnimePlayerAppVer3(QWidget):
         self.quality_label = QLabel('QLTY:', self)
         self.quality_label.setStyleSheet("""
             QLabel {
-                font-size: 14px;
+                font-size: 16px;
+                font-weight: bold;
                 color: #333;
+                margin-right: 8px;
             }
         """)
         controls_layout.addWidget(self.quality_label)
@@ -217,39 +256,61 @@ class AnimePlayerAppVer3(QWidget):
         self.quality_dropdown.addItems(['fhd', 'hd', 'sd'])
         self.quality_dropdown.setStyleSheet("""
             QComboBox {
-                background-color: #f0f0f0;
+                background-color: #f7f7f7;
                 border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 4px;
+                border-radius: 6px;
+                padding: 6px;
                 font-size: 14px;
+                color: #333;
+            }
+            QComboBox:drop-down {
+                border-left: 1px solid #ccc;
+                width: 20px;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                selection-background-color: #4CAF50;
+                background-color: #ffffff;
+                border: 1px solid #aaa;
+                selection-background-color: #0078d4;
+                selection-color: #fff;
             }
         """)
         controls_layout.addWidget(self.quality_dropdown)
 
         # Кнопка "Refresh"
+        refresh_style = button_style_template.format(
+            background_color=button_colors[6][0],
+            hover_color=button_colors[6][1],
+            pressed_color=button_colors[6][2]
+        )
         self.refresh_button = QPushButton('REFRESH', self)
-        self.refresh_button.setStyleSheet(button_style)
+        self.refresh_button.setStyleSheet(refresh_style)
         self.refresh_button.clicked.connect(self.update_quality_and_refresh)
         controls_layout.addWidget(self.refresh_button)
 
         # Кнопка "Save Playlist"
+        save_style = button_style_template.format(
+            background_color=button_colors[7][0],
+            hover_color=button_colors[7][1],
+            pressed_color=button_colors[7][2]
+        )
         self.save_playlist_button = QPushButton('SAVE', self)
-        self.save_playlist_button.setStyleSheet(button_style)
-        self.save_playlist_button.clicked.connect(self.save_playlist_wrapper)  # Подключаем к обертке
+        self.save_playlist_button.setStyleSheet(save_style)
+        self.save_playlist_button.clicked.connect(self.save_playlist_wrapper)
         controls_layout.addWidget(self.save_playlist_button)
 
         # Кнопка "Play Playlist"
+        play_style = button_style_template.format(
+            background_color=button_colors[4][0],
+            hover_color=button_colors[4][1],
+            pressed_color=button_colors[4][2]
+        )
         self.play_playlist_button = QPushButton('PLAY', self)
-        self.play_playlist_button.setStyleSheet(button_style)
-        self.play_playlist_button.clicked.connect(self.play_playlist_wrapper)  # Подключаем к обертке
+        self.play_playlist_button.setStyleSheet(play_style)
+        self.play_playlist_button.clicked.connect(self.play_playlist_wrapper)
         controls_layout.addWidget(self.play_playlist_button)
 
         # Устанавливаем основной layout для виджета
-        self.setLayout(main_layout)
+        main_layout.addLayout(controls_layout)
 
         # Динамическая часть для отображения постеров
         self.posters_layout = QGridLayout()
@@ -259,21 +320,45 @@ class AnimePlayerAppVer3(QWidget):
         # Контейнер для отображения постеров
         self.poster_container = QWidget()
         self.poster_container.setLayout(self.posters_layout)
+        self.poster_container.setStyleSheet(f"""
+            QWidget {{
+                background-image: url( 'static/background.png');
+                background-position: center;
+                background-attachment: fixed;
+                background-color: rgba(240, 240, 240, 0.5); 
+            }}
+        """)
 
         self.scroll_area.setWidget(self.poster_container)
         main_layout.addWidget(self.scroll_area)
+
         # Устанавливаем основной layout для окна
         self.setLayout(main_layout)
 
         # Добавляем кнопку "Загрузить еще" для ленивой загрузки
+        load_more_style = button_style_template.format(
+            background_color="#4a4a4a",
+            hover_color="#5c5c5c",
+            pressed_color="#3b3b3b"
+        )
         self.load_more_button = QPushButton('LOAD MORE', self)
-        self.load_more_button.setStyleSheet(button_style)
+        self.load_more_button.setStyleSheet(load_more_style)
         self.load_more_button.clicked.connect(self.load_more_titles)
         self.layout().addWidget(self.load_more_button)
 
-        #  Load 4 titles on start from DB
-        self.display_titles()
+        shadow_effect = QGraphicsDropShadowEffect()
+        shadow_effect.setBlurRadius(8)
+        shadow_effect.setOffset(2, 2)
+        self.display_button.setGraphicsEffect(shadow_effect)
+        self.random_button.setGraphicsEffect(shadow_effect)
+        self.load_more_button.setGraphicsEffect(shadow_effect)
+        self.save_playlist_button.setGraphicsEffect(shadow_effect)
+        self.play_playlist_button.setGraphicsEffect(shadow_effect)
+        self.refresh_button.setGraphicsEffect(shadow_effect)
+        self.quality_dropdown.setGraphicsEffect(shadow_effect)
 
+        # Load 4 titles on start from DB
+        self.display_titles()
 
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_dropdown.currentText()
@@ -391,23 +476,13 @@ class AnimePlayerAppVer3(QWidget):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
 
-        session = self.db_manager.session
-        titles = []
+        titles = self.db_manager.get_titles_from_db(day_of_week)
 
-        if session is not None:
-            try:
-                # Проверка наличия тайтлов в базе данных для данного дня недели
-                titles = self.db_manager.get_titles_from_db(day_of_week)
+        # Проверка, нужно ли обновить расписание (например, устаревшие данные)
+        if not self.is_schedule_up_to_date(titles, day_of_week):
+            self.logger.info(f"Расписание для дня {day_of_week} устарело, обновляем...")
+            titles = self.update_schedule_for_day(day_of_week)
 
-                # Проверка, нужно ли обновить расписание (например, устаревшие данные)
-                if not self.is_schedule_up_to_date(titles, day_of_week):
-                    self.logger.info(f"Расписание для дня {day_of_week} устарело, обновляем...")
-                    titles = self.update_schedule_for_day(day_of_week)
-
-            except Exception as e:
-                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
-
-        # Если в базе данных нет данных, то получаем их через get_schedule()
         if not titles:
             try:
                 data = self.get_schedule(day_of_week)
@@ -467,17 +542,34 @@ class AnimePlayerAppVer3(QWidget):
         current_time = datetime.utcnow()
         delta = current_time - last_updated_time
         # Например, обновлять расписание, если прошло больше 24 часов с момента последнего обновления
-        if delta > timedelta(hours=24):
+        if delta > timedelta(hours=1):
             return False
 
         return True
 
     def clear_previous_posters(self):
-        """Удаляет все предыдущие постеры из сетки."""
-        for i in reversed(range(self.posters_layout.count())):
-            widget_to_remove = self.posters_layout.itemAt(i).widget()
+        """Удаляет все предыдущие виджеты из сетки постеров."""
+        while self.posters_layout.count():
+            item = self.posters_layout.takeAt(0)
+            widget_to_remove = item.widget()
+
             if widget_to_remove is not None:
-                widget_to_remove.setParent(None)
+                widget_to_remove.deleteLater()  # Полностью удаляет виджет из памяти
+
+            # Также проверяем, если в сетке может быть элемент, а не виджет (например, пустое место)
+            if item.layout() is not None:
+                self.clear_layout(item.layout())
+
+    def clear_layout(self, layout):
+        """Рекурсивно очищает все элементы из переданного layout."""
+        if layout is not None:
+            while layout.count():
+                item = layout.takeAt(0)
+                widget_to_remove = item.widget()
+                if widget_to_remove is not None:
+                    widget_to_remove.deleteLater()
+                elif item.layout() is not None:
+                    self.clear_layout(item.layout())
 
     def create_title_browser(self, title, show_description=False, show_one_title=False):
         """Создает элемент интерфейса для отображения информации о тайтле."""
@@ -494,19 +586,19 @@ class AnimePlayerAppVer3(QWidget):
             if not poster_data:
                 # Если постер не найден, попробуем получить заглушку с title_id=-1
                 self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
-                poster_data = self.db_manager.get_poster_blob(-1)
+                poster_data = self.db_manager.get_poster_blob(2)
 
             if poster_data:
                 pixmap = QPixmap()
                 if pixmap.loadFromData(poster_data):
-                    poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
+                    poster_label.setPixmap(pixmap.scaled(550, 650, Qt.KeepAspectRatio))
                 else:
                     self.logger.error(f"Error: Failed to load pixmap from data for title_id: {title.title_id}")
                     # Используем статическую картинку-заглушку в случае, если даже загрузка pixmap не удалась
-                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(550, 650, Qt.KeepAspectRatio))
             else:
                 # Если данные постера отсутствуют даже для заглушки, используем статическое изображение
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(550, 650, Qt.KeepAspectRatio))
 
             title_layout.addWidget(poster_label)
 
@@ -514,7 +606,7 @@ class AnimePlayerAppVer3(QWidget):
             title_browser = QTextBrowser(self)
             title_browser.setPlainText(f"Title: {title.name_en}")
             title_browser.setOpenExternalLinks(True)
-            title_browser.setFixedSize(455, 650)  # Set the size of the information browser
+            title_browser.setFixedSize(550, 650)  # Set the size of the information browser
             title_browser.setProperty('title_id', title.title_id)
 
             html_content = self.get_title_html(title, show_description=True, show_more_link=False)
@@ -534,7 +626,7 @@ class AnimePlayerAppVer3(QWidget):
             title_browser = QTextBrowser(self)
             title_browser.setPlainText(f"Title: {title.name_en}")
             title_browser.setOpenExternalLinks(True)
-            title_browser.setFixedSize(455, 650)  # Размер плитки
+            title_browser.setFixedSize(550, 650)  # Размер плитки
             title_browser.setProperty('title_id', title.title_id)
 
             html_content = self.get_title_html(title, show_description, show_more_link=True)
@@ -546,7 +638,7 @@ class AnimePlayerAppVer3(QWidget):
     def get_title_html(self, title, show_description=False, show_more_link=False):
         """Генерирует HTML для отображения информации о тайтле."""
         # Получаем данные постера
-        poster_html = self.generate_poster_html(title) if show_more_link else ""
+        poster_html = self.generate_poster_html(title) if show_more_link else f"background-image: url('static/background.png');"
         # Декодируем жанры и получаем другие поля
         genres_html = self.generate_genres_html(title)
         announce_html = self.generate_announce_html(title)
@@ -578,6 +670,8 @@ class AnimePlayerAppVer3(QWidget):
                         background-position: center;
                         background-size: cover;
                         background-attachment: fixed;
+                        background-color: rgb(240, 240, 240); /* Светлее, чем #999 */
+
                         font-size: 12pt;
                         text-align: right;
                         color: #000;
@@ -730,13 +824,13 @@ class AnimePlayerAppVer3(QWidget):
 
         # Если даже заглушка не найдена, возвращаем URL к статическому изображению
         if not poster_data:
-            return 'background-image: url("");'
+            return f"background-image: url('static/background.png');"
 
         try:
             pixmap = QPixmap()
             if not pixmap.loadFromData(poster_data):
                 self.logger.error(f"Error: Failed to load image data for title_id: {title.title_id}")
-                return 'background-image: url("");'
+                return f"background-image: url('static/background.png');"
 
             # Используем QBuffer для сохранения в байтовый массив
             byte_array = QByteArray()
@@ -744,14 +838,14 @@ class AnimePlayerAppVer3(QWidget):
             buffer.open(QBuffer.WriteOnly)
             if not pixmap.save(buffer, 'PNG'):
                 self.logger.error(f"Error: Failed to save image as PNG for title_id: {title.title_id}")
-                return 'background-image: url("");'
+                return f"background-image: url('static/background.png');"
 
             # Преобразуем данные в Base64
             poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
             return f'background-image: url("data:image/png;base64,{poster_base64}");'
         except Exception as e:
             self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
-            return 'background-image: url("");'
+            return f"background-image: url('static/background.png');"
 
     def generate_genres_html(self, title):
         """Генерирует HTML для отображения жанров."""

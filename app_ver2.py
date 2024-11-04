@@ -7,15 +7,13 @@ import re
 import subprocess
 import time
 from datetime import datetime, timedelta
-from time import sleep
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
-
 from core.database_manager import Title, Schedule, Episode, Torrent
 from sqlalchemy.orm import joinedload
 import base64
@@ -28,10 +26,36 @@ from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
 
+class CreateTitleBrowserTask(QRunnable):
+    def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
+        super().__init__()
+        self.app = app
+        self.title = title
+        self.row = row
+        self.column = column
+        self.show_description = show_description
+        self.show_one_title = show_one_title
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            # Создаем виджет для отображения информации о тайтле
+            title_browser = self.app.create_title_browser(self.title, self.show_description, self.show_one_title)
+            self.app.logger.debug(f"Created title browser for title_id: {self.title.title_id}")
+
+            # Emit signal to add the widget to the layout in the main thread
+            self.app.add_title_browser_to_layout.emit(title_browser, self.row, self.column)
+        except Exception as e:
+            self.app.logger.error(f"Error in CreateTitleBrowserTask for title_id {self.title.title_id}: {e}")
+
+
 class AnimePlayerAppVer2(QWidget):
+    add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
     def __init__(self, database_manager):
         super().__init__()
-
+        self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
+        self.thread_pool.setMaxThreadCount(2)
+        self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.playlist_filename = None
         self.play_playlist_button = None
         self.save_playlist_button = None
@@ -53,6 +77,9 @@ class AnimePlayerAppVer2(QWidget):
         self.sanitized_titles = []
         self.title_names = []
         self.playlists = {}
+        self.titles_batch_size = 4  # Количество тайтлов, которые загружаются за раз
+        self.current_offset = 0     # Текущий смещение для выборки тайтлов
+        self.total_titles = []
 
         self.logger = logging.getLogger(__name__)
 
@@ -84,11 +111,13 @@ class AnimePlayerAppVer2(QWidget):
         self.playlist_manager = PlaylistManager()
         self.poster_manager = PosterManager(
             save_callback=self.save_poster_to_db,
-            #display_callback=self.display_poster,
         )
         self.db_manager = database_manager
         self.init_ui()
 
+    @pyqtSlot(QTextBrowser, int, int)
+    def on_add_title_browser_to_layout(self, title_browser, row, column):
+        self.posters_layout.addWidget(title_browser, row, column)
 
     def setup_paths(self):
         """Sets up paths based on the current platform and returns them for use."""
@@ -99,10 +128,9 @@ class AnimePlayerAppVer2(QWidget):
         # Return paths to be used in the class
         return video_player_path, torrent_client_path
 
-
     def init_ui(self):
         self.setWindowTitle('Anime Player v2')
-        self.setGeometry(100, 100, 980, 725)
+        self.setGeometry(100, 100, 980, 750)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -229,10 +257,17 @@ class AnimePlayerAppVer2(QWidget):
 
         self.scroll_area.setWidget(self.poster_container)
         main_layout.addWidget(self.scroll_area)
-
         # Устанавливаем основной layout для окна
         self.setLayout(main_layout)
 
+        # Добавляем кнопку "Загрузить еще" для ленивой загрузки
+        self.load_more_button = QPushButton('LOAD MORE', self)
+        self.load_more_button.setStyleSheet(button_style)
+        self.load_more_button.clicked.connect(self.load_more_titles)
+        self.layout().addWidget(self.load_more_button)
+
+        #  Load 4 titles on start from DB
+        self.display_titles()
 
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_dropdown.currentText()
@@ -280,6 +315,57 @@ class AnimePlayerAppVer2(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
+    #
+    # Fixme: Very long operation. For DEBUG use only!
+    #
+    def display_titles(self):
+        """Отображение первых тайтлов при старте."""
+        # Загружаем первую партию тайтлов
+        titles = self.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+
+        # Обновляем offset для следующей загрузки
+        self.current_offset += self.titles_batch_size
+
+        # Сохраняем загруженные тайтлы в список для доступа позже
+        self.total_titles.extend(titles)
+
+        # Отображаем тайтлы в UI
+        num_columns = 2  # Количество колонок для отображения
+        for index, title in enumerate(titles):
+            row = (index + self.current_offset - self.titles_batch_size) // num_columns
+            column = index % num_columns
+            self.add_title_to_layout(title, row, column)
+
+    def add_title_to_layout(self, title, row, column):
+        """Создает виджет для тайтла и добавляет его в макет."""
+        title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+        self.posters_layout.addWidget(title_browser, row, column)
+
+    def load_more_titles(self):
+        """Загружает и отображает следующие тайтлы."""
+        titles = self.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+
+        # Если тайтлы закончились, прекращаем загрузку
+        if not titles:
+            self.logger.info("Больше нет тайтлов для загрузки.")
+            return
+
+        # Обновляем offset для следующей загрузки
+        self.current_offset += self.titles_batch_size
+
+        # Сохраняем загруженные тайтлы в список для доступа позже
+        self.total_titles.extend(titles)
+
+        # Отображаем новые тайтлы в UI
+        num_columns = 2  # Количество колонок для отображения
+        for index, title in enumerate(titles):
+            row = (index + self.current_offset - self.titles_batch_size) // num_columns
+            column = index % num_columns
+            self.add_title_to_layout(title, row, column)
+
+    def start_create_title_task(self, title, row, column):
+        task = CreateTitleBrowserTask(self, title, row, column, show_description=False, show_one_title=False)
+        self.thread_pool.start(task)
 
     def display_info(self, title_id):
         self.clear_previous_posters()
@@ -388,23 +474,25 @@ class AnimePlayerAppVer2(QWidget):
 
         return True
 
-
-
-    def get_titles_from_db(self, day_of_week):
-        """Получает список тайтлов для определенного дня недели из базы данных."""
+    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0):
+        """Получает список тайтлов для определенного дня недели или все тайтлы, если указано show_all."""
         session = self.db_manager.session
         titles = []
+
         if session is not None:
             try:
-                titles = (
-                    session.query(Title)
-                    .options(joinedload(Title.episodes))  # Загрузка эпизодов вместе с тайтлом
-                    .join(Schedule)
-                    .filter(Schedule.day_of_week == day_of_week)
-                    .all()
-                )
+                query = session.query(Title).options(joinedload(Title.episodes))
+                if not show_all:
+                    query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
+
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+
+                titles = query.all()
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+
         return titles
 
     def clear_previous_posters(self):

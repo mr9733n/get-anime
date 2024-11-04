@@ -42,11 +42,11 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         return f"{base_filename}_{current_date}.{file_extension}"
 
 
-class AnimePlayerApp:
+class AnimePlayerAppVer1:
     def __init__(self, window):
         self.cache_file_path = "poster_cache.txt"
         self.poster_links = []
-        self.config_manager = ConfigManager('config.ini')
+        self.config_manager = ConfigManager('../../config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
         self.window = window
@@ -279,7 +279,7 @@ class AnimePlayerApp:
             torrent_client_path = self.torrent_client_path
 
             # Если ссылка — это торрент URL, корректируем и скачиваем его
-            torrent_save_path = 'torrents'
+            torrent_save_path = '../../torrents'
             if not os.path.exists(torrent_save_path):
                 os.makedirs(torrent_save_path)
 

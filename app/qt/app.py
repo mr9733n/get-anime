@@ -49,7 +49,7 @@ class CreateTitleBrowserTask(QRunnable):
             self.app.logger.error(f"Error in CreateTitleBrowserTask for title_id {self.title.title_id}: {e}")
 
 
-class AnimePlayerAppVer2(QWidget):
+class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
     def __init__(self, database_manager):
         super().__init__()

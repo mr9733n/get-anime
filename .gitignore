@@ -1,5 +1,5 @@
 *.m3u
-*.png
+
 *.json
 
 .DS_Store
@@ -39,3 +39,4 @@ anime_player.db
 453543543.db
 56465464.db
 435435343.db
+

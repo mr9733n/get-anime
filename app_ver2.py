@@ -315,9 +315,7 @@ class AnimePlayerAppVer2(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
-    #
-    # Fixme: Very long operation. For DEBUG use only!
-    #
+
     def display_titles(self):
         """Отображение первых тайтлов при старте."""
         # Загружаем первую партию тайтлов
@@ -368,22 +366,17 @@ class AnimePlayerAppVer2(QWidget):
         self.thread_pool.start(task)
 
     def display_info(self, title_id):
+        """Отображает информацию о конкретном тайтле."""
         self.clear_previous_posters()
-        session = self.db_manager.session
-        try:
-            # Загружаем тайтл и загружаем связанные эпизоды
-            title = (
-                session.query(Title)
-                .filter(Title.title_id == title_id)
-                .one_or_none()  # Либо .first() для первого результата
-            )
-        except Exception as e:
-            self.logger.error(f"Ошибка при загрузке тайтлов: {e}")
-            return
 
-        if title is None:
+        # Получаем тайтл из базы данных по его идентификатору
+        titles = self.get_titles_from_db(title_id=title_id)
+
+        if not titles or titles[0] is None:
             self.logger.error(f"Title with title_id {title_id} not found in the database.")
             return
+
+        title = titles[0]
 
         # Обновление UI с загруженными данными
         title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
@@ -474,24 +467,17 @@ class AnimePlayerAppVer2(QWidget):
 
         return True
 
-    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0):
-        """Получает список тайтлов для определенного дня недели или все тайтлы, если указано show_all."""
-        session = self.db_manager.session
+    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
+        """Gets titles from the database using the DatabaseManager."""
         titles = []
-
-        if session is not None:
+        if self.db_manager.session is not None:
             try:
-                query = session.query(Title).options(joinedload(Title.episodes))
-                if not show_all:
-                    query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
-
+                query = self.db_manager.get_titles_query(day_of_week=day_of_week, show_all=show_all, title_id=title_id)
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
-
                 titles = query.all()
-
             except Exception as e:
-                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                self.logger.error(f"Error fetching titles from the database: {e}")
 
         return titles
 

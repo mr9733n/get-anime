@@ -2,7 +2,7 @@ import json
 import logging
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text
-from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates
+from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -157,6 +157,22 @@ class DatabaseManager:
             self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
         finally:
             self.session.close()
+
+    def get_titles_query(self, day_of_week=None, show_all=False, title_id=None):
+        """
+        Returns a SQLAlchemy query for fetching titles based on given conditions.
+        :param day_of_week: Specific day of the week to filter by.
+        :param show_all: If true, returns all titles.
+        :param title_id: If specified, returns a title with the given title_id.
+        :return: SQLAlchemy Query object
+        """
+        query = self.session.query(Title).options(joinedload(Title.episodes))
+        if title_id:
+            query = query.filter(Title.title_id == title_id)
+        elif not show_all:
+            query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
+
+        return query
 
     def save_torrent(self, torrent_data):
         try:

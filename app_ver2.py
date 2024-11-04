@@ -1,6 +1,7 @@
 import ast
 import json
 import logging
+import os
 import platform
 import re
 import subprocess
@@ -12,7 +13,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer
 from PyQt5.QtGui import QPixmap
 
 from core.database_manager import Title, Schedule, Episode, Torrent
@@ -31,6 +32,7 @@ class AnimePlayerAppVer2(QWidget):
     def __init__(self, database_manager):
         super().__init__()
 
+        self.playlist_filename = None
         self.play_playlist_button = None
         self.save_playlist_button = None
         self.current_data = None
@@ -50,6 +52,7 @@ class AnimePlayerAppVer2(QWidget):
         self.title_search_entry = None
         self.sanitized_titles = []
         self.title_names = []
+        self.playlists = {}
 
         self.logger = logging.getLogger(__name__)
 
@@ -297,8 +300,8 @@ class AnimePlayerAppVer2(QWidget):
             return
 
         # Обновление UI с загруженными данными
-        title_browser = self.create_title_browser(title, show_description=True)
-        self.posters_layout.addWidget(title_browser)
+        title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
+        self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
 
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
@@ -336,7 +339,7 @@ class AnimePlayerAppVer2(QWidget):
         # Обновление UI с загруженными данными
         num_columns = 2  # Задайте количество колонок для отображения
         for index, title in enumerate(titles):
-            title_browser = self.create_title_browser(title, show_description=False)
+            title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
             self.posters_layout.addWidget(title_browser, index // num_columns, index % num_columns)
 
         # Проверяем и обновляем расписание после отображения
@@ -411,24 +414,71 @@ class AnimePlayerAppVer2(QWidget):
             if widget_to_remove is not None:
                 widget_to_remove.setParent(None)
 
-
-    def create_title_browser(self, title, show_description=False):
+    def create_title_browser(self, title, show_description=False, show_one_title=False):
         """Создает элемент интерфейса для отображения информации о тайтле."""
-        title_browser = QTextBrowser(self)
-        title_browser.setOpenExternalLinks(True)
-        title_browser.setFixedSize(455, 650)  # Размер плитки
+        self.logger.debug("Начинаем создание title_browser...")
+        if show_one_title:
+            # Create a new horizontal layout for displaying the title details
+            title_layout = QHBoxLayout()
+            self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
 
-        title_browser.setProperty('title_id', title.title_id)
+            # Poster on the left
+            poster_label = QLabel(self)
+            poster_data = self.db_manager.get_poster_blob(title.title_id)
 
-        html_content = self.get_title_html(title, show_description)
-        title_browser.setHtml(html_content)
+            if not poster_data:
+                # Если постер не найден, попробуем получить заглушку с title_id=-1
+                self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
+                poster_data = self.db_manager.get_poster_blob(-1)
 
-        title_browser.anchorClicked.connect(self.on_link_click)
+            if poster_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(poster_data):
+                    poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
+                else:
+                    self.logger.error(f"Error: Failed to load pixmap from data for title_id: {title.title_id}")
+                    # Используем статическую картинку-заглушку в случае, если даже загрузка pixmap не удалась
+                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+            else:
+                # Если данные постера отсутствуют даже для заглушки, используем статическое изображение
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
 
-        return title_browser
+            title_layout.addWidget(poster_label)
 
+            # Title information on the right
+            title_browser = QTextBrowser(self)
+            title_browser.setPlainText(f"Title: {title.name_en}")
+            title_browser.setOpenExternalLinks(True)
+            title_browser.setFixedSize(455, 650)  # Set the size of the information browser
+            title_browser.setProperty('title_id', title.title_id)
 
-    def get_title_html(self, title, show_description=False):
+            html_content = self.get_title_html(title, show_description=True, show_more_link=False)
+            title_browser.setHtml(html_content)
+
+            # Connect link click event
+            title_browser.anchorClicked.connect(self.on_link_click)
+
+            # Add the title information to the layout
+            title_layout.addWidget(title_browser)
+
+            return title_layout
+
+        else:
+            self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
+            # Default layout for schedule view
+            title_browser = QTextBrowser(self)
+            title_browser.setPlainText(f"Title: {title.name_en}")
+            title_browser.setOpenExternalLinks(True)
+            title_browser.setFixedSize(455, 650)  # Размер плитки
+            title_browser.setProperty('title_id', title.title_id)
+
+            html_content = self.get_title_html(title, show_description, show_more_link=True)
+            title_browser.setHtml(html_content)
+            title_browser.anchorClicked.connect(self.on_link_click)
+           # title_browser.mouseDoubleClickEvent(self.display_info(title.title_id))
+            return title_browser
+
+    def get_title_html(self, title, show_description=False, show_more_link=False):
         """Генерирует HTML для отображения информации о тайтле."""
         # Получаем данные постера
         poster_html = self.generate_poster_html(title)
@@ -436,6 +486,7 @@ class AnimePlayerAppVer2(QWidget):
         genres_html = self.generate_genres_html(title)
         announce_html = self.generate_announce_html(title)
         status_html = self.generate_status_html(title)
+        show_more_html = self.generate_show_more_html(title) if show_more_link else ""
         description_html = self.generate_description_html(title) if show_description else ""
         year_html = self.generate_year_html(title)
         type_html = self.generate_type_html(title)
@@ -457,7 +508,7 @@ class AnimePlayerAppVer2(QWidget):
                     }}
 
                     body {{
-                        background-image: url("data:image/png;base64,{poster_html}");
+                        {poster_html}
                         background-repeat: no-repeat;
                         background-position: center;
                         background-size: cover;
@@ -555,10 +606,11 @@ class AnimePlayerAppVer2(QWidget):
                 <div>
                         <p class="header">{title.name_en}</p>
                         <p class="header">{title.name_ru}</p>
-
+                        <p class="header">{show_more_html}</p>
                     <div>
                         {announce_html}
                         {status_html}
+
                         {description_html}
                         {genres_html}
                         {year_html}
@@ -581,6 +633,9 @@ class AnimePlayerAppVer2(QWidget):
         """
         return html_content
 
+    def generate_show_more_html(self, title):
+        """Generates HTML to display 'show more' link"""
+        return f'<a href=display_info/{title.title_id}>Подробнее</a>'
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
@@ -598,37 +653,40 @@ class AnimePlayerAppVer2(QWidget):
         torrents_html += "</ul>"
         return torrents_html
 
-
     def generate_poster_html(self, title):
-        """Генерирует HTML для постера в формате Base64."""
+        """Generates HTML for the poster in Base64 format or returns a placeholder."""
+        # Попытка получить постер из базы данных
         poster_data = self.db_manager.get_poster_blob(title.title_id)
-        if poster_data:
-            try:
-                pixmap = QPixmap()
-                if not pixmap.loadFromData(poster_data):
-                    self.logger.error(f"Ошибка: Не удалось загрузить изображение для title_id: {title.title_id}")
-                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
 
-                # Используем QBuffer для сохранения в байтовый массив
-                byte_array = QByteArray()
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.WriteOnly)
-                if not pixmap.save(buffer, 'PNG'):
-                    self.logger.error(
-                        f"Ошибка: Не удалось сохранить изображение в формат PNG для title_id: {title.title_id}")
-                    return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+        # Если постер не найден, берем постер-заглушку с title_id=-1
+        if not poster_data:
+            self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
+            poster_data = self.db_manager.get_poster_blob(-1)
 
-                # Преобразуем данные в Base64
-                poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-                self.logger.debug(f"Base64 изображение (часть): {poster_base64[:16]}...")  # Вывести первые 16 символов
-                return poster_base64
-            except Exception as e:
-                self.logger.error(f"Ошибка при обработке постера для title_id: {title.title_id} - {e}")
-                return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
-        else:
-            self.logger.warning(f"Предупреждение: Нет данных для постера для title_id: {title.title_id}")
-            return '<div style="width:455px;height:650px;background-color:#ccc;"></div>'
+        # Если даже заглушка не найдена, возвращаем URL к статическому изображению
+        if not poster_data:
+            return 'background-image: url("");'
 
+        try:
+            pixmap = QPixmap()
+            if not pixmap.loadFromData(poster_data):
+                self.logger.error(f"Error: Failed to load image data for title_id: {title.title_id}")
+                return 'background-image: url("");'
+
+            # Используем QBuffer для сохранения в байтовый массив
+            byte_array = QByteArray()
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.WriteOnly)
+            if not pixmap.save(buffer, 'PNG'):
+                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title.title_id}")
+                return 'background-image: url("");'
+
+            # Преобразуем данные в Base64
+            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
+            return f'background-image: url("data:image/png;base64,{poster_base64}");'
+        except Exception as e:
+            self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
+            return 'background-image: url("");'
 
     def generate_genres_html(self, title):
         """Генерирует HTML для отображения жанров."""
@@ -696,7 +754,6 @@ class AnimePlayerAppVer2(QWidget):
         # Очищаем списки для ссылок и заголовков перед заполнением
         self.discovered_links = []
         self.sanitized_titles = []
-
         for i, episode in enumerate(title.episodes):
             episode_name = episode.name if episode.name else f'Серия {i + 1}'
 
@@ -723,8 +780,15 @@ class AnimePlayerAppVer2(QWidget):
 
         episodes_html += "</ul>"
         # Добавляем имя эпизода в sanitized_titles
+
         sanitized_name = self.sanitize_filename(title.code)
         self.sanitized_titles.append(sanitized_name)
+
+        if self.discovered_links:
+            self.playlists[title.title_id] = {
+                'links': self.discovered_links,
+                'sanitized_title': sanitized_name
+            }
         self.logger.debug(f"discovered_links: {self.discovered_links}")
         self.logger.debug(f"sanitized_name: {sanitized_name}")
 
@@ -988,7 +1052,13 @@ class AnimePlayerAppVer2(QWidget):
         try:
             link = url.toString()  # Преобразуем объект QUrl в строку
 
-            if link.endswith('.m3u8'):
+            if link.startswith('display_info/'):
+                # Получаем title_id из ссылки и вызываем display_info
+                title_id = int(link.split('/')[1])
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
+
+                return
+            elif link.endswith('.m3u8'):
                 video_player_path = self.video_player_path
                 open_link = self.pre + self.stream_video_url + link
                 media_player_command = [video_player_path, open_link]
@@ -1008,25 +1078,48 @@ class AnimePlayerAppVer2(QWidget):
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.logger.error(error_message)
 
-
     def save_playlist_wrapper(self):
         """
-        Wrapper function to handle saving the playlist.
-        Collects title names and links, and passes them to save_playlist.
+        Wrapper function to handle saving the playlists.
+        Iterates through all discovered playlists and saves them.
         """
-        # Проверим, есть ли ссылки, которые были найдены
-        if self.discovered_links:
-            # Убедимся, что есть и названия
-            if not self.sanitized_titles:
-                self.logger.error("Title names not found. Please generate the titles before saving playlist.")
-                return
+        self.playlist_filename = None
+        if not self.playlists:
+            self.logger.error("No playlists found to save.")
+            return
 
-            self.logger.debug(f"Saving playlist with links: {self.discovered_links}")
-            self.playlist_manager.save_playlist(self.sanitized_titles, self.discovered_links, self.stream_video_url)
-            self.logger.debug("Links were sent for saving playlist...")
+        for title_id, playlist in self.playlists.items():
+            sanitized_title = playlist['sanitized_title']
+            discovered_links = playlist['links']
+            if discovered_links:
+                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links, self.stream_video_url)
+                self.logger.debug(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
+            else:
+                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+
+        # Теперь сохраняем общий комбинированный плейлист
+        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[
+                                     :100] + ".m3u"
+        combined_links = []
+
+        # Собираем все ссылки из всех плейлистов
+        for playlist_info in self.playlists.values():
+            combined_links.extend(playlist_info['links'])
+
+        # Сохраняем комбинированный плейлист
+        if combined_links:
+            if os.path.exists(os.path.join("playlists", combined_playlist_filename)):
+                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"  # Добавляем временной штамп для уникальности
+
+            filename = self.playlist_manager.save_playlist(combined_playlist_filename, combined_links,
+                                                           self.stream_video_url)
+            if filename:
+                self.logger.debug(f"Combined playlist '{filename}' saved.")
+                self.playlist_filename = filename
+            else:
+                self.logger.error("Failed to save the combined playlist.")
         else:
-            self.logger.error("No links were found for saving playlist.")
-
+            self.logger.error("No valid links found for saving the combined playlist.")
 
     def play_playlist_wrapper(self):
         """
@@ -1037,7 +1130,7 @@ class AnimePlayerAppVer2(QWidget):
             self.logger.error("Playlist not found, please save playlist first.")
             return
 
-        file_name = "_".join(self.sanitized_titles)[:100] + ".m3u"
+        file_name = self.playlist_filename
         video_player_path = self.video_player_path
         self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
         self.playlist_manager.play_playlist(file_name, video_player_path)

@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication
 # Импортируем классы версий приложения
 from core.app import AnimePlayerApp  # Tkinter версия
 from core.database_manager import DatabaseManager  # База данных
-from core.app_ver2 import AnimePlayerAppVer2  # PyQt версия
+from app_ver2 import AnimePlayerAppVer2  # PyQt версия
 
 def run_tkinter_app(db_manager):
     import tkinter as tk

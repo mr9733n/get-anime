@@ -1,31 +1,28 @@
 import json
 import logging
+import os
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
 
-
-# Создаем базовый класс для всех моделей
 Base = declarative_base()
 
-# Настраиваем соединение с базой данных
-engine = create_engine('sqlite:///anime_player.db', echo=True)
-SessionLocal = sessionmaker(bind=engine)
-
 class DatabaseManager:
-    def __init__(self):
+    def __init__(self, db_path):
         self.current_poster_index = None
         self.logger = logging.getLogger(__name__)
-        self.session = SessionLocal()
+        self.engine = create_engine(f'sqlite:///{db_path}', echo=True)
+        self.session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
+
 
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют
-        Base.metadata.create_all(engine)
+        Base.metadata.create_all(self.engine)
 
         # Добавляем заглушку изображения, если оно не добавлено
-        session = SessionLocal()
+        session = self.session
         try:
             placeholder_poster = session.query(Poster).filter_by(title_id=-1).first()
             if not placeholder_poster:

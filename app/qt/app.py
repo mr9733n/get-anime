@@ -83,7 +83,7 @@ class AnimePlayerAppVer3(QWidget):
 
         self.logger = logging.getLogger(__name__)
 
-        self.logger.debug("Initializing AnimePlayerApp Version 2")
+        self.logger.debug("Initializing AnimePlayerApp Version 3")
 
         self.cache_file_path = "poster_cache.txt"
         self.config_manager = ConfigManager('config.ini')
@@ -129,7 +129,7 @@ class AnimePlayerAppVer3(QWidget):
         return video_player_path, torrent_client_path
 
     def init_ui(self):
-        self.setWindowTitle('Anime Player v2')
+        self.setWindowTitle('Anime Player v3')
         self.setGeometry(100, 100, 980, 750)
 
         # Основной вертикальный layout
@@ -555,7 +555,7 @@ class AnimePlayerAppVer3(QWidget):
     def get_title_html(self, title, show_description=False, show_more_link=False):
         """Генерирует HTML для отображения информации о тайтле."""
         # Получаем данные постера
-        poster_html = self.generate_poster_html(title)
+        poster_html = self.generate_poster_html(title) if show_more_link else ""
         # Декодируем жанры и получаем другие поля
         genres_html = self.generate_genres_html(title)
         announce_html = self.generate_announce_html(title)

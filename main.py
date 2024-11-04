@@ -1,4 +1,5 @@
 import logging.config
+import os
 import sys
 import argparse
 import threading
@@ -13,7 +14,7 @@ from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 def run_tkinter_app_v1():
     import tkinter as tk
     window = tk.Tk()
-    app_tk_v1 = AnimePlayerAppVer2(window)
+    app_tk_v1 = AnimePlayerAppVer1(window)
     window.mainloop()
 
 def run_tkinter_app_v2(db_manager):
@@ -31,8 +32,12 @@ def run_pyqt_app(db_manager):
 if __name__ == "__main__":
     logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
 
+    # Construct the path to the database in the main directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, 'db', 'anime_player.db')
+
     # Создаем и инициализируем таблицы базы данных
-    db_manager = DatabaseManager()
+    db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
 
     # Парсим аргументы командной строки
@@ -46,7 +51,7 @@ if __name__ == "__main__":
     threads = []
 
     if args.version1:
-        thread_tk_v1 = threading.Thread(target=run_tkinter_app_v1, args=(db_manager,))
+        thread_tk_v1 = threading.Thread(target=run_tkinter_app_v1)
         threads.append(thread_tk_v1)
 
     if args.version2:

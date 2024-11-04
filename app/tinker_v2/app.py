@@ -18,7 +18,7 @@ class AnimePlayerAppVer2:
     def __init__(self, window, db_manager):
         self.sanitized_titles = []
         self.logger = logging.getLogger(__name__)
-        self.logger.debug("Initializing AnimePlayerApp")
+        self.logger.debug("Initializing AnimePlayerAppVer2")
         self.window = window
         self.db_manager = db_manager
         self.cache_file_path = "poster_cache.txt"
@@ -91,6 +91,20 @@ class AnimePlayerAppVer2:
             error_message = f"An error occurred while getting the poster: {str(e)}"
             self.logger.error(error_message)
             return None
+
+    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
+        """Gets titles from the database using the DatabaseManager."""
+        titles = []
+        if self.db_manager.session is not None:
+            try:
+                query = self.db_manager.get_titles_query(day_of_week=day_of_week, show_all=show_all, title_id=title_id)
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+                titles = query.all()
+            except Exception as e:
+                self.logger.error(f"Error fetching titles from the database: {e}")
+
+        return titles
 
     def save_poster_to_db(self, title_id, poster_blob):
         try:

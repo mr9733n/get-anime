@@ -1,5 +1,6 @@
 # utils/poster_manager.py
 import os
+import queue
 import threading
 import time
 import requests
@@ -71,11 +72,10 @@ class PosterManager:
 
                 # Display and save poster
                 if self.display_callback:
-                    self.display_callback(title_id=title_id, poster_image=poster_image)
+                    self.display_callback(poster_image, title_id=title_id)
 
                 if self.save_callback:
                     self.save_callback(title_id, response.content)
-
 
                 self.poster_images.append((poster_image, title_id))
             except UnidentifiedImageError:

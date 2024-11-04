@@ -12,20 +12,37 @@ from PIL import ImageTk, Image
 import tkinter as tk
 from tkinter import ttk
 from tkinter.ttk import Combobox
+import threading
+from queue import Queue
+
+from PyQt5.QtCore import QTimer
+
 
 class FrontManager:
     def __init__(self, app):
+        self.next_poster_button = None
+        self.poster_label = None
+        self.text = None
+        self.refresh_button = None
+        self.play_button = None
+        self.random_button = None
+        self.save_button = None
+        self.title_search_entry = None
+        self.display_button = None
+        self.title_search_label = None
+        self.pre = "https://"
+        self.days_of_week = None
+        self.day_buttons = None
         self.logger = logging.getLogger(__name__)
         self.app = app
         self.init_ui()
 
     def init_ui(self):
-        self.app.window.title("Anime Player")
-        self.app.window.geometry("1200x700")
+        self.app.window.title("Anime Player v2")
+        self.app.window.geometry("1120x760")
         self.app.window.grid_rowconfigure(2, weight=1)
         self.app.window.grid_columnconfigure(0, weight=1)
         self.setup_widgets()
-        self.pre = "https://"
 
     def setup_widgets(self):
         # Создание кнопок дней недели
@@ -125,21 +142,19 @@ class FrontManager:
         self.display_schedule(data)
         self.app.current_data = data
 
-    def display_poster(self, poster_image, title_id):
-        if title_id is None:
-            self.logger.error("Title ID not provided, unable to save poster.")
-            return
-
+    def display_poster(self, poster_image, title_id=None):
         try:
-            poster_photo = ImageTk.PhotoImage(poster_image)
-            self.poster_label.configure(image=poster_photo)
-            self.poster_label.image = poster_photo  # Сохраняем ссылку на изображение
-
-            # Сохранение в базу данных
-            self.app.save_poster_to_db(title_id, poster_image.tobytes())
+            self.app.window.after(20000, self._display_poster_in_ui, poster_image)
         except Exception as e:
-            error_message = f"An error occurred while displaying the poster: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"An error occurred while displaying the poster: {e}")
+
+    def _display_poster_in_ui(self, poster_image):
+        try:
+            # Ваш код для отображения постера
+            self.poster_label.config(image=poster_image)
+            self.poster_label.image = poster_image
+        except Exception as e:
+            self.logger.error(f"An error occurred while displaying the poster in UI: {e}")
 
     def clear_poster(self):
         self.poster_label.configure(image='')

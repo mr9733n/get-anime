@@ -46,12 +46,12 @@ class AnimePlayerAppVer1:
     def __init__(self, window):
         self.cache_file_path = "poster_cache.txt"
         self.poster_links = []
-        self.config_manager = ConfigManager('../../config.ini')
+        self.config_manager = ConfigManager('config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
         self.window = window
-        self.window.title("AnimePlayerApp")
-        self.window.geometry("1160x640")
+        self.window.title("Anime Player v1")
+        self.window.geometry("1110x760")
         self.init_ui()
         self.init_logger(log_level)
         self.load_config()
@@ -131,7 +131,7 @@ class AnimePlayerAppVer1:
 
     def init_logger(self, log_level):
         # Create logger
-        self.logger = logging.getLogger("AnimePlayerApp")
+        self.logger = logging.getLogger("AnimePlayerAppVer1")
         self.logger.setLevel(log_level)
         log_folder = 'logs'
         if not os.path.exists(log_folder):
@@ -279,7 +279,7 @@ class AnimePlayerAppVer1:
             torrent_client_path = self.torrent_client_path
 
             # Если ссылка — это торрент URL, корректируем и скачиваем его
-            torrent_save_path = '../../torrents'
+            torrent_save_path = 'torrents'
             if not os.path.exists(torrent_save_path):
                 os.makedirs(torrent_save_path)
 
@@ -725,5 +725,5 @@ class AnimePlayerAppVer1:
 
 if __name__ == "__main__":
     window = tk.Tk()
-    app = AnimePlayerApp(window)
+    app = AnimePlayerAppVer1(window)
     window.mainloop()

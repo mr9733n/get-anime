@@ -44,10 +44,10 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
 
 class AnimePlayerAppVer1:
     def __init__(self, window):
-
+        self.logger = logging.getLogger(__name__)
         self.cache_file_path = "poster_cache.txt"
         self.poster_links = []
-        self.config_manager = ConfigManager('config.ini')
+        self.config_manager = ConfigManager('config/config.ini')
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
         self.window = window
@@ -150,7 +150,7 @@ class AnimePlayerAppVer1:
 
     def read_json_data(self):
         try:
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
                 self.log_message(f"Created 'utils' folder.")
@@ -170,7 +170,7 @@ class AnimePlayerAppVer1:
 
     def delete_response_json(self):
         try:
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             utils_json = os.path.join(utils_folder, 'response.json')
             if os.path.exists(utils_json):
                 self.log_message(f"Attempting to delete {utils_json}.")
@@ -478,10 +478,10 @@ class AnimePlayerAppVer1:
         start_time = time.time()
         response = requests.get(api_url)
         end_time = time.time()
-        utils_folder = 'utils'
+        utils_folder = 'temp'
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
-            self.log_message(f"Created 'utils' folder.")
+            self.log_message(f"Created '{utils_folder}' folder.")
         utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:
@@ -509,10 +509,10 @@ class AnimePlayerAppVer1:
             start_time = time.time()
             response = requests.get(api_url)
             end_time = time.time()
-            utils_folder = 'utils'
+            utils_folder = 'temp'
             if not os.path.exists(utils_folder):
                 os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils' folder.")
+                self.log_message(f"Created 'utils_folder' folder.")
             utils_json = os.path.join(utils_folder, 'response.json')
             if response.status_code == 200:
                 with open(utils_json, 'w', encoding='utf-8') as file:
@@ -541,10 +541,10 @@ class AnimePlayerAppVer1:
         start_time = time.time()
         response = requests.get(api_url)
         end_time = time.time()
-        utils_folder = 'utils'
+        utils_folder = 'temp'
         if not os.path.exists(utils_folder):
             os.makedirs(utils_folder)
-            self.log_message(f"Created 'utils' folder.")
+            self.log_message(f"Created 'uutils_folder' folder.")
         utils_json = os.path.join(utils_folder, 'response.json')
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:

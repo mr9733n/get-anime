@@ -10,6 +10,8 @@ legacy-1.8.0/*
 torrents/*
 playlists/*
 db/*
+build/*
+dist/*
 
 utils/*.json
 playlists/A.I.C.O.

@@ -30,7 +30,7 @@ def run_pyqt_app(db_manager):
     sys.exit(app_pyqt.exec_())
 
 if __name__ == "__main__":
-    logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
+    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
 
     # Construct the path to the database in the main directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

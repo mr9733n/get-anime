@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
 
+from app.qt.ui_manger import UIManager
 from core import database_manager
 from core.database_manager import Title, Schedule, Episode, Torrent
 from sqlalchemy.orm import joinedload
@@ -90,8 +91,8 @@ class AnimePlayerAppVer3(QWidget):
 
         self.logger.debug("Initializing AnimePlayerApp Version 3")
 
-        self.cache_file_path = "poster_cache.txt"
-        self.config_manager = ConfigManager('config.ini')
+        self.cache_file_path = "temp/poster_cache.txt"
+        self.config_manager = ConfigManager('config/config.ini')
 
         """Loads the configuration settings needed by the application."""
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
@@ -119,6 +120,9 @@ class AnimePlayerAppVer3(QWidget):
             save_callback=self.db_manager.save_poster_to_db,
         )
 
+        self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+        self.ui_manager = UIManager(self)
+
         self.init_ui()
 
     @pyqtSlot(QTextBrowser, int, int)
@@ -140,222 +144,8 @@ class AnimePlayerAppVer3(QWidget):
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
-
-        # Верхняя часть контролов
-        controls_layout = QHBoxLayout()
-
-        # Поле для поиска
-        self.title_search_entry = QLineEdit(self)
-        self.title_search_entry.setPlaceholderText('TITLE NAME')
-        self.title_search_entry.setMinimumWidth(100)
-        self.title_search_entry.setMaximumWidth(200)
-        self.title_search_entry.setStyleSheet("""
-            QLineEdit {
-                background-color: #f7f7f7;
-                border: 1px solid #dcdcdc;
-                border-radius: 6px;
-                padding: 6px;
-                font-size: 14px;
-                color: #333;
-            }
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-                background-color: #ffffff;
-            }
-        """)
-        controls_layout.addWidget(self.title_search_entry)
-
-        # Универсальный стиль для кнопок
-        button_style_template = """
-            QPushButton {{
-                background-color: {background_color};
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {hover_color};
-                border: 1px solid #888;
-            }}
-            QPushButton:pressed {{
-                background-color: {pressed_color};
-                border: 1px solid #555;
-            }}
-        """
-
-        # Цвета для различных кнопок - все в оттенках серого
-        button_colors = [
-            ("#4a4a4a", "#5c5c5c", "#3b3b3b"),  # Темно-серый для "FIND"
-            ("#6e6e6e", "#7f7f7f", "#595959"),  # Светло-серый для "MON"
-            ("#7a7a7a", "#8a8a8a", "#626262"),  # Средний серый для "TUE"
-            ("#9a9a9a", "#ababab", "#7b7b7b"),  # Серый для "WED"
-            ("#555555", "#666666", "#3e3e3e"),  # Темный для "THU"
-            ("#8c8c8c", "#9e9e9e", "#767676"),  # Более светлый для "FRI"
-            ("#7e7e7e", "#8f8f8f", "#6a6a6a"),  # Насыщенный для "SAT"
-            ("#6b6b6b", "#7c7c7c", "#525252"),  # Средний для "SUN"
-            ("#5a5a5a", "#6c6c6c", "#474747")   # Темный для других кнопок
-        ]
-
-        # Кнопка "Find"
-        find_style = button_style_template.format(
-            background_color=button_colors[0][0],
-            hover_color=button_colors[0][1],
-            pressed_color=button_colors[0][2]
-        )
-        self.display_button = QPushButton('FIND', self)
-        self.display_button.setStyleSheet(find_style)
-        self.display_button.clicked.connect(self.get_search_by_title)
-        controls_layout.addWidget(self.display_button)
-
-
-
-        # Дни недели с индивидуальными стилями
-        self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-        self.day_buttons = []
-
-        for i, day in enumerate(self.days_of_week):
-            button = QPushButton(day, self)
-            button_style = button_style_template.format(
-                background_color=button_colors[i + 1][0],
-                hover_color=button_colors[i + 1][1],
-                pressed_color=button_colors[i + 1][2]
-            )
-            button.setStyleSheet(button_style)
-            button.clicked.connect(lambda checked, i=i: self.display_titles_for_day(i))
-            controls_layout.addWidget(button)
-            self.day_buttons.append(button)
-
-        # Кнопка "Random"
-        random_style = button_style_template.format(
-            background_color=button_colors[5][0],
-            hover_color=button_colors[5][1],
-            pressed_color=button_colors[5][2]
-        )
-        self.random_button = QPushButton('RANDOM', self)
-        self.random_button.setStyleSheet(random_style)
-        self.random_button.clicked.connect(self.get_random_title)
-        controls_layout.addWidget(self.random_button)
-
-        # Метка "QLTY:"
-        self.quality_label = QLabel('QLTY:', self)
-        self.quality_label.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                font-weight: bold;
-                color: #333;
-                margin-right: 8px;
-            }
-        """)
-        controls_layout.addWidget(self.quality_label)
-
-        # Выпадающий список качества
-        self.quality_dropdown = QComboBox(self)
-        self.quality_dropdown.addItems(['fhd', 'hd', 'sd'])
-        self.quality_dropdown.setStyleSheet("""
-            QComboBox {
-                background-color: #f7f7f7;
-                border: 1px solid #ccc;
-                border-radius: 6px;
-                padding: 6px;
-                font-size: 14px;
-                color: #333;
-            }
-            QComboBox:drop-down {
-                border-left: 1px solid #ccc;
-                width: 20px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #ffffff;
-                border: 1px solid #aaa;
-                selection-background-color: #0078d4;
-                selection-color: #fff;
-            }
-        """)
-        controls_layout.addWidget(self.quality_dropdown)
-
-        # Кнопка "Refresh"
-        refresh_style = button_style_template.format(
-            background_color=button_colors[6][0],
-            hover_color=button_colors[6][1],
-            pressed_color=button_colors[6][2]
-        )
-        self.refresh_button = QPushButton('REFRESH', self)
-        self.refresh_button.setStyleSheet(refresh_style)
-        self.refresh_button.clicked.connect(self.update_quality_and_refresh)
-        controls_layout.addWidget(self.refresh_button)
-
-        # Кнопка "Save Playlist"
-        save_style = button_style_template.format(
-            background_color=button_colors[7][0],
-            hover_color=button_colors[7][1],
-            pressed_color=button_colors[7][2]
-        )
-        self.save_playlist_button = QPushButton('SAVE', self)
-        self.save_playlist_button.setStyleSheet(save_style)
-        self.save_playlist_button.clicked.connect(self.save_playlist_wrapper)
-        controls_layout.addWidget(self.save_playlist_button)
-
-        # Кнопка "Play Playlist"
-        play_style = button_style_template.format(
-            background_color=button_colors[4][0],
-            hover_color=button_colors[4][1],
-            pressed_color=button_colors[4][2]
-        )
-        self.play_playlist_button = QPushButton('PLAY', self)
-        self.play_playlist_button.setStyleSheet(play_style)
-        self.play_playlist_button.clicked.connect(self.play_playlist_wrapper)
-        controls_layout.addWidget(self.play_playlist_button)
-
-        # Устанавливаем основной layout для виджета
-        main_layout.addLayout(controls_layout)
-
-        # Динамическая часть для отображения постеров
-        self.posters_layout = QGridLayout()
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-
-        # Контейнер для отображения постеров
-        self.poster_container = QWidget()
-        self.poster_container.setLayout(self.posters_layout)
-        self.poster_container.setStyleSheet(f"""
-            QWidget {{
-                background-image: url( 'static/background.png');
-                background-position: center;
-                background-attachment: fixed;
-                background-color: rgba(240, 240, 240, 0.5); 
-            }}
-        """)
-
-        self.scroll_area.setWidget(self.poster_container)
-        main_layout.addWidget(self.scroll_area)
-
-        # Устанавливаем основной layout для окна
+        self.ui_manager.setup_main_layout(main_layout)
         self.setLayout(main_layout)
-
-        # Добавляем кнопку "Загрузить еще" для ленивой загрузки
-        load_more_style = button_style_template.format(
-            background_color="#4a4a4a",
-            hover_color="#5c5c5c",
-            pressed_color="#3b3b3b"
-        )
-        self.load_more_button = QPushButton('LOAD MORE', self)
-        self.load_more_button.setStyleSheet(load_more_style)
-        self.load_more_button.clicked.connect(self.load_more_titles)
-        self.layout().addWidget(self.load_more_button)
-
-        shadow_effect = QGraphicsDropShadowEffect()
-        shadow_effect.setBlurRadius(8)
-        shadow_effect.setOffset(2, 2)
-        self.display_button.setGraphicsEffect(shadow_effect)
-        self.random_button.setGraphicsEffect(shadow_effect)
-        self.load_more_button.setGraphicsEffect(shadow_effect)
-        self.save_playlist_button.setGraphicsEffect(shadow_effect)
-        self.play_playlist_button.setGraphicsEffect(shadow_effect)
-        self.refresh_button.setGraphicsEffect(shadow_effect)
-        self.quality_dropdown.setGraphicsEffect(shadow_effect)
 
         # Load 4 titles on start from DB
         self.display_titles()
@@ -477,11 +267,6 @@ class AnimePlayerAppVer3(QWidget):
         self.clear_previous_posters()
 
         titles = self.db_manager.get_titles_from_db(day_of_week)
-
-        # Проверка, нужно ли обновить расписание (например, устаревшие данные)
-        if not self.is_schedule_up_to_date(titles, day_of_week):
-            self.logger.info(f"Расписание для дня {day_of_week} устарело, обновляем...")
-            titles = self.update_schedule_for_day(day_of_week)
 
         if not titles:
             try:
@@ -798,7 +583,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
-        torrents = self.db_manager.session.query(Torrent).filter_by(title_id=title.title_id).all()
+        torrents = self.db_manager.get_torrents_from_db(title.title_id)
 
         if not torrents:
             return "<p>Torrents not available</p>"
@@ -923,7 +708,7 @@ class AnimePlayerAppVer3(QWidget):
 
             # Проверяем, что ссылка существует
             if link:
-                episodes_html += f'<li><a href="{link}">{episode_name}</a></li>'
+                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a></li>'
                 # Добавляем ссылку в discovered_links
                 self.discovered_links.append(link)
 

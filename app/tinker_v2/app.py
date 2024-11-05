@@ -22,7 +22,7 @@ class AnimePlayerAppVer2:
         self.window = window
         self.db_manager = db_manager
         self.cache_file_path = "poster_cache.txt"
-        self.config_manager = ConfigManager('config.ini')
+        self.config_manager = ConfigManager('config/config.ini')
         self.title_names = []
         self.init_variables()
         self.load_config()

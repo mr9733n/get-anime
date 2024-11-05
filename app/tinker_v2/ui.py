@@ -13,10 +13,6 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter.ttk import Combobox
 import threading
-from queue import Queue
-
-from PyQt5.QtCore import QTimer
-
 
 class FrontManager:
     def __init__(self, app):

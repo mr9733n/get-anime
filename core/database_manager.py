@@ -13,165 +13,164 @@ class DatabaseManager:
     def __init__(self, db_path):
         self.current_poster_index = None
         self.logger = logging.getLogger(__name__)
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=True)
-        self.session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
+        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
+        self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
+
 
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
 
         # Добавляем заглушку изображения, если оно не добавлено
-        session = self.session
-        try:
-            placeholder_poster = session.query(Poster).filter_by(title_id=1).first()
-            if not placeholder_poster:
-                with open('static/background.png', 'rb') as image_file:
-                    poster_blob = image_file.read()
-                    placeholder_poster = Poster(
-                        title_id=1,  # Используем отрицательный идентификатор для заглушки
-                        poster_blob=poster_blob,
-                        last_updated=datetime.utcnow()
-                    )
-                    session.add(placeholder_poster)
-                    session.commit()
-                    self.logger.info("Placeholder image 'background.png' was added to posters table.")
-        except Exception as e:
-            session.rollback()
-            self.logger.error(f"Error initializing placeholder image in posters table: {e}")
+        with self.Session as session:
+            try:
+                placeholder_poster = session.query(Poster).filter_by(title_id=1).first()
+                if not placeholder_poster:
+                    with open('static/background.png', 'rb') as image_file:
+                        poster_blob = image_file.read()
+                        placeholder_poster = Poster(
+                            title_id=1,  # Используем отрицательный идентификатор для заглушки
+                            poster_blob=poster_blob,
+                            last_updated=datetime.utcnow()
+                        )
+                        session.add(placeholder_poster)
+                        session.commit()
+                        self.logger.info("Placeholder image 'background.png' was added to posters table.")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error initializing placeholder image in posters table: {e}")
 
         # Добавляем заглушку изображения, если оно не добавлено
-        session = self.session
-        try:
-            placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
-            if not placeholder_poster:
-                with open('static/no_image.png', 'rb') as image_file:
-                    poster_blob = image_file.read()
-                    placeholder_poster = Poster(
-                        title_id=2,  # Используем отрицательный идентификатор для заглушки
-                        poster_blob=poster_blob,
-                        last_updated=datetime.utcnow()
-                    )
-                    session.add(placeholder_poster)
-                    session.commit()
-                    self.logger.info("Placeholder image 'no_image.png' was added to posters table.")
-        except Exception as e:
-            session.rollback()
-            self.logger.error(f"Error initializing placeholder image in posters table: {e}")
-        finally:
-            session.close()
+        with self.Session as session:
+            try:
+                placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
+                if not placeholder_poster:
+                    with open('static/no_image.png', 'rb') as image_file:
+                        poster_blob = image_file.read()
+                        placeholder_poster = Poster(
+                            title_id=2,  # Используем отрицательный идентификатор для заглушки
+                            poster_blob=poster_blob,
+                            last_updated=datetime.utcnow()
+                        )
+                        session.add(placeholder_poster)
+                        session.commit()
+                        self.logger.info("Placeholder image 'no_image.png' was added to posters table.")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error initializing placeholder image in posters table: {e}")
+            finally:
+                session.close()
 
     def save_title(self, title_data):
-        try:
-            self.logger.debug(f"Saving title data: {title_data}")
+        with self.Session as session:
+            try:
+                self.logger.debug(f"Saving title data: {title_data}")
 
-            # Проверка на наличие и корректность данных
-            if not isinstance(title_data, dict):
-                raise ValueError("Переданные данные для сохранения тайтла должны быть словарем")
+                # Проверка на наличие и корректность данных
+                if not isinstance(title_data, dict):
+                    raise ValueError("Переданные данные для сохранения тайтла должны быть словарем")
 
-            # Проверка типов ключевых полей
-            if not isinstance(title_data.get('title_id'), int):
-                raise ValueError("Неверный тип для 'title_id'. Ожидался тип int.")
+                # Проверка типов ключевых полей
+                if not isinstance(title_data.get('title_id'), int):
+                    raise ValueError("Неверный тип для 'title_id'. Ожидался тип int.")
 
-            # Преобразование списков и словарей в строки в формате JSON для хранения в базе данных
-            title_data['franchises'] = json.dumps(title_data.get('franchises', []))
-            title_data['genres'] = json.dumps(title_data.get('genres', []))
-            title_data['team_voice'] = json.dumps(title_data.get('team_voice', []))
-            title_data['team_translator'] = json.dumps(title_data.get('team_translator', []))
-            title_data['team_timing'] = json.dumps(title_data.get('team_timing', []))
-            title_data['blocked_geoip_list'] = json.dumps(title_data.get('blocked_geoip_list', []))
+                # Преобразование списков и словарей в строки в формате JSON для хранения в базе данных
+                title_data['franchises'] = json.dumps(title_data.get('franchises', []))
+                title_data['genres'] = json.dumps(title_data.get('genres', []))
+                title_data['team_voice'] = json.dumps(title_data.get('team_voice', []))
+                title_data['team_translator'] = json.dumps(title_data.get('team_translator', []))
+                title_data['team_timing'] = json.dumps(title_data.get('team_timing', []))
+                title_data['blocked_geoip_list'] = json.dumps(title_data.get('blocked_geoip_list', []))
 
-            existing_title = self.session.query(Title).filter_by(title_id=title_data['title_id']).first()
+                existing_title = session.query(Title).filter_by(title_id=title_data['title_id']).first()
 
-            if existing_title:
-                # Проверка на изменение данных и обновление
-                is_updated = False
-                for key, value in title_data.items():
-                    if getattr(existing_title, key, None) != value:
-                        setattr(existing_title, key, value)
-                        is_updated = True
+                if existing_title:
+                    # Update existing title if data has changed
+                    is_updated = False
+                    for key, value in title_data.items():
+                        if getattr(existing_title, key, None) != value:
+                            setattr(existing_title, key, value)
+                            is_updated = True
+                    if is_updated:
+                        session.commit()
 
-                if is_updated:
-                    self.session.commit()  # Коммит только если есть изменения
-            else:
-                # Добавление нового тайтла, если он не существует
-                new_title = Title(**title_data)
-                self.session.add(new_title)
-                self.session.commit()
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
+                    if is_updated:
+                        session.commit()  # Коммит только если есть изменения
+                else:
+                    # Add new title
+                    new_title = Title(**title_data)
+                    session.add(new_title)
+                    session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
 
     def save_episode(self, episode_data):
-        try:
-            self.logger.debug(f"Saving episode data: {episode_data}")
+        with self.Session as session:
+            try:
+                self.logger.debug(f"Saving episode data: {episode_data}")
 
-            if not isinstance(episode_data, dict):
-                self.logger.error(f"Invalid episode data: {episode_data}")
-                return
+                if not isinstance(episode_data, dict):
+                    self.logger.error(f"Invalid episode data: {episode_data}")
+                    return
 
-            # Создаем копию данных
-            processed_data = episode_data.copy()
+                # Создаем копию данных
+                processed_data = episode_data.copy()
 
-            # Преобразуем timestamps если они есть в данных
-            if 'created_timestamp' in processed_data:
-                processed_data['created_timestamp'] = datetime.utcfromtimestamp(processed_data['created_timestamp'])
+                # Преобразуем timestamps если они есть в данных
+                if 'created_timestamp' in processed_data:
+                    processed_data['created_timestamp'] = datetime.utcfromtimestamp(processed_data['created_timestamp'])
 
-            existing_episode = self.session.query(Episode).filter_by(
-                uuid=processed_data['uuid'],
-                title_id=processed_data['title_id']
-            ).first()
+                existing_episode = session.query(Episode).filter_by(
+                    uuid=processed_data['uuid'],
+                    title_id=processed_data['title_id']
+                ).first()
 
-            self.logger.debug(f"Existing episode: {existing_episode}")
+                self.logger.debug(f"Existing episode: {existing_episode}")
 
-            if existing_episode:
-                is_updated = False
-                protected_fields = {'episode_id', 'title_id', 'created_timestamp'}
+                if existing_episode:
+                    is_updated = False
+                    protected_fields = {'episode_id', 'title_id', 'created_timestamp'}
 
-                for key, value in processed_data.items():
-                    if (
-                            key not in protected_fields
-                            and hasattr(existing_episode, key)
-                            and getattr(existing_episode, key) != value
-                    ):
-                        setattr(existing_episode, key, value)
-                        is_updated = True
-
-                if is_updated:
-                    existing_episode.last_updated = datetime.utcnow()
-                    self.session.commit()
-            else:
-                # Для нового эпизода используем текущее время для timestamp'ов если они не предоставлены
-                if 'created_timestamp' not in processed_data:
-                    processed_data['created_timestamp'] = datetime.utcnow()
-
-                new_episode = Episode(**processed_data)
-                self.session.add(new_episode)
-                self.session.commit()
-
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
+                    for key, value in episode_data.items():
+                        if key not in protected_fields and getattr(existing_episode, key) != value:
+                            setattr(existing_episode, key, value)
+                            is_updated = True
+                    if is_updated:
+                        existing_episode.last_updated = datetime.utcnow()
+                        session.commit()
+                else:
+                        if 'created_timestamp' not in episode_data:
+                            episode_data['created_timestamp'] = datetime.utcnow()
+                        new_episode = Episode(**episode_data)
+                        session.add(new_episode)
+                        session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
 
     def save_schedule(self, day_of_week, title_id):
-        try:
-            schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id)
-            self.session.add(schedule_entry)
-            self.session.commit()
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при сохранении расписания: {e}")
-        finally:
-            self.session.close()
+        with self.Session as session:
+            try:
+                schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id)
+                session.add(schedule_entry)
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении расписания: {e}")
+            finally:
+                session.close()
 
     def get_titles_for_day(self, day_of_week):
         """Загружает тайтлы для указанного дня недели из базы данных."""
-        try:
-            return self.session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
-        finally:
-            self.session.close()
+        with self.Session as session:
+            try:
+                return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
+            finally:
+                session.close()
 
     def get_titles_query(self, day_of_week=None, show_all=False, title_id=None):
         """
@@ -181,39 +180,41 @@ class DatabaseManager:
         :param title_id: If specified, returns a title with the given title_id.
         :return: SQLAlchemy Query object
         """
-        query = self.session.query(Title).options(joinedload(Title.episodes))
-        if title_id:
-            query = query.filter(Title.title_id == title_id)
-        elif not show_all:
-            query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
+        with self.Session as session:
+            query = session.query(Title).options(joinedload(Title.episodes))
+            if title_id:
+                query = query.filter(Title.title_id == title_id)
+            elif not show_all:
+                query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
 
-        return query
+            return query
 
     def save_torrent(self, torrent_data):
-        try:
-            # Проверяем, существует ли уже торрент с данным `torrent_id`
-            existing_torrent = self.session.query(Torrent).filter_by(torrent_id=torrent_data['torrent_id']).first()
+        with self.Session as session:
+            try:
+                # Проверяем, существует ли уже торрент с данным `torrent_id`
+                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_data['torrent_id']).first()
 
-            if existing_torrent:
-                # Проверка на изменение данных
-                is_updated = any(
-                    getattr(existing_torrent, key) != value
-                    for key, value in torrent_data.items()
-                )
+                if existing_torrent:
+                    # Проверка на изменение данных
+                    is_updated = any(
+                        getattr(existing_torrent, key) != value
+                        for key, value in torrent_data.items()
+                    )
 
-                if is_updated:
-                    # Обновляем данные, если они изменились
-                    self.session.merge(Torrent(**torrent_data))
-            else:
-                # Добавляем новый торрент, если его еще нет в базе
-                self.session.add(Torrent(**torrent_data))
+                    if is_updated:
+                        # Обновляем данные, если они изменились
+                        session.merge(Torrent(**torrent_data))
+                else:
+                    # Добавляем новый торрент, если его еще нет в базе
+                    session.add(Torrent(**torrent_data))
 
-            self.session.commit()
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
-        finally:
-            self.session.close()
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
+            finally:
+                session.close()
 
     def process_titles(self, title_data):
         title = title_data
@@ -262,7 +263,6 @@ class DatabaseManager:
             self.logger.error(f"Failed to save title to database: {e}")
 
     def process_episodes(self, title_data):
-
         for episode in title_data.get("player", {}).get("list", {}).values():
             if not isinstance(episode, dict):
                 self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
@@ -319,35 +319,47 @@ class DatabaseManager:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
 
     def save_poster_to_db(self, title_id, poster_blob):
-        try:
-            # Проверяем, существует ли уже постер для данного title_id
-            existing_poster = self.session.query(Poster).filter_by(title_id=title_id).first()
-            if not existing_poster:
-                # Создаем новый объект Poster и добавляем в базу
-                new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
+        with self.Session as session:
+            try:
+                # Проверяем, существует ли уже постер для данного title_id
+                existing_poster = session.query(Poster).filter_by(title_id=title_id).first()
+                if not existing_poster:
+                    # Создаем новый объект Poster и добавляем в базу
+                    new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
 
-                self.session.add(new_poster)
-            else:
-                # Обновляем существующий постер
-                existing_poster.poster_blob = poster_blob
-                existing_poster.last_updated = datetime.utcnow()
+                    session.add(new_poster)
+                else:
+                    # Обновляем существующий постер
+                    existing_poster.poster_blob = poster_blob
+                    existing_poster.last_updated = datetime.utcnow()
 
-            self.session.commit()
-
-
-        except Exception as e:
-            self.session.rollback()
-            self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
     def get_poster_blob(self, title_id):
-        try:
-            poster = self.session.query(Poster).filter_by(title_id=title_id).first()
-            if poster:
-                return poster.poster_blob
-            return None
-        except Exception as e:
-            self.logger.error(f"Error fetching poster from database: {e}")
-            return None
+        with self.Session as session:
+            try:
+                poster = session.query(Poster).filter_by(title_id=title_id).first()
+                if poster:
+                    return poster.poster_blob
+                return None
+            except Exception as e:
+                self.logger.error(f"Error fetching poster from database: {e}")
+                return None
+
+    def get_torrents_from_db(self, title_id):
+        with self.Session as session:
+            try:
+                torrents = session.query(Torrent).filter_by(title_id=title_id).all()
+                if torrents:
+                    self.logger.debug(f"Torrent data was found in database: {torrents}")
+                    return torrents
+                return None
+            except Exception as e:
+                self.logger.error(f"Error fetching torrent data from database: {e}")
+
 
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
         """Получает список тайтлов из базы данных через DatabaseManager."""
@@ -471,7 +483,7 @@ class Poster(Base):
 
 class Schedule(Base):
     __tablename__ = 'schedule'
-    id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
+    schedule_id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
     day_of_week = Column(Integer, nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
 

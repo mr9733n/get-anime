@@ -58,13 +58,11 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error initializing placeholder image in posters table: {e}")
-            finally:
-                session.close()
 
     def save_title(self, title_data):
         with self.Session as session:
             try:
-                self.logger.debug(f"Saving title data: {title_data}")
+                self.logger.debug(f"Saving title data: {len(title_data) if isinstance(title_data, dict) else 'not a dict'}")
 
                 # Проверка на наличие и корректность данных
                 if not isinstance(title_data, dict):
@@ -108,7 +106,7 @@ class DatabaseManager:
     def save_episode(self, episode_data):
         with self.Session as session:
             try:
-                self.logger.debug(f"Saving episode data: {episode_data}")
+                self.logger.debug(f"Saving episode data: {len(episode_data)} keys (type: {type(episode_data).__name__})")
 
                 if not isinstance(episode_data, dict):
                     self.logger.error(f"Invalid episode data: {episode_data}")
@@ -126,8 +124,6 @@ class DatabaseManager:
                     title_id=processed_data['title_id']
                 ).first()
 
-                self.logger.debug(f"Existing episode: {existing_episode}")
-
                 if existing_episode:
                     is_updated = False
                     protected_fields = {'episode_id', 'title_id', 'created_timestamp'}
@@ -135,6 +131,7 @@ class DatabaseManager:
                     for key, value in episode_data.items():
                         if key not in protected_fields and getattr(existing_episode, key) != value:
                             setattr(existing_episode, key, value)
+                            self.logger.debug(f"Existing episode: {protected_fields}")
                             is_updated = True
                     if is_updated:
                         existing_episode.last_updated = datetime.utcnow()
@@ -158,8 +155,6 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении расписания: {e}")
-            finally:
-                session.close()
 
     def get_titles_for_day(self, day_of_week):
         """Загружает тайтлы для указанного дня недели из базы данных."""
@@ -169,8 +164,6 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
-            finally:
-                session.close()
 
     def get_titles_query(self, day_of_week=None, show_all=False, title_id=None):
         """
@@ -213,8 +206,6 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
-            finally:
-                session.close()
 
     def process_titles(self, title_data):
         title = title_data
@@ -258,7 +249,12 @@ class DatabaseManager:
                     'last_updated': datetime.utcnow()  # Использование метода utcnow()
                 }
 
-                self.save_title(title_data)
+                title_id = title_data['title_id']
+                if self.save_title(title_data):
+                    self.logger.debug(f"Successfully saved title_id: {title_id}")
+                else:
+                    self.logger.warning(f"Failed to save title_id: {title_id}")
+            return True
         except Exception as e:
             self.logger.error(f"Failed to save title to database: {e}")
 
@@ -284,7 +280,12 @@ class DatabaseManager:
                         'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
                         'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
                     }
-                    self.save_episode(episode_data)
+                    title_id = episode_data['title_id']
+                    if self.save_episode(episode_data):
+                        self.logger.debug(f"Successfully saved episode_data for title_id: {title_id}")
+                    else:
+                        self.logger.warning(f"Failed to save episode_data for title_id: {title_id}")
+                    return True
                 except Exception as e:
                     self.logger.error(f"Failed to save episode to database: {e}")
 
@@ -314,9 +315,14 @@ class DatabaseManager:
                             'torrent_metadata': torrent.get('metadata'),
                             'raw_base64_file': torrent.get('raw_base64_file')
                         }
-                        self.save_torrent(torrent_data)
+                        title_id = torrent_data['title_id']
+                        if self.save_torrent(torrent_data):
+                            self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
+                        else:
+                            self.logger.warning(f"Failed to save torrent_data for title_id: {title_id}")
                     except Exception as e:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
+        return True
 
     def save_poster_to_db(self, title_id, poster_blob):
         with self.Session as session:
@@ -354,12 +360,11 @@ class DatabaseManager:
             try:
                 torrents = session.query(Torrent).filter_by(title_id=title_id).all()
                 if torrents:
-                    self.logger.debug(f"Torrent data was found in database: {torrents}")
+                    self.logger.debug(f"Torrent data was found in database.")
                     return torrents
                 return None
             except Exception as e:
                 self.logger.error(f"Error fetching torrent data from database: {e}")
-
 
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
         """Получает список тайтлов из базы данных через DatabaseManager."""

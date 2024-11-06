@@ -159,7 +159,7 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(error_message)
             return
 
-        self.logger.debug(f"DATA: {data}")
+        self.logger.debug(f"DATA count: {len(data) if isinstance(data, dict) else 'not a dict'}")
 
         # Если текущие данные из расписания, обновляем расписание из базы данных
         if isinstance(data, list) and all(isinstance(day_info, dict) and "day" in day_info for day_info in data):
@@ -605,7 +605,7 @@ class AnimePlayerAppVer3(QWidget):
         # Если постер не найден, берем постер-заглушку с title_id=-1
         if not poster_data:
             self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
-            poster_data = self.db_manager.get_poster_blob(-1)
+            poster_data = self.db_manager.get_poster_blob(1)
 
         # Если даже заглушка не найдена, возвращаем URL к статическому изображению
         if not poster_data:
@@ -715,7 +715,6 @@ class AnimePlayerAppVer3(QWidget):
             else:
                 episodes_html += f'<li>{episode_name} (нет ссылки для качества {selected_quality})</li>'
 
-
         episodes_html += "</ul>"
         # Добавляем имя эпизода в sanitized_titles
 
@@ -727,27 +726,33 @@ class AnimePlayerAppVer3(QWidget):
                 'links': self.discovered_links,
                 'sanitized_title': sanitized_name
             }
-        self.logger.debug(f"discovered_links: {self.discovered_links}")
+        self.logger.debug(f"discovered_links: {len(self.discovered_links)}")
         self.logger.debug(f"sanitized_name: {sanitized_name}")
 
         return episodes_html
 
     def invoke_database_save(self, title_list):
-        for i, title_data in enumerate(title_list):
-            # Обработка постеров
-            self.process_poster_links(title_data)
-            # Обработка эпизодов
-            self.db_manager.process_episodes(title_data)
-            # Обработка торрентов
-            self.db_manager.process_torrents(title_data)
-            self.db_manager.process_titles(title_data)
+        processes = {
+            self.process_poster_links: "poster links",
+            self.db_manager.process_episodes: "episodes",
+            self.db_manager.process_torrents: "torrents",
+            self.db_manager.process_titles: "titles"
+        }
+
+        for title_data in title_list:
+            for process_func, process_name in processes.items():
+                result = process_func(title_data)
+                if result:
+                    self.logger.debug(f"Successfully saved {len(title_list)} items in  {process_name} table. STATUS: {result}")
+                else:
+                    self.logger.warning(f"Failed to process {process_name}")
 
     def get_random_title(self):
         data = self.api_client.get_random_title()
         if 'error' in data:
             self.logger.error(data['error'])
             return
-        self.logger.debug(f"Full response data: {data}")
+        self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
         # Получаем список тайтлов из ответа
         title_list = data.get('list', [])
         if not title_list:

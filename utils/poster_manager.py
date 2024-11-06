@@ -86,7 +86,10 @@ class PosterManager:
                     self.display_callback(poster_image, title_id)
 
                 if self.save_callback:
-                    self.save_callback(title_id, response.content)
+                    if self.save_callback(title_id, response.content):
+                        self.logger.debug(f"Successfully saved poster for title_id: {title_id}")
+                    else:
+                        self.logger.warning(f"Failed to save poster for title_id: {title_id}")
 
                 self.poster_images.append((poster_image, title_id))
 

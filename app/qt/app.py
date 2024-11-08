@@ -271,7 +271,7 @@ class AnimePlayerAppVer3(QWidget):
         if not titles:
             try:
                 data = self.get_schedule(day_of_week)
-                self.logger.debug(f"Получены данные с сервера: {data}")
+                self.logger.debug(f"Получены данные с сервера: {len(data)} keys (type: {type(data).__name__})")
                 # Обработка данных и добавление их в базу данных
                 if data is True:
                     # После сохранения данных в базе получаем их снова
@@ -309,7 +309,7 @@ class AnimePlayerAppVer3(QWidget):
                             # Дополнительная проверка на изменения в данных
                             for new_title, current_title in zip(new_titles, current_titles):
                                 if new_title.get('id') != current_title.title_id or \
-                                        new_title.get('name') != current_title.name_en or \
+                                        new_title.get('code') != current_title.code or \
                                         new_title.get('announce') != current_title.announce:
                                     self.logger.info(
                                         f"Обнаружены изменения в тайтле {new_title.get('name')}, обновляем базу данных...")
@@ -743,7 +743,7 @@ class AnimePlayerAppVer3(QWidget):
             for process_func, process_name in processes.items():
                 result = process_func(title_data)
                 if result:
-                    self.logger.debug(f"Successfully saved {len(title_list)} items in  {process_name} table. STATUS: {result}")
+                    self.logger.debug(f"Successfully saved {process_name} table. STATUS: {result}")
                 else:
                     self.logger.warning(f"Failed to process {process_name}")
 
@@ -830,10 +830,11 @@ class AnimePlayerAppVer3(QWidget):
             poster_url = self.get_poster(title_data)
             if poster_url:
                 poster_links.append((title_data['id'], poster_url))
-                self.logger.debug(f"Poster url: {poster_url}")
+                self.logger.debug(f"Poster url: {poster_url[-41:]}")
 
         if poster_links:
             self.poster_manager.write_poster_links(poster_links)
+        return True
 
     def get_poster(self, title_data):
         try:
@@ -842,14 +843,12 @@ class AnimePlayerAppVer3(QWidget):
 
             # Standardize the poster URL
             standardized_url = self.standardize_url(poster_url)
-            self.logger.debug(f"Standardize the poster URL: {standardized_url}")
+            self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
 
             # Check if the standardized URL is already in the cached poster links
             if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
+                self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
                 return None
-
-
             return standardized_url
 
         except Exception as e:

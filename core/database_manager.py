@@ -61,9 +61,8 @@ class DatabaseManager:
 
     def save_title(self, title_data):
         with self.Session as session:
+            title_id = title_data['title_id']
             try:
-                self.logger.debug(f"Saving title data: {len(title_data) if isinstance(title_data, dict) else 'not a dict'}")
-
                 # Проверка на наличие и корректность данных
                 if not isinstance(title_data, dict):
                     raise ValueError("Переданные данные для сохранения тайтла должны быть словарем")
@@ -91,23 +90,22 @@ class DatabaseManager:
                             is_updated = True
                     if is_updated:
                         session.commit()
-
-                    if is_updated:
-                        session.commit()  # Коммит только если есть изменения
+                        self.logger.debug(f"updated title_id: {title_id}")
                 else:
                     # Add new title
                     new_title = Title(**title_data)
                     session.add(new_title)
                     session.commit()
+                    self.logger.debug(f"Successfully saved title_id: {title_id}")
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
 
     def save_episode(self, episode_data):
         with self.Session as session:
+            title_id = episode_data['title_id']
+            episode_uuid = episode_data['uuid']
             try:
-                self.logger.debug(f"Saving episode data: {len(episode_data)} keys (type: {type(episode_data).__name__})")
-
                 if not isinstance(episode_data, dict):
                     self.logger.error(f"Invalid episode data: {episode_data}")
                     return
@@ -123,6 +121,7 @@ class DatabaseManager:
                     uuid=processed_data['uuid'],
                     title_id=processed_data['title_id']
                 ).first()
+                self.logger.debug(f"Successfully saved episode: {episode_uuid}  for title_id: {title_id}")
 
                 if existing_episode:
                     is_updated = False
@@ -136,12 +135,15 @@ class DatabaseManager:
                     if is_updated:
                         existing_episode.last_updated = datetime.utcnow()
                         session.commit()
+                        self.logger.debug(f"Successfully updated episode: {episode_uuid} for title_id: {title_id}")
                 else:
                         if 'created_timestamp' not in episode_data:
                             episode_data['created_timestamp'] = datetime.utcnow()
                         new_episode = Episode(**episode_data)
                         session.add(new_episode)
                         session.commit()
+                        self.logger.debug(f"Added episode: {episode_uuid}  for title_id: {title_id}")
+
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
@@ -184,6 +186,7 @@ class DatabaseManager:
 
     def save_torrent(self, torrent_data):
         with self.Session as session:
+            title_id = torrent_data['title_id']
             try:
                 # Проверяем, существует ли уже торрент с данным `torrent_id`
                 existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_data['torrent_id']).first()
@@ -198,9 +201,11 @@ class DatabaseManager:
                     if is_updated:
                         # Обновляем данные, если они изменились
                         session.merge(Torrent(**torrent_data))
+                        self.logger.debug(f"Updated torrent_data for title_id: {title_id}")
                 else:
                     # Добавляем новый торрент, если его еще нет в базе
                     session.add(Torrent(**torrent_data))
+                    self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
 
                 session.commit()
             except Exception as e:
@@ -210,53 +215,47 @@ class DatabaseManager:
     def process_titles(self, title_data):
         title = title_data
         # Сохранение данных в базу данных через DatabaseManager
-        try:
-            # Сохранение тайтла
-            if isinstance(title, dict):
+        if isinstance(title, dict):
+            try:
                 title_data = {
-                    'title_id': title.get('id'),
-                    'code': title.get('code'),
-                    'name_ru': title.get('names', {}).get('ru'),
-                    'name_en': title.get('names', {}).get('en'),
-                    'alternative_name': title.get('names', {}).get('alternative'),
-                    'franchises': json.dumps(title.get('franchises', [])),
-                    'announce': title.get('announce'),
-                    'status_string': title.get('status', {}).get('string'),
-                    'status_code': title.get('status', {}).get('code'),
-                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
-                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
-                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
-                    'updated': title.get('updated'),
-                    'last_change': title.get('last_change'),
-                    'type_full_string': title.get('type', {}).get('full_string'),
-                    'type_code': title.get('type', {}).get('code'),
-                    'type_string': title.get('type', {}).get('string'),
-                    'type_episodes': title.get('type', {}).get('episodes'),
-                    'type_length': title.get('type', {}).get('length'),
-                    'genres': json.dumps(title.get('genres', [])),
-                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
-                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
-                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
-                    'season_string': title.get('season', {}).get('string'),
-                    'season_code': title.get('season', {}).get('code'),
-                    'season_year': title.get('season', {}).get('year'),
-                    'season_week_day': title.get('season', {}).get('week_day'),
-                    'description': title.get('description'),
-                    'in_favorites': title.get('in_favorites'),
-                    'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
-                    'blocked_geoip': title.get('blocked', {}).get('geoip'),
-                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
-                }
-
-                title_id = title_data['title_id']
-                if self.save_title(title_data):
-                    self.logger.debug(f"Successfully saved title_id: {title_id}")
-                else:
-                    self.logger.warning(f"Failed to save title_id: {title_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to save title to database: {e}")
+                        'title_id': title.get('id'),
+                        'code': title.get('code'),
+                        'name_ru': title.get('names', {}).get('ru'),
+                        'name_en': title.get('names', {}).get('en'),
+                        'alternative_name': title.get('names', {}).get('alternative'),
+                        'franchises': json.dumps(title.get('franchises', [])),
+                        'announce': title.get('announce'),
+                        'status_string': title.get('status', {}).get('string'),
+                        'status_code': title.get('status', {}).get('code'),
+                        'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
+                        'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
+                        'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
+                        'updated': title.get('updated'),
+                        'last_change': title.get('last_change'),
+                        'type_full_string': title.get('type', {}).get('full_string'),
+                        'type_code': title.get('type', {}).get('code'),
+                        'type_string': title.get('type', {}).get('string'),
+                        'type_episodes': title.get('type', {}).get('episodes'),
+                        'type_length': title.get('type', {}).get('length'),
+                        'genres': json.dumps(title.get('genres', [])),
+                        'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
+                        'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
+                        'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
+                        'season_string': title.get('season', {}).get('string'),
+                        'season_code': title.get('season', {}).get('code'),
+                        'season_year': title.get('season', {}).get('year'),
+                        'season_week_day': title.get('season', {}).get('week_day'),
+                        'description': title.get('description'),
+                        'in_favorites': title.get('in_favorites'),
+                        'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
+                        'blocked_geoip': title.get('blocked', {}).get('geoip'),
+                        'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
+                        'last_updated': datetime.utcnow()  # Использование метода utcnow()
+                    }
+                self.save_title(title_data)
+            except Exception as e:
+                self.logger.error(f"Failed to save title to database: {e}")
+        return True
 
     def process_episodes(self, title_data):
         for episode in title_data.get("player", {}).get("list", {}).values():
@@ -280,14 +279,12 @@ class DatabaseManager:
                         'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
                         'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
                     }
-                    title_id = episode_data['title_id']
-                    if self.save_episode(episode_data):
-                        self.logger.debug(f"Successfully saved episode_data for title_id: {title_id}")
-                    else:
-                        self.logger.warning(f"Failed to save episode_data for title_id: {title_id}")
-                    return True
+
+                    self.save_episode(episode_data)
+
                 except Exception as e:
                     self.logger.error(f"Failed to save episode to database: {e}")
+        return True
 
     def process_torrents(self, title_data):
         if "torrents" in title_data and "list" in title_data["torrents"]:
@@ -315,11 +312,8 @@ class DatabaseManager:
                             'torrent_metadata': torrent.get('metadata'),
                             'raw_base64_file': torrent.get('raw_base64_file')
                         }
-                        title_id = torrent_data['title_id']
-                        if self.save_torrent(torrent_data):
-                            self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
-                        else:
-                            self.logger.warning(f"Failed to save torrent_data for title_id: {title_id}")
+
+                        self.save_torrent(torrent_data)
                     except Exception as e:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
         return True
@@ -332,13 +326,13 @@ class DatabaseManager:
                 if not existing_poster:
                     # Создаем новый объект Poster и добавляем в базу
                     new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
-
                     session.add(new_poster)
+                    self.logger.debug(f"Poster image was saved to database. title_id: {title_id}")
                 else:
                     # Обновляем существующий постер
                     existing_poster.poster_blob = poster_blob
                     existing_poster.last_updated = datetime.utcnow()
-
+                    self.logger.debug(f"Poster image was existed in database. title_id: {title_id}")
                 session.commit()
             except Exception as e:
                 session.rollback()
@@ -348,6 +342,7 @@ class DatabaseManager:
         with self.Session as session:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
+                self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
                 if poster:
                     return poster.poster_blob
                 return None
@@ -373,6 +368,7 @@ class DatabaseManager:
             if batch_size:
                 query = query.offset(offset).limit(batch_size)
             titles = query.all()
+            self.logger.debug(f"Titles was found in database. titles_id: {len(titles)}")
             return titles
         except Exception as e:
             self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")

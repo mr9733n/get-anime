@@ -167,23 +167,6 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
 
-    def get_titles_query(self, day_of_week=None, show_all=False, title_id=None):
-        """
-        Returns a SQLAlchemy query for fetching titles based on given conditions.
-        :param day_of_week: Specific day of the week to filter by.
-        :param show_all: If true, returns all titles.
-        :param title_id: If specified, returns a title with the given title_id.
-        :return: SQLAlchemy Query object
-        """
-        with self.Session as session:
-            query = session.query(Title).options(joinedload(Title.episodes))
-            if title_id:
-                query = query.filter(Title.title_id == title_id)
-            elif not show_all:
-                query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
-
-            return query
-
     def save_torrent(self, torrent_data):
         with self.Session as session:
             title_id = torrent_data['title_id']
@@ -342,7 +325,7 @@ class DatabaseManager:
         with self.Session as session:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
-                self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
+                self.logger.debug(f"Poster image was found in database. title_id: {'2 : placeholder' if title_id == 2 else title_id}")
                 if poster:
                     return poster.poster_blob
                 return None
@@ -363,16 +346,28 @@ class DatabaseManager:
 
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
         """Получает список тайтлов из базы данных через DatabaseManager."""
-        try:
-            query = self.get_titles_query(day_of_week, show_all, title_id)
-            if batch_size:
-                query = query.offset(offset).limit(batch_size)
-            titles = query.all()
-            self.logger.debug(f"Titles was found in database. titles_id: {len(titles)}")
-            return titles
-        except Exception as e:
-            self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
-            return []
+        """
+        Returns a SQLAlchemy query for fetching titles based on given conditions.
+        :param day_of_week: Specific day of the week to filter by.
+        :param show_all: If true, returns all titles.
+        :param title_id: If specified, returns a title with the given title_id.
+        :return: SQLAlchemy Query object
+        """
+        with self.Session as session:
+            try:
+                query = session.query(Title).options(joinedload(Title.episodes))
+                if title_id:
+                    query = query.filter(Title.title_id == title_id)
+                elif not show_all:
+                    query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+                titles = query.all()
+                self.logger.debug(f"Titles was found in database. titles_id: {title_id}")
+                return titles
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                return []
 
 
 # Модели для таблиц

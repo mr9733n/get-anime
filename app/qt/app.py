@@ -483,6 +483,10 @@ class AnimePlayerAppVer3(QWidget):
                         line-height: 0.9;  /* Увеличенный межстрочный интервал */
                         margin-left: 100px;
                     }}
+                    
+                    .header_p {{
+                        text-align: left;
+                    }}
               
                     /* Специальные стили для заголовка */
                     .header {{
@@ -554,18 +558,17 @@ class AnimePlayerAppVer3(QWidget):
                     <div>
                         {announce_html}
                         {status_html}
-
                         {description_html}
                         {genres_html}
                         {year_html}
                         {type_html}
                     </div>
                     <div>
-                        <p>Эпизоды:</p>
+                        <p class="header_p">Эпизоды:</p>
                         {episodes_html}
                     </div>
                     <div>
-                        <p>Torrents:</p>
+                        <p class="header_p">Torrents:</p>
                         {torrents_html}
                     </div>
                 </div>
@@ -828,12 +831,17 @@ class AnimePlayerAppVer3(QWidget):
         poster_links = []
         if "posters" in title_data and title_data.get("posters", {}).get("small"):
             poster_url = self.get_poster(title_data)
+            title_id = title_data['id']
             if poster_url:
-                poster_links.append((title_data['id'], poster_url))
-                self.logger.debug(f"Poster url: {poster_url[-41:]}")
+                poster_image = self.db_manager.get_poster_blob(title_id)
+                if poster_image:
+                    self.logger.debug(f"Find poster in database: {poster_image[:10]}")
+                else:
+                    poster_links.append((title_id, poster_url))
+                    self.logger.debug(f"Find poster link: {poster_url[-41:]}")
+                    if poster_links:
+                        self.poster_manager.write_poster_links(poster_links)
 
-        if poster_links:
-            self.poster_manager.write_poster_links(poster_links)
         return True
 
     def get_poster(self, title_data):
@@ -880,7 +888,6 @@ class AnimePlayerAppVer3(QWidget):
                 self.save_torrent_wrapper(link, title_name, torrent_id)
             else:
                 self.logger.error(f"Unknown link type: {link}")
-
 
         except Exception as e:
             error_message = f"An error occurred while processing the link: {str(e)}"

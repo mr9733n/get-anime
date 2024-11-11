@@ -58,6 +58,8 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager):
         super().__init__()
+        self.selected_quality = None
+        self.torrent_data = None
         self.load_more_button = None
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
@@ -157,7 +159,9 @@ class AnimePlayerAppVer3(QWidget):
         if not data:
             error_message = "No data available. Please fetch data first."
             self.logger.error(error_message)
+
             return
+       
 
         self.logger.debug(f"DATA count: {len(data) if isinstance(data, dict) else 'not a dict'}")
 
@@ -200,7 +204,7 @@ class AnimePlayerAppVer3(QWidget):
         """Отображение первых тайтлов при старте."""
         # Загружаем первую партию тайтлов
         titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
-
+        # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
 
@@ -256,6 +260,7 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Title with title_id {title_id} not found in the database.")
             return
 
+        # TODO: fix this
         title = titles[0]
 
         # Обновление UI с загруженными данными
@@ -287,7 +292,8 @@ class AnimePlayerAppVer3(QWidget):
             self.posters_layout.addWidget(title_browser, index // num_columns, index % num_columns)
 
         # Проверяем и обновляем расписание после отображения
-        self.check_and_update_schedule_after_display(day_of_week, titles)
+        QTimer.singleShot(100, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+
 
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
         """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
@@ -433,7 +439,6 @@ class AnimePlayerAppVer3(QWidget):
         year_html = self.generate_year_html(title)
         type_html = self.generate_type_html(title)
         torrents_html = self.generate_torrents_html(title)
-
         # Добавляем информацию об эпизодах
         episodes_html = self.generate_episodes_html(title)
 
@@ -586,6 +591,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
+        self.torrent_data = {}
         torrents = self.db_manager.get_torrents_from_db(title.title_id)
 
         if not torrents:
@@ -597,7 +603,9 @@ class AnimePlayerAppVer3(QWidget):
             torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
             torrent_link = torrent.url if torrent.url else "#"
             torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a></li>'
+            self.torrent_data = torrent.title_id, title.code, torrent.torrent_id
         torrents_html += "</ul>"
+
         return torrents_html
 
     def generate_poster_html(self, title):
@@ -637,21 +645,13 @@ class AnimePlayerAppVer3(QWidget):
 
     def generate_genres_html(self, title):
         """Генерирует HTML для отображения жанров."""
-        if title.genres:
+        if hasattr(title, 'genre_names') and title.genre_names:
             try:
-                if isinstance(title.genres, bytes):
-                    genres_str = title.genres.decode('utf-8')
-                else:
-                    genres_str = title.genres
-
-                genres_list = ast.literal_eval(genres_str)
-
-                if isinstance(genres_list, str):
-                    genres_list = json.loads(genres_list)
-
+                # Используем жанры в виде списка строк
+                genres_list = title.genre_names
                 genres = ', '.join(genres_list) if genres_list else "Жанры отсутствуют"
-            except (json.JSONDecodeError, ValueError, SyntaxError) as e:
-                self.logger.error(f"Ошибка при декодировании жанров: {e}")
+            except Exception as e:
+                self.logger.error(f"Ошибка при генерации HTML жанров: {e}")
                 genres = "Жанры отсутствуют"
         else:
             genres = "Жанры отсутствуют"
@@ -688,7 +688,6 @@ class AnimePlayerAppVer3(QWidget):
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
         selected_quality = self.quality_dropdown.currentText()  # Получаем выбранное качество
-
         # Подготовка HTML для эпизодов
         episodes_html = "<ul>"
 
@@ -717,6 +716,7 @@ class AnimePlayerAppVer3(QWidget):
 
             else:
                 episodes_html += f'<li>{episode_name} (нет ссылки для качества {selected_quality})</li>'
+
 
         episodes_html += "</ul>"
         # Добавляем имя эпизода в sanitized_titles
@@ -879,13 +879,20 @@ class AnimePlayerAppVer3(QWidget):
                 open_link = self.pre + self.stream_video_url + link
                 media_player_command = [video_player_path, open_link]
                 subprocess.Popen(media_player_command)
-                self.logger.info(f"Playing video link: {open_link}")
+                self.logger.info(f"Playing video link: {link}")
+                title_id = link.split('/')[4]
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif '/torrent/download.php' in link:
-                # Здесь нужно извлечь название тайтла и идентификатор торрента из ссылки
-                # title_name и torrent_id можно передать дополнительно, если нужно
-                title_name = "Unknown Title"  # Вы можете настроить это значение
-                torrent_id = None  # Если возможно, извлеките ID из ссылки
-                self.save_torrent_wrapper(link, title_name, torrent_id)
+                title_id, title_code, torrent_id = self.torrent_data
+                self.save_torrent_wrapper(link, title_code, torrent_id)
+                self.logger.info(
+                    f"Torrent data: ["
+                    f"title_id: {title_id}, "
+                    f"title_code: {title_code}, "
+                    f"torrent_id: {torrent_id}"
+                    f"]"
+                )
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
             else:
                 self.logger.error(f"Unknown link type: {link}")
 
@@ -913,8 +920,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
 
         # Теперь сохраняем общий комбинированный плейлист
-        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[
-                                     :100] + ".m3u"
+        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[:100] + ".m3u"
         combined_links = []
 
         # Собираем все ссылки из всех плейлистов

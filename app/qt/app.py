@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -162,9 +162,7 @@ class AnimePlayerAppVer3(QWidget):
         if not data:
             error_message = "No data available. Please fetch data first."
             self.logger.error(error_message)
-
             return
-       
 
         self.logger.debug(f"DATA count: {len(data) if isinstance(data, dict) else 'not a dict'}")
 
@@ -218,15 +216,12 @@ class AnimePlayerAppVer3(QWidget):
         self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2):
+        """Создает виджет для тайтла и добавляет его в макет."""
         for index, title in enumerate(titles):
             row = (index + row_start) // num_columns
             column = (index + col_start) % num_columns
-            self.add_title_to_layout(title, row, column)
-
-    def add_title_to_layout(self, title, row, column):
-        """Создает виджет для тайтла и добавляет его в макет."""
-        title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-        self.posters_layout.addWidget(title_browser, row, column)
+            title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+            self.posters_layout.addWidget(title_browser, row, column)
 
     def load_more_titles(self):
         """Загружает и отображает следующие тайтлы."""
@@ -294,7 +289,6 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(f"Error fetching titles from schedule: {e}")
         return titles
 
-
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
         """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
         try:
@@ -302,41 +296,60 @@ class AnimePlayerAppVer3(QWidget):
             new_data = self.get_schedule(day_of_week)
             if new_data:
                 for day_info in new_data:
-                    day = day_info.get("day")
-                    if day == day_of_week:
+                    if day_info.get("day") == day_of_week:
                         new_titles = day_info.get("list", [])
 
-                        # Проверяем, изменилось ли количество эпизодов или другие данные
+                        # Проверка, изменилось ли количество тайтлов
                         if len(new_titles) != len(current_titles):
                             self.logger.info(
-                                f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных...")
+                                f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных..."
+                            )
                             self.invoke_database_save(new_titles)
                         else:
-                            # Дополнительная проверка на изменения в данных
+                            # Дополнительная проверка на изменения в данных каждого тайтла
                             for new_title, current_title in zip(new_titles, current_titles):
+                                # Проверка изменения по идентификатору, коду или объявлению
                                 if new_title.get('id') != current_title.title_id or \
                                         new_title.get('code') != current_title.code or \
-                                        new_title.get('announce') != current_title.announce:
+                                        new_title.get('announce') != current_title.announce or \
+                                        self.is_update_required(new_title, current_title):
                                     self.logger.info(
-                                        f"Обнаружены изменения в тайтле {new_title.get('name')}, обновляем базу данных...")
+                                        f"Обнаружены изменения в тайтле {new_title.get('code')}, обновляем базу данных..."
+                                    )
                                     self.invoke_database_save([new_title])
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
 
-    def is_schedule_up_to_date(self, titles, day_of_week):
-        """Проверяет, актуально ли расписание в базе данных."""
-        # Простая проверка: если расписание отсутствует или если с момента последнего обновления прошло слишком много времени
-        if not titles:
+    def is_update_required(self, new_title, current_title):
+        """Проверяет, требуют ли обновления поля `updated` или `last_change`."""
+        try:
+            new_updated = new_title.get('updated', 0)
+            new_last_change = new_title.get('last_change', 0)
+
+            # Преобразование существующих данных из формата UTC в Unix timestamp
+            existing_updated = self.convert_to_unix_timestamp(current_title.updated) if current_title.updated else 0
+            existing_last_change = self.convert_to_unix_timestamp(
+                current_title.last_change) if current_title.last_change else 0
+
+            # Если новая дата обновления или изменения больше, возвращаем True
+            return (new_updated > existing_updated) or (new_last_change > existing_last_change)
+        except Exception as e:
+            self.logger.error(f"Ошибка при проверке даты обновления для тайтла {new_title.get('id')}: {e}")
             return False
 
-        last_updated_time = max(title.last_updated for title in titles)
-        current_time = datetime.utcnow()
-        delta = current_time - last_updated_time
-        # Например, обновлять расписание, если прошло больше 24 часов с момента последнего обновления
-        if delta > timedelta(hours=1):
-            return False
-
-        return True
+    def convert_to_unix_timestamp(self, date_value):
+        """Конвертирует строку UTC даты в Unix timestamp."""
+        if isinstance(date_value, str):
+            try:
+                # Предполагаем, что формат даты '%Y-%m-%d %H:%M:%S'
+                dt = datetime.datetime.strptime(date_value, "%Y-%m-%d %H:%M:%S")
+                return int(dt.timestamp())
+            except ValueError as e:
+                self.logger.error(f"Ошибка при преобразовании даты '{date_value}': {e}")
+                return 0
+        elif isinstance(date_value, datetime.datetime):
+            return int(date_value.timestamp())
+        return 0
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие виджеты из сетки постеров."""

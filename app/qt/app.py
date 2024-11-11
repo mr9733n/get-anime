@@ -87,6 +87,9 @@ class AnimePlayerAppVer3(QWidget):
         self.playlists = {}
         self.titles_batch_size = 4  # Количество тайтлов, которые загружаются за раз
         self.current_offset = 0     # Текущий смещение для выборки тайтлов
+        self.num_columns = 2  # Количество колонок для отображения
+        self.row_start = 0
+        self.col_start = 0
         self.total_titles = []
 
         self.logger = logging.getLogger(__name__)
@@ -212,10 +215,12 @@ class AnimePlayerAppVer3(QWidget):
         self.total_titles.extend(titles)
 
         # Отображаем тайтлы в UI
-        num_columns = 2  # Количество колонок для отображения
+        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+
+    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2):
         for index, title in enumerate(titles):
-            row = (index + self.current_offset - self.titles_batch_size) // num_columns
-            column = index % num_columns
+            row = (index + row_start) // num_columns
+            column = (index + col_start) % num_columns
             self.add_title_to_layout(title, row, column)
 
     def add_title_to_layout(self, title, row, column):
@@ -238,12 +243,8 @@ class AnimePlayerAppVer3(QWidget):
         # Сохраняем загруженные тайтлы в список для доступа позже
         self.total_titles.extend(titles)
 
-        # Отображаем новые тайтлы в UI
-        num_columns = 2  # Количество колонок для отображения
-        for index, title in enumerate(titles):
-            row = (index + self.current_offset - self.titles_batch_size) // num_columns
-            column = index % num_columns
-            self.add_title_to_layout(title, row, column)
+        # Отображаем тайтлы в UI
+        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
 
     def start_create_title_task(self, title, row, column):
         task = CreateTitleBrowserTask(self, title, row, column, show_description=False, show_one_title=False)
@@ -271,28 +272,27 @@ class AnimePlayerAppVer3(QWidget):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
 
-        titles = self.db_manager.get_titles_from_db(day_of_week)
+        titles = self.get_or_fetch_titles_for_day(day_of_week)
 
+        if titles:
+            # Отображаем тайтлы в UI
+            self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+
+            # Проверяем и обновляем расписание после отображения
+            QTimer.singleShot(100, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+
+    def get_or_fetch_titles_for_day(self, day_of_week):
+        """Retrieves titles from the database or fetches them if not found."""
+        titles = self.db_manager.get_titles_from_db(day_of_week)
         if not titles:
             try:
                 data = self.get_schedule(day_of_week)
-                self.logger.debug(f"Получены данные с сервера: {len(data)} keys (type: {type(data).__name__})")
-                # Обработка данных и добавление их в базу данных
-                if data is True:
-                    # После сохранения данных в базе получаем их снова
+                self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
+                if data:
                     titles = self.db_manager.get_titles_from_db(day_of_week)
             except Exception as e:
-                self.logger.error(f"Ошибка при получении тайтлов через get_schedule: {e}")
-                return
-
-        # Обновление UI с загруженными данными
-        num_columns = 2  # Задайте количество колонок для отображения
-        for index, title in enumerate(titles):
-            title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-            self.posters_layout.addWidget(title_browser, index // num_columns, index % num_columns)
-
-        # Проверяем и обновляем расписание после отображения
-        QTimer.singleShot(100, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+                self.logger.error(f"Error fetching titles from schedule: {e}")
+        return titles
 
 
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
@@ -362,6 +362,14 @@ class AnimePlayerAppVer3(QWidget):
                 elif item.layout() is not None:
                     self.clear_layout(item.layout())
 
+    def get_poster_or_placeholder(self, title_id):
+        poster_data = self.db_manager.get_poster_blob(title_id)
+        if not poster_data:
+            # Если постер не найден, попробуем получить заглушку с title_id=-1
+            self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
+            poster_data = self.db_manager.get_poster_blob(2)
+        return poster_data
+
     def create_title_browser(self, title, show_description=False, show_one_title=False):
         """Создает элемент интерфейса для отображения информации о тайтле."""
         self.logger.debug("Начинаем создание title_browser...")
@@ -372,12 +380,7 @@ class AnimePlayerAppVer3(QWidget):
 
             # Poster on the left
             poster_label = QLabel(self)
-            poster_data = self.db_manager.get_poster_blob(title.title_id)
-
-            if not poster_data:
-                # Если постер не найден, попробуем получить заглушку с title_id=-1
-                self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
-                poster_data = self.db_manager.get_poster_blob(2)
+            poster_data = self.get_poster_or_placeholder(title.title_id)
 
             if poster_data:
                 pixmap = QPixmap()

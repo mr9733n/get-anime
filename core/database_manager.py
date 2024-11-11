@@ -16,7 +16,6 @@ class DatabaseManager:
         self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
 
-
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
@@ -72,25 +71,29 @@ class DatabaseManager:
                     raise ValueError("Неверный тип для 'title_id'. Ожидался тип int.")
 
                 # Преобразование списков и словарей в строки в формате JSON для хранения в базе данных
-                title_data['franchises'] = json.dumps(title_data.get('franchises', []))
-                title_data['genres'] = json.dumps(title_data.get('genres', []))
-                title_data['team_voice'] = json.dumps(title_data.get('team_voice', []))
-                title_data['team_translator'] = json.dumps(title_data.get('team_translator', []))
-                title_data['team_timing'] = json.dumps(title_data.get('team_timing', []))
-                title_data['blocked_geoip_list'] = json.dumps(title_data.get('blocked_geoip_list', []))
 
                 existing_title = session.query(Title).filter_by(title_id=title_data['title_id']).first()
+
+
+                # Преобразуем timestamps если они есть в данных
+                if 'updated' in title_data:
+                    title_data['updated'] = datetime.utcfromtimestamp(title_data['updated'])
+                if 'last_change' in title_data:
+                    title_data['last_change'] = datetime.utcfromtimestamp(title_data['last_change'])
 
                 if existing_title:
                     # Update existing title if data has changed
                     is_updated = False
+
                     for key, value in title_data.items():
                         if getattr(existing_title, key, None) != value:
                             setattr(existing_title, key, value)
                             is_updated = True
+
+                    # Если было установлено, что данные обновились, фиксируем изменения в базе данных
                     if is_updated:
                         session.commit()
-                        self.logger.debug(f"updated title_id: {title_id}")
+                        self.logger.debug(f"Updated title_id: {title_id}")
                 else:
                     # Add new title
                     new_title = Title(**title_data)
@@ -100,6 +103,132 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
+
+    def save_franchise(self, franchise_data):
+        with self.Session as session:
+            try:
+                title_id = franchise_data['title_id']
+                franchise_id = franchise_data['franchise_id']
+                franchise_name = franchise_data['franchise_name']
+                self.logger.debug(f"Saving franchise_id: {franchise_id} for {title_id}, {franchise_name}")
+
+                # Проверка существования франшизы в базе данных
+                existing_franchise = session.query(Franchise).filter_by(title_id=title_id).first()
+
+                if existing_franchise:
+                    self.logger.debug(f"Franchise for title_id {title_id} already exists. Updating...")
+                    # Обновление существующей франшизы
+                    existing_franchise.franchise_id = franchise_id
+                    existing_franchise.franchise_name = franchise_name
+                    franchise = existing_franchise
+                else:
+                    # Создание новой франшизы
+                    new_franchise = Franchise(
+                        title_id=title_id,
+                        franchise_id=franchise_id,
+                        franchise_name=franchise_name
+                    )
+                    session.add(new_franchise)
+                    session.flush()  # Получаем ID новой франшизы для использования в релизах
+                    franchise = new_franchise
+
+                # Обработка информации о релизах франшизы
+                for release in franchise_data.get('releases', []):
+                    release_title_id = release.get('id')
+                    release_code = release.get('code')
+                    release_ordinal = release.get('ordinal')
+                    release_names = release.get('names', {})
+
+                    # Проверка существования релиза франшизы в базе данных
+                    existing_release = session.query(FranchiseRelease).filter_by(franchise_id=franchise.id,
+                                                                                 title_id=release_title_id).first()
+                    if existing_release:
+                        self.logger.debug(
+                            f"Franchise release for title_id {release_title_id} already exists. Updating...")
+                        # Обновление существующего релиза
+                        existing_release.code = release_code
+                        existing_release.ordinal = release_ordinal
+                        existing_release.name_ru = release_names.get('ru')
+                        existing_release.name_en = release_names.get('en')
+                        existing_release.name_alternative = release_names.get('alternative')
+                    else:
+                        # Создание нового релиза франшизы
+                        new_release = FranchiseRelease(
+                            franchise_id=franchise.id,
+                            title_id=release_title_id,
+                            code=release_code,
+                            ordinal=release_ordinal,
+                            name_ru=release_names.get('ru'),
+                            name_en=release_names.get('en'),
+                            name_alternative=release_names.get('alternative')
+                        )
+                        session.add(new_release)
+
+                session.commit()
+                self.logger.debug(f"Successfully saved franchise for title_id: {title_id}")
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении франшизы в базе данных: {e}")
+                return False
+
+    def save_genre(self, title_id, genres):
+        with self.Session as session:
+            try:
+                for genre in genres:
+                    # Проверяем, существует ли жанр в таблице Genre
+                    existing_genre = session.query(Genre).filter_by(name=genre).first()
+
+                    # Если жанр не существует, добавляем его
+                    if not existing_genre:
+                        new_genre = Genre(name=genre)
+                        session.add(new_genre)
+                        session.commit()  # Коммитим, чтобы получить genre_id для следующего этапа
+                        genre_id = new_genre.genre_id
+                    else:
+                        genre_id = existing_genre.genre_id
+
+                    # Добавляем связь в таблицу TitleGenreRelation
+                    existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
+                                                                                    genre_id=genre_id).first()
+                    if not existing_relation:
+                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id)
+                        session.add(new_relation)
+
+                session.commit()
+                self.logger.debug(f"Successfully saved genres for title_id: {title_id}")
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении жанров для title_id {title_id}: {e}")
+
+    def save_team_members(self, title_id, team_data):
+        with self.Session as session:
+            try:
+                for role, members in team_data.items():
+                    for member_name in members:
+                        # Проверяем, существует ли уже участник с таким именем и ролью
+                        existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
+                        if not existing_member:
+                            # Создаем нового участника команды
+                            new_member = TeamMember(name=member_name, role=role)
+                            session.add(new_member)
+                            session.flush()  # Получаем ID нового участника
+                            team_member = new_member
+                        else:
+                            team_member = existing_member
+
+                        # Добавляем связь с тайтлом
+                        title_team_relation = TitleTeamRelation(title_id=title_id, team_member_id=team_member.id)
+                        session.add(title_team_relation)
+
+                session.commit()
+                self.logger.debug(f"Successfully saved team members for title_id: {title_id}")
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
+                return False
 
     def save_episode(self, episode_data):
         with self.Session as session:
@@ -170,11 +299,15 @@ class DatabaseManager:
     def save_torrent(self, torrent_data):
         with self.Session as session:
             title_id = torrent_data['title_id']
+            torrent_id = torrent_data['torrent_id']
+            self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
             try:
                 # Проверяем, существует ли уже торрент с данным `torrent_id`
-                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_data['torrent_id']).first()
+                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_id).first()
 
                 if existing_torrent:
+                    is_updated = False
+
                     # Проверка на изменение данных
                     is_updated = any(
                         getattr(existing_torrent, key) != value
@@ -184,7 +317,7 @@ class DatabaseManager:
                     if is_updated:
                         # Обновляем данные, если они изменились
                         session.merge(Torrent(**torrent_data))
-                        self.logger.debug(f"Updated torrent_data for title_id: {title_id}")
+                        self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
                 else:
                     # Добавляем новый торрент, если его еще нет в базе
                     session.add(Torrent(**torrent_data))
@@ -206,7 +339,6 @@ class DatabaseManager:
                         'name_ru': title.get('names', {}).get('ru'),
                         'name_en': title.get('names', {}).get('en'),
                         'alternative_name': title.get('names', {}).get('alternative'),
-                        'franchises': json.dumps(title.get('franchises', [])),
                         'announce': title.get('announce'),
                         'status_string': title.get('status', {}).get('string'),
                         'status_code': title.get('status', {}).get('code'),
@@ -220,7 +352,6 @@ class DatabaseManager:
                         'type_string': title.get('type', {}).get('string'),
                         'type_episodes': title.get('type', {}).get('episodes'),
                         'type_length': title.get('type', {}).get('length'),
-                        'genres': json.dumps(title.get('genres', [])),
                         'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
                         'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
                         'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
@@ -236,6 +367,38 @@ class DatabaseManager:
                         'last_updated': datetime.utcnow()  # Использование метода utcnow()
                     }
                 self.save_title(title_data)
+
+                title_id = title_data['title_id']
+
+                # Сохранение данных в связанные таблицы
+                franchises = title.get('franchises', [])
+                if franchises:
+                    for franchise in franchises:
+                        franchise_data = {
+                            'title_id': title_id,
+                            'franchise_id': franchise.get('franchise', {}).get('id'),
+                            'franchise_name': franchise.get('franchise', {}).get('name'),
+                            'releases': franchise.get('releases', [])
+                        }
+                        self.logger.debug(f"franchises found for title_id: {title_id} : {franchise_data}")
+                        self.save_franchise(franchise_data)
+
+                genres = title.get('genres', [])
+                self.logger.debug(f"GENRES: {title_id}:{genres}")
+                self.save_genre(title_id, genres)
+
+                # Извлечение данных команды напрямую
+                team_data = {
+                    'voice': title.get('team', {}).get('voice', []),
+                    'translator': title.get('team', {}).get('translator', []),
+                    'timing': title.get('team', {}).get('timing', []),
+                }
+                self.logger.debug(f"TEAM DATA: {title_id}:{team_data}")
+
+                # Проверяем, что данные команды существуют и сохраняем их
+                if team_data:
+                    self.save_team_members(title_id, team_data)
+
             except Exception as e:
                 self.logger.error(f"Failed to save title to database: {e}")
         return True
@@ -344,6 +507,19 @@ class DatabaseManager:
             except Exception as e:
                 self.logger.error(f"Error fetching torrent data from database: {e}")
 
+    def get_genres_from_db(self, title_id):
+        with self.Session as session:
+            try:
+                # Получаем все жанры, связанные с данным title_id через таблицу TitleGenreRelation
+                relations = session.query(TitleGenreRelation).filter_by(title_id=title_id).all()
+                genres = [relation.genre.name for relation in relations]
+                if genres:
+                    self.logger.debug(f"Genres were found in database for title_id: {title_id}")
+                    return genres
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
+                return None
+
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
@@ -355,15 +531,27 @@ class DatabaseManager:
         """
         with self.Session as session:
             try:
-                query = session.query(Title).options(joinedload(Title.episodes))
+                # Используем `joinedload` для предварительной загрузки жанров и эпизодов
+                query = session.query(Title).options(
+                    joinedload(Title.genres).joinedload(TitleGenreRelation.genre),
+                    joinedload(Title.episodes)
+                )
+
                 if title_id:
                     query = query.filter(Title.title_id == title_id)
                 elif not show_all:
                     query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
+
                 titles = query.all()
-                self.logger.debug(f"Titles was found in database. titles_id: {title_id}")
+
+                # Создаем список жанров в виде строк для каждого тайтла и добавляем их в новое поле `genre_names`
+                for title in titles:
+                    title.genre_names = [relation.genre.name for relation in title.genres if relation.genre]
+
+                # self.logger.debug(f"Titles were found in database. QUERY: {str(query)}")
+                # self.logger.debug(f"Titles were found in database. titles: {titles}")
                 return titles
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
@@ -378,7 +566,6 @@ class Title(Base):
     name_ru = Column(String, nullable=False)
     name_en = Column(String)
     alternative_name = Column(String)
-    franchises = Column(String)  # Сохраняется как строка в формате JSON
     announce = Column(String)
     status_string = Column(String)
     status_code = Column(Integer)
@@ -392,7 +579,6 @@ class Title(Base):
     type_string = Column(String)
     type_episodes = Column(Integer)
     type_length = Column(String)
-    genres = Column(String)  # Сохраняется как строка в формате JSON
     team_voice = Column(String)  # Сохраняется как строка в формате JSON
     team_translator = Column(String)  # Сохраняется как строка в формате JSON
     team_timing = Column(String)  # Сохраняется как строка в формате JSON
@@ -407,10 +593,75 @@ class Title(Base):
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
     last_updated = Column(DateTime, default=datetime.utcnow)
 
+    franchises = relationship("Franchise", back_populates="title")
+    releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
+    genres = relationship("TitleGenreRelation", back_populates="title")
+    team_members = relationship("TitleTeamRelation", back_populates="title")
     episodes = relationship("Episode", back_populates="title")
     torrents = relationship("Torrent", back_populates="title")
     posters = relationship("Poster", back_populates="title")
     schedules = relationship("Schedule", back_populates="title")
+
+# Таблица связей между Title и Franchise
+class FranchiseRelease(Base):
+    __tablename__ = 'franchise_releases'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    franchise_id = Column(Integer, ForeignKey('franchises.id'), nullable=False)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    code = Column(String, nullable=False)
+    ordinal = Column(Integer, nullable=True)
+    name_ru = Column(String, nullable=True)
+    name_en = Column(String, nullable=True)
+    name_alternative = Column(String, nullable=True)
+
+    franchise = relationship("Franchise", back_populates="releases")
+    title = relationship("Title", back_populates="releases")
+
+class Franchise(Base):
+    __tablename__ = 'franchises'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
+    franchise_name = Column(String, nullable=False)  # Название франшизы
+
+    title = relationship("Title", back_populates="franchises")
+    releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
+
+class Genre(Base):
+    __tablename__ = 'genres'
+    genre_id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+
+    titles = relationship("TitleGenreRelation", back_populates="genre")
+
+# Таблица связей между Title и Genre
+class TitleGenreRelation(Base):
+    __tablename__ = 'title_genre_relation'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    genre_id = Column(Integer, ForeignKey('genres.genre_id'), nullable=False)
+
+    title = relationship("Title", back_populates="genres")
+    genre = relationship("Genre", back_populates="titles")
+
+class TeamMember(Base):
+    __tablename__ = 'team_members'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)  # Имя участника команды
+    role = Column(String, nullable=False)  # Роль участника: voice, translator, timing
+
+    titles = relationship("TitleTeamRelation", back_populates="team_member")
+
+# Таблица связей между Title и TeamMember
+class TitleTeamRelation(Base):
+    __tablename__ = 'title_team_relation'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    team_member_id = Column(Integer, ForeignKey('team_members.id'), nullable=False)
+
+    title = relationship("Title", back_populates="team_members")
+    team_member = relationship("TeamMember", back_populates="titles")
 
 class Episode(Base):
     __tablename__ = 'episodes'

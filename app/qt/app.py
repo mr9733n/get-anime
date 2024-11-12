@@ -1,6 +1,7 @@
 import ast
 import json
 import logging
+import logging.config
 import os
 import platform
 import re
@@ -8,7 +9,6 @@ import subprocess
 import sys
 import base64
 import datetime
-from venv import logger
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -19,6 +19,7 @@ from PyQt5.QtGui import QPixmap
 
 from app.qt.ui_manger import UIManager
 from core import database_manager
+from core.database_manager import DatabaseManager
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
@@ -1084,7 +1085,26 @@ class AnimePlayerAppVer3(QWidget):
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
 
+# TODO: this run not work cuz not right base folder
 if __name__ == '__main__':
+
+    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
+
+    # Construct the path to the database in the main directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_dir = os.path.join(base_dir, 'db')
+
+    # Ensure the database directory exists
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
+    db_path = os.path.join(db_dir, 'anime_player.db')
+
+    # Создаем и инициализируем таблицы базы данных
+    db_manager = DatabaseManager(db_path)
+    db_manager.initialize_tables()
+
+
     app = QApplication(sys.argv)
     window = AnimePlayerAppVer3(database_manager)
     window.show()

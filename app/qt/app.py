@@ -58,6 +58,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager):
         super().__init__()
+        self.current_titles = None
         self.selected_quality = None
         self.torrent_data = None
         self.load_more_button = None
@@ -155,6 +156,51 @@ class AnimePlayerAppVer3(QWidget):
         # Load 4 titles on start from DB
         self.display_titles()
 
+    def refresh_display(self):
+        """Обработчик кнопки REFRESH, выполняющий обновление текущего экрана."""
+        try:
+            selected_quality = self.quality_dropdown.currentText()
+            self.logger.debug(f"REFRESH нажат, выбранное качество: {selected_quality}")
+
+            # Если данные не загружены, выполнить запрос и обновить
+            if not self.total_titles:
+                self.logger.info("Данные не были загружены ранее, запрашиваем заново.")
+                self.update_quality_and_refresh()
+                return
+
+            # Очищаем текущие виджеты и список тайтлов перед обновлением
+            self.clear_previous_posters()
+            updated_titles = []
+
+            # Обновляем ссылки на эпизоды для уже загруженных тайтлов
+            for title in self.total_titles:
+                updated_title = self.update_title_links(title, selected_quality)
+                updated_titles.append(updated_title)
+
+            # Перезаписываем `self.total_titles` обновлённым списком
+            self.total_titles = updated_titles
+
+            # Отображаем обновленные тайтлы в UI
+            self.display_titles_in_ui(self.total_titles, self.row_start, self.col_start, self.num_columns)
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при обновлении экрана при нажатии REFRESH: {e}")
+
+    def update_title_links(self, title, selected_quality):
+        """Обновляет ссылки на эпизоды для заданного качества."""
+        if selected_quality == 'fhd':
+            title.current_links = [ep.hls_fhd for ep in title.episodes if ep.hls_fhd]
+        elif selected_quality == 'hd':
+            title.current_links = [ep.hls_hd for ep in title.episodes if ep.hls_hd]
+        elif selected_quality == 'sd':
+            title.current_links = [ep.hls_sd for ep in title.episodes if ep.hls_sd]
+        else:
+            self.logger.warning(f"Неизвестное качество: {selected_quality}, используем ссылки по умолчанию.")
+
+        # Логирование обновленных ссылок
+        self.logger.debug(f"Обновлены ссылки для тайтла {title.title_id}: {title.current_links}")
+        return title
+
     def update_quality_and_refresh(self, event=None):
         selected_quality = self.quality_dropdown.currentText()
         data = self.current_data
@@ -201,16 +247,17 @@ class AnimePlayerAppVer3(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
-    def display_titles(self):
+    def display_titles(self, titles=None):
         """Отображение первых тайтлов при старте."""
         # Загружаем первую партию тайтлов
-        titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+        if titles is None:
+            titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
         # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
 
         # Сохраняем загруженные тайтлы в список для доступа позже
-        self.total_titles.extend(titles)
+        self.total_titles = titles
 
         # Отображаем тайтлы в UI
         self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
@@ -218,10 +265,14 @@ class AnimePlayerAppVer3(QWidget):
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2):
         """Создает виджет для тайтла и добавляет его в макет."""
         for index, title in enumerate(titles):
-            row = (index + row_start) // num_columns
-            column = (index + col_start) % num_columns
-            title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-            self.posters_layout.addWidget(title_browser, row, column)
+            if index == 0:
+                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
+                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+            else:
+                row = (index + row_start) // num_columns
+                column = (index + col_start) % num_columns
+                title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+                self.posters_layout.addWidget(title_browser, row, column)
 
     def load_more_titles(self):
         """Загружает и отображает следующие тайтлы."""
@@ -236,7 +287,7 @@ class AnimePlayerAppVer3(QWidget):
         self.current_offset += self.titles_batch_size
 
         # Сохраняем загруженные тайтлы в список для доступа позже
-        self.total_titles.extend(titles)
+        self.total_titles = titles
 
         # Отображаем тайтлы в UI
         self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
@@ -256,18 +307,17 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Title with title_id {title_id} not found in the database.")
             return
 
-        # TODO: fix this
-        title = titles[0]
+        self.total_titles = titles
 
-        # Обновление UI с загруженными данными
-        title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
-        self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
 
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
 
         titles = self.get_or_fetch_titles_for_day(day_of_week)
+
+        self.total_titles = titles
 
         if titles:
             # Отображаем тайтлы в UI

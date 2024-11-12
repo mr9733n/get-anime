@@ -113,7 +113,7 @@ class UIManager:
         layout.addWidget(self.parent.quality_dropdown)
 
         # Refresh Button
-        self.parent.refresh_button = self.create_button('REFRESH', 6, self.parent.update_quality_and_refresh)
+        self.parent.refresh_button = self.create_button('REFRESH', 6, self.parent.refresh_display)
         layout.addWidget(self.parent.refresh_button)
 
         # Save Playlist Button

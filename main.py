@@ -58,12 +58,6 @@ if __name__ == "__main__":
         thread_tk_v2 = threading.Thread(target=run_tkinter_app_v2, args=(db_manager,))
         threads.append(thread_tk_v2)
 
-    if args.version3:
-        app_pyqt = QApplication(sys.argv)
-        window_pyqt = AnimePlayerAppVer3(db_manager)
-        window_pyqt.show()
-        sys.exit(app_pyqt.exec_())
-
     # Запуск всех потоков
     for thread in threads:
         thread.start()
@@ -71,3 +65,10 @@ if __name__ == "__main__":
     # Ожидание завершения всех потоков
     for thread in threads:
         thread.join()
+
+    if args.version3:
+        app_pyqt = QApplication(sys.argv)
+        window_pyqt = AnimePlayerAppVer3(db_manager)
+        window_pyqt.show()
+        sys.exit(app_pyqt.exec_())
+

@@ -65,8 +65,10 @@ if __name__ == "__main__":
         threads.append(thread_tk_v2)
 
     if args.version3:
-        thread_pyqt = threading.Thread(target=run_pyqt_app, args=(db_manager,))
-        threads.append(thread_pyqt)
+        app_pyqt = QApplication(sys.argv)
+        window_pyqt = AnimePlayerAppVer3(db_manager)
+        window_pyqt.show()
+        sys.exit(app_pyqt.exec_())
 
     # Запуск всех потоков
     for thread in threads:

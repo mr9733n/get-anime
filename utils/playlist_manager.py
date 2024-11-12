@@ -30,7 +30,7 @@ class PlaylistManager:
 
         if os.path.exists(file_path):
             self.logger.warning(f"Playlist '{file_name}' already exists. Skipping save.")
-            return
+            return file_name
 
         try:
             with open(file_path, 'w', encoding='utf-8') as file:

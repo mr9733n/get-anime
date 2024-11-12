@@ -6,8 +6,9 @@ import platform
 import re
 import subprocess
 import sys
-import time
+import base64
 import datetime
+from venv import logger
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -18,11 +19,6 @@ from PyQt5.QtGui import QPixmap
 
 from app.qt.ui_manger import UIManager
 from core import database_manager
-from core.database_manager import Title, Schedule, Episode, Torrent
-from sqlalchemy.orm import joinedload
-import base64
-
-from core.database_manager import Poster
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
@@ -86,7 +82,7 @@ class AnimePlayerAppVer3(QWidget):
         self.sanitized_titles = []
         self.title_names = []
         self.playlists = {}
-        self.titles_batch_size = 4  # Количество тайтлов, которые загружаются за раз
+        self.titles_batch_size = 2  # Количество тайтлов, которые загружаются за раз
         self.current_offset = 0     # Текущий смещение для выборки тайтлов
         self.num_columns = 2  # Количество колонок для отображения
         self.row_start = 0
@@ -146,7 +142,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle('Anime Player v3')
-        self.setGeometry(100, 100, 980, 750)
+        self.setGeometry(100, 100, 980, 780)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -247,11 +243,15 @@ class AnimePlayerAppVer3(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
-    def display_titles(self, titles=None):
+    def display_titles(self, title_ids=None):
         """Отображение первых тайтлов при старте."""
         # Загружаем первую партию тайтлов
-        if titles is None:
+        if title_ids is None:
             titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+        else:
+            titles = self.db_manager.get_titles_from_db(show_all=False, batch_size=self.titles_batch_size, offset=self.current_offset, title_ids=title_ids)
+
+
         # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
@@ -264,11 +264,15 @@ class AnimePlayerAppVer3(QWidget):
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2):
         """Создает виджет для тайтла и добавляет его в макет."""
-        for index, title in enumerate(titles):
-            if index == 0:
-                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
-                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
-            else:
+
+        if len(titles) == 1:
+            # Если у нас один тайтл, отображаем его с полным описанием
+            title = titles[0]
+            title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
+            self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+        else:
+            # Если тайтлов несколько, отображаем их в виде сетки
+            for index, title in enumerate(titles):
                 row = (index + row_start) // num_columns
                 column = (index + col_start) % num_columns
                 title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
@@ -315,29 +319,28 @@ class AnimePlayerAppVer3(QWidget):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
 
-        titles = self.get_or_fetch_titles_for_day(day_of_week)
-
-        self.total_titles = titles
+        titles = self.db_manager.get_titles_from_db(day_of_week)
 
         if titles:
+            # Сохраняем текущие тайтлы для последующего использования
+            self.total_titles = titles
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-
             # Проверяем и обновляем расписание после отображения
             QTimer.singleShot(100, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
-
-    def get_or_fetch_titles_for_day(self, day_of_week):
-        """Retrieves titles from the database or fetches them if not found."""
-        titles = self.db_manager.get_titles_from_db(day_of_week)
-        if not titles:
+        else:
             try:
+                # Если тайтлы отсутствуют, получаем данные с сервера
                 data = self.get_schedule(day_of_week)
                 self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
                 if data:
+                    # Сохраняем новые данные в базе и отображаем их
+                    self.invoke_database_save(data)
                     titles = self.db_manager.get_titles_from_db(day_of_week)
+                    self.total_titles = titles
+                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
-        return titles
 
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
         """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
@@ -501,12 +504,14 @@ class AnimePlayerAppVer3(QWidget):
         announce_html = self.generate_announce_html(title)
         status_html = self.generate_status_html(title)
         show_more_html = self.generate_show_more_html(title) if show_more_link else ""
+        # Добавляем информацию об эпизодах
+        episodes_html = self.generate_episodes_html(title)
+        play_all_html = self.generate_play_all_html(title)
         description_html = self.generate_description_html(title) if show_description else ""
         year_html = self.generate_year_html(title)
         type_html = self.generate_type_html(title)
         torrents_html = self.generate_torrents_html(title)
-        # Добавляем информацию об эпизодах
-        episodes_html = self.generate_episodes_html(title)
+
 
         # Генерируем полный HTML
         html_content = f"""
@@ -623,9 +628,9 @@ class AnimePlayerAppVer3(QWidget):
             </head>
             <body>
                 <div>
-                        <p class="header">{title.name_en}</p>
-                        <p class="header">{title.name_ru}</p>
-                        <p class="header">{show_more_html}</p>
+                    <p class="header">{title.name_en}</p>
+                    <p class="header">{title.name_ru}</p>
+                    <p class="header">{show_more_html}</p>
                     <div>
                         {announce_html}
                         {status_html}
@@ -635,7 +640,7 @@ class AnimePlayerAppVer3(QWidget):
                         {type_html}
                     </div>
                     <div>
-                        <p class="header_p">Эпизоды:</p>
+                        <p class="header_p">Эпизоды: {play_all_html}</p>
                         {episodes_html}
                     </div>
                     <div>
@@ -654,6 +659,25 @@ class AnimePlayerAppVer3(QWidget):
     def generate_show_more_html(self, title):
         """Generates HTML to display 'show more' link"""
         return f'<a href=display_info/{title.title_id}>Подробнее</a>'
+
+    def generate_play_all_html(self, title):
+        """Generates M3U Playlist link"""
+
+        playlist = self.playlists.get(title.title_id)
+        if playlist:
+            sanitized_title = playlist['sanitized_title']
+            discovered_links = playlist['links']
+            if discovered_links:
+                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links,
+                                                               self.stream_video_url)
+                self.logger.debug(
+                    f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
+                return f'<a href="play_all/{title.title_id}/{filename}">Play all</a>'
+            else:
+                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+                return "No playlist available"
+        else:
+            return "No playlist available"
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
@@ -880,15 +904,13 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error("No titles found in the response.")
             return
         self.invoke_database_save(title_list)
-        # Перебираем каждый тайтл в списке и обрабатываем его
-        for title_data in title_list:
-            title_id = title_data.get('id')
-            if title_id is None:
-                self.logger.error("Title ID not found in response.")
-                continue
 
-            # Вызываем метод display_info для каждого тайтла
-            self.display_info(title_id)
+        title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
+
+        if len(title_ids) == 1:
+            self.display_info(title_ids[0])
+        else:
+            self.display_titles(title_ids)
 
         # Сохраняем текущие данные
         self.current_data = data
@@ -938,8 +960,17 @@ class AnimePlayerAppVer3(QWidget):
                 # Получаем title_id из ссылки и вызываем display_info
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
-
-                return
+            elif link.startswith('play_all/'):
+                # Получаем title_id и filename из ссылки и вызываем play_playlist_wrapper
+                parts = link.split('/')
+                if len(parts) >= 3:
+                    title_id = int(parts[1])
+                    filename = parts[2]
+                    self.logger.debug(f"Play_all: title_id: {title_id}, filename: {filename}")
+                    self.play_playlist_wrapper(filename)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid play_all link structure: {link}")
             elif link.endswith('.m3u8'):
                 video_player_path = self.video_player_path
                 open_link = self.pre + self.stream_video_url + link
@@ -1008,7 +1039,7 @@ class AnimePlayerAppVer3(QWidget):
         else:
             self.logger.error("No valid links found for saving the combined playlist.")
 
-    def play_playlist_wrapper(self):
+    def play_playlist_wrapper(self, file_name=None):
         """
         Wrapper function to handle playing the playlist.
         Determines the file name and passes it to play_playlist.
@@ -1016,13 +1047,12 @@ class AnimePlayerAppVer3(QWidget):
         if not self.sanitized_titles:
             self.logger.error("Playlist not found, please save playlist first.")
             return
-
-        file_name = self.playlist_filename
+        if file_name is None:
+            file_name = self.playlist_filename
         video_player_path = self.video_player_path
         self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
         self.playlist_manager.play_playlist(file_name, video_player_path)
         self.logger.debug("Opening video player...")
-
 
     def save_torrent_wrapper(self, link, title_name, torrent_id):
         """

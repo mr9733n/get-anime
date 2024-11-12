@@ -34,7 +34,13 @@ if __name__ == "__main__":
 
     # Construct the path to the database in the main directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, 'db', 'anime_player.db')
+    db_dir = os.path.join(base_dir, 'db')
+
+    # Ensure the database directory exists
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
+    db_path = os.path.join(db_dir, 'anime_player.db')
 
     # Создаем и инициализируем таблицы базы данных
     db_manager = DatabaseManager(db_path)

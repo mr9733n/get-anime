@@ -23,12 +23,6 @@ def run_tkinter_app_v2(db_manager):
     app = AnimePlayerAppVer2(window, db_manager)
     window.mainloop()
 
-def run_pyqt_app(db_manager):
-    app_pyqt = QApplication(sys.argv)
-    window_pyqt = AnimePlayerAppVer3(db_manager)
-    window_pyqt.show()
-    sys.exit(app_pyqt.exec_())
-
 if __name__ == "__main__":
     logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
 

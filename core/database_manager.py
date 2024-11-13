@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+import sqlalchemy
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload
 from datetime import datetime, timezone
@@ -484,7 +485,66 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
-    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None, system=False):
+    def get_statistics_from_db(self):
+        """Получает статистику из базы данных."""
+        with self.Session as session:
+            try:
+                # Список запросов для разных статистик
+                queries = {
+                    'titles_count': "SELECT COUNT(DISTINCT title_id) FROM titles",
+                    'franchises_count': """
+                        SELECT COUNT(DISTINCT f.id)
+                        FROM titles t
+                        LEFT JOIN franchise_releases fr ON t.title_id = fr.title_id
+                        LEFT JOIN franchises f ON fr.franchise_id = f.id
+                    """,
+                    'episodes_count': "SELECT COUNT(DISTINCT episode_id) FROM episodes",
+                    'posters_count': "SELECT COUNT(DISTINCT poster_id) FROM posters",
+                    'unique_translators_count': """
+                        SELECT COUNT(DISTINCT tm.id)
+                        FROM team_members tm
+                        LEFT JOIN title_team_relation ttr ON tm.id = ttr.team_member_id
+                        WHERE tm.role = 'translator'
+                    """,
+                    'unique_teams_count': """
+                        SELECT COUNT(DISTINCT tm.id)
+                        FROM team_members tm
+                        LEFT JOIN title_team_relation ttr ON tm.id = ttr.team_member_id
+                        WHERE tm.role = 'voice'
+                    """,
+                    'blocked_titles_count': """
+                        SELECT COUNT(DISTINCT title_id)
+                        FROM titles
+                        WHERE blocked_geoip = 1 OR blocked_copyrights = 1
+                    """,
+                    'blocked_titles': """
+                        SELECT GROUP_CONCAT(DISTINCT CONCAT(title_id, ' (', name_en, ')'))
+                        FROM titles
+                        WHERE blocked_geoip = 1 OR blocked_copyrights = 1;
+                    """,
+                    'schedules_count': "SELECT COUNT(DISTINCT schedule_id) FROM schedule",
+                    'watch_history_count': "SELECT COUNT(DISTINCT id) FROM watch_history",
+                    'torrents_count': "SELECT COUNT(DISTINCT torrent_id) FROM torrents",
+                    'genres_count': """
+                        SELECT COUNT(DISTINCT g.genre_id)
+                        FROM genres g
+                        LEFT JOIN title_genre_relation tgr ON g.genre_id = tgr.genre_id
+                    """
+                }
+
+                # Выполняем каждый запрос и сохраняем результаты
+                statistics = {}
+                for key, query in queries.items():
+                    result = session.execute(sqlalchemy.text(query)).scalar()
+                    statistics[key] = result
+
+                return statistics
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при получении статистики из базы данных: {e}")
+                return {}
+
+    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
         """Получает все тайтлы вместе с информацией о франшизах."""
         with self.Session as session:
             try:
@@ -499,16 +559,11 @@ class DatabaseManager:
                         FranchiseRelease.franchise_id == franchise_subquery,
                         FranchiseRelease.franchise_id.isnot(None)
                     )
-
-                elif system:
-                    # Используем outerjoin, чтобы получить все тайтлы, включая те, у которых нет франшиз
-                    query = session.query(Title).outerjoin(FranchiseRelease).outerjoin(Franchise)
                 else:
                     # Если show_all=True, получить все тайтлы, у которых есть франшизы
                     query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
                         FranchiseRelease.franchise_id.isnot(None)
                     )
-
                 # Если указан batch_size, применяем лимит и смещение
                 if show_all:
                     if batch_size:
@@ -559,7 +614,7 @@ class DatabaseManager:
                 self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
                 return None
 
-    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None):
+    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
         Returns a SQLAlchemy query for fetching titles based on given conditions.
@@ -580,6 +635,15 @@ class DatabaseManager:
                     query = query.filter(Title.title_id == title_id)
                 elif title_ids:
                     query = query.filter(Title.title_id.in_(title_ids))
+                elif system:
+                    query = session.query(Title) \
+                        .outerjoin(FranchiseRelease) \
+                        .outerjoin(Franchise) \
+                        .options(
+                        joinedload(Title.franchises).joinedload(FranchiseRelease.franchise),
+                        joinedload(Title.episodes),  # Загрузить связанные эпизоды
+                        joinedload(Title.poster)  # Загрузить связанные постеры, если есть связь poster
+                    )
                 elif not show_all:
                     query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
                 if batch_size:

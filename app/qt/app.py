@@ -17,7 +17,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
-from nuitka.TreeXML import toString
 
 from app.qt.ui_manger import UIManager
 from core import database_manager
@@ -28,6 +27,7 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
+APP_VERSION = '3.5.3'
 
 class CreateTitleBrowserTask(QRunnable):
     def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
@@ -291,20 +291,23 @@ class AnimePlayerAppVer3(QWidget):
                 show_mode = 'franchise_list'
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
             case (False, False, False, True):
-                titles = self.db_manager.get_franchises_from_db(system=True)
+                # TODO: we show on UI titles, so we take tiles instead statistics but all work fine.
+                titles = self.db_manager.get_statistics_from_db()
                 show_mode = 'system'
                 self.logger.debug(f"System is {system}")
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
+        # TODO: when system we count statistics lines
         self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
         # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
 
         # Сохраняем загруженные тайтлы в список для доступа позже
-        self.total_titles = titles
-        len_total_titles = len(self.total_titles)
-        self.logger.debug(f"self.total_titles:{len_total_titles}")
-
+        # TODO: we don't need count self.total_titles when system
+        if not system:
+            self.total_titles = titles
+            len_total_titles = len(self.total_titles)
+            self.logger.debug(f"self.total_titles:{len_total_titles}")
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False, system=False):
         """Создает виджет для тайтла и добавляет его в макет."""
@@ -478,7 +481,7 @@ class AnimePlayerAppVer3(QWidget):
             poster_data = self.db_manager.get_poster_blob(2)
         return poster_data
 
-    def create_system_browser(self, titles):
+    def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         self.logger.debug("Начинаем создание system_browser...")
 
@@ -489,29 +492,49 @@ class AnimePlayerAppVer3(QWidget):
         container_widget = QWidget(self)
         container_layout = QVBoxLayout(container_widget)
 
-        # Fixme: app_version
-        app_version = '3.5.2'
-        # Информация о тайтлах и франшизах
-        titles_count = len(titles)
-        franchise_ids = set()
-        for title in titles:
-            if hasattr(title, 'franchises') and title.franchises:
-                for franchise in title.franchises:
-                    if hasattr(franchise, 'franchise_id') and franchise.franchise_id is not None:
-                        franchise_ids.add(franchise.franchise_id)
+        # Информация о версии приложения
+        app_version = APP_VERSION
 
-        franchises_count = len(franchise_ids)
+        # Извлечение статистики из аргумента statistics
+        titles_count = statistics.get('titles_count', 0)
+        franchises_count = statistics.get('franchises_count', 0)
+        episodes_count = statistics.get('episodes_count', 0)
+        posters_count = statistics.get('posters_count', 0)
+        unique_translators_count = statistics.get('unique_translators_count', 0)
+        teams_count = statistics.get('unique_teams_count', 0)
+        blocked_titles_count = statistics.get('blocked_titles_count', 0)
+        # Заблокированные тайтлы могут быть слишком длинными, поэтому мы будем выводить их ограниченно
+        blocked_titles_count = statistics.get('blocked_titles_count', 0)
+        blocked_titles = statistics.get('blocked_titles', [])
+
+        blocked_titles_list = ""
+        if blocked_titles:
+            # Разделяем строку на элементы
+            blocked_titles_entries = blocked_titles.split(',')
+            # Формируем HTML список из элементов
+            blocked_titles_list = ''.join(
+                f'<li>{entry.strip()}</li>' for entry in blocked_titles_entries
+            )
+
+        # Логирование статистики
         self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
-
+        self.logger.debug(f"Количество эпизодов: {episodes_count}, Количество постеров: {posters_count}")
+        self.logger.debug(
+            f"Количество уникальных переводчиков: {unique_translators_count}, Количество команд: {teams_count}")
+        self.logger.debug(f"Количество заблокированных тайтлов: {blocked_titles_count}")
+        self.logger.debug(f"blocked_titles: {blocked_titles}")
         # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
         system_browser = QTextBrowser(self)
+        system_browser.setPlainText(f"Title: SYSTEM")
+
+        #system_browser.setProperty('title_id', title.title_id)
+        system_browser.anchorClicked.connect(self.on_link_click)
         system_browser.setOpenExternalLinks(True)
+
         system_browser.setStyleSheet(
             """
             text-align: left;
             border: 1px solid #444;
-            width: 100%;
-            height: 100%;
             font-size: 14pt;
             font-weight: bold;
             position: relative;
@@ -520,16 +543,28 @@ class AnimePlayerAppVer3(QWidget):
             """
         )
 
+        # HTML контент для отображения статистики
         html_content = f'''
-        <div class="header">
+        <div style="font-size: 20pt;">
             <p>Application version: {app_version}</p>
+            <p>Application DB statistics:</p>
+        </div>
+        <div style="margin: 30px;">
             <p>Количество тайтлов: {titles_count}</p>
             <p>Количество франшиз: {franchises_count}</p>
+            <p>Количество эпизодов: {episodes_count}</p>
+            <p>Количество постеров: {posters_count}</p>
+            <p>Количество уникальных переводчиков: {unique_translators_count}</p>
+            <p>Количество команд переводчиков: {teams_count}</p>
+            <p>Количество заблокированных тайтлов: {blocked_titles_count}</p>
+            <div class="blocked-titles">
+                <p>Заблокированные тайтлы (no more updates):</p>
+                <ul>{blocked_titles_list}</ul>
+            </div>
         </div>
         '''
+
         system_browser.setHtml(html_content)
-
-
         # Добавляем элементы в layout контейнера
         container_layout.addWidget(system_browser)
 

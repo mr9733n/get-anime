@@ -116,13 +116,7 @@ class UIManager:
         self.parent.refresh_button = self.create_button('REFRESH', 6, self.parent.refresh_display)
         layout.addWidget(self.parent.refresh_button)
 
-        # Save Playlist Button
-        self.parent.save_playlist_button = self.create_button('SAVE', 7, self.parent.save_playlist_wrapper)
-        layout.addWidget(self.parent.save_playlist_button)
 
-        # Play Playlist Button
-        self.parent.play_playlist_button = self.create_button('PLAY', 4, self.parent.play_playlist_wrapper)
-        layout.addWidget(self.parent.play_playlist_button)
 
     def setup_main_layout(self, main_layout):
         # Adding control layout
@@ -163,6 +157,20 @@ class UIManager:
         self.parent.display_titles_button = self.create_button('FRANCHISES', 0,
                                                                self.parent.display_franchises)
         button_layout.addWidget(self.parent.display_titles_button)
+
+        # Добавление кнопки для отображения всех тайтлов
+        self.parent.display_titles_button = self.create_button('SYSTEM', 0,
+                                                               self.parent.display_system)
+        button_layout.addWidget(self.parent.display_titles_button)
+
+        # Save Playlist Button
+        self.parent.save_playlist_button = self.create_button('SAVE', 7, self.parent.save_playlist_wrapper)
+        button_layout.addWidget(self.parent.save_playlist_button)
+
+        # Play Playlist Button
+        self.parent.play_playlist_button = self.create_button('PLAY', 4, self.parent.play_playlist_wrapper)
+        button_layout.addWidget(self.parent.play_playlist_button)
+
 
         # Добавляем горизонтальный макет в основной макет
         main_layout.addLayout(button_layout)

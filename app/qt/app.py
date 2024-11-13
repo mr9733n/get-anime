@@ -12,10 +12,12 @@ import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect
+    QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect,
+    QMessageBox
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
+from nuitka.TreeXML import toString
 
 from app.qt.ui_manger import UIManager
 from core import database_manager
@@ -257,33 +259,42 @@ class AnimePlayerAppVer3(QWidget):
     def display_franchises(self):
         self.display_titles(franchises=True)
 
-    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False):
+    def display_system(self):
+        self.display_titles(system=True)
+
+    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False, system=False):
         """Отображение первых тайтлов при старте.
-        :param franchises:
+        :param system:  Show system layout
+        :param franchises: Отображение нескольких тайтлов with relationship Franchise по title_id
         :param title_ids: Отображение нескольких тайтлов по title_id
         :param titles_text_list: Отображение списка тайтлов.
         """
         # Загружаем первую партию тайтлов
-        match (bool(title_ids), titles_text_list, franchises):
-            case (True, _, _):
-                self.logger.debug(f"4389579834759834{title_ids}")
+        match (bool(title_ids), titles_text_list, franchises, system):
+            case (True, _, _, _):
+                # self.logger.debug(f"4389579834759834{title_ids}")
                 show_mode = 'title_ids'
                 titles = self.db_manager.get_titles_from_db(show_all=False,
                                                             offset=self.current_offset, title_ids=title_ids)
                 self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False, True, False):
+            case (False, True, False, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                 show_mode = 'titles_text_list'
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
-            case (False, False, False):
+            case (False, False, False, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
                                                             offset=self.current_offset)
                 show_mode = 'default'
                 self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False,False,True):
+            case (False, False, True, False):
                 titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                 show_mode = 'franchise_list'
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
+            case (False, False, False, True):
+                titles = self.db_manager.get_franchises_from_db(system=True)
+                show_mode = 'system'
+                self.logger.debug(f"System is {system}")
+                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
         self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
         # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
@@ -295,7 +306,7 @@ class AnimePlayerAppVer3(QWidget):
         self.logger.debug(f"self.total_titles:{len_total_titles}")
 
 
-    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False):
+    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False, system=False):
         """Создает виджет для тайтла и добавляет его в макет."""
         self.clear_previous_posters()
         if len(titles) == 1:
@@ -305,6 +316,15 @@ class AnimePlayerAppVer3(QWidget):
             title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
             self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
             self.logger.debug(f"Displayed one title.")
+        elif system:
+            # Создаем системный экран с количеством тайтлов и франшиз
+            show_mode = 'system'
+            system_widget = QWidget(self)
+            system_layout = self.create_system_browser(titles)
+            system_widget.setLayout(system_layout)
+
+            self.posters_layout.addWidget(system_widget, 0, 0, 1, 2)
+            self.logger.debug(f"Displayed {show_mode}")
         else:
             for index, title in enumerate(titles):
                 row = (index + row_start) // num_columns
@@ -458,113 +478,139 @@ class AnimePlayerAppVer3(QWidget):
             poster_data = self.db_manager.get_poster_blob(2)
         return poster_data
 
+    def create_system_browser(self, titles):
+        """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
+        self.logger.debug("Начинаем создание system_browser...")
+
+        # Создаем главный вертикальный layout для системного экрана
+        system_layout = QVBoxLayout()
+
+        # Создаем виджет, чтобы обернуть все элементы вместе
+        container_widget = QWidget(self)
+        container_layout = QVBoxLayout(container_widget)
+
+        # Fixme: app_version
+        app_version = '3.5.2'
+        # Информация о тайтлах и франшизах
+        titles_count = len(titles)
+        franchise_ids = set()
+        for title in titles:
+            if hasattr(title, 'franchises') and title.franchises:
+                for franchise in title.franchises:
+                    if hasattr(franchise, 'franchise_id') and franchise.franchise_id is not None:
+                        franchise_ids.add(franchise.franchise_id)
+
+        franchises_count = len(franchise_ids)
+        self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
+
+        # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
+        system_browser = QTextBrowser(self)
+        system_browser.setOpenExternalLinks(True)
+        system_browser.setStyleSheet(
+            """
+            text-align: left;
+            border: 1px solid #444;
+            width: 100%;
+            height: 100%;
+            font-size: 14pt;
+            font-weight: bold;
+            position: relative;
+            text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
+            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+            """
+        )
+
+        html_content = f'''
+        <div class="header">
+            <p>Application version: {app_version}</p>
+            <p>Количество тайтлов: {titles_count}</p>
+            <p>Количество франшиз: {franchises_count}</p>
+        </div>
+        '''
+        system_browser.setHtml(html_content)
+
+
+        # Добавляем элементы в layout контейнера
+        container_layout.addWidget(system_browser)
+
+        # Добавляем контейнер в основной layout
+        system_layout.addWidget(container_widget)
+
+        return system_layout
+
     def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
-        """Создает элемент интерфейса для отображения информации о тайтле."""
+        """Создает элемент интерфейса для отображения информации о тайтле.
+        :param title:
+        :param show_description:
+        :param show_one_title:
+        :param show_list:
+        :param show_franchise:
+        :return:
+        """
         self.logger.debug("Начинаем создание title_browser...")
+
+        title_browser = QTextBrowser(self)
+        title_browser.setPlainText(f"Title: {title.name_en}")
+        title_browser.setOpenExternalLinks(True)
+        title_browser.setProperty('title_id', title.title_id)
+        title_browser.anchorClicked.connect(self.on_link_click)
+
+        # Общие настройки для различных режимов отображения
         if show_one_title:
-            # Create a new horizontal layout for displaying the title details
+            # Создаем горизонтальный layout для отображения деталей тайтла
             title_layout = QHBoxLayout()
             self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
 
-            # Poster on the left
+            # Постер слева
             poster_label = QLabel(self)
             poster_data = self.get_poster_or_placeholder(title.title_id)
 
             if poster_data:
                 pixmap = QPixmap()
                 if pixmap.loadFromData(poster_data):
-                    poster_label.setPixmap(pixmap.scaled(550, 650, Qt.KeepAspectRatio))
+                    poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
                 else:
                     self.logger.error(f"Error: Failed to load pixmap from data for title_id: {title.title_id}")
-                    # Используем статическую картинку-заглушку в случае, если даже загрузка pixmap не удалась
-                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(550, 650, Qt.KeepAspectRatio))
+                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
             else:
-                # Если данные постера отсутствуют даже для заглушки, используем статическое изображение
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(550, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
 
             title_layout.addWidget(poster_label)
 
-            # Title information on the right
-            title_browser = QTextBrowser(self)
-            title_browser.setPlainText(f"Title: {title.name_en}")
-            title_browser.setOpenExternalLinks(True)
-            title_browser.setFixedSize(550, 650)  # Set the size of the information browser
-            title_browser.setProperty('title_id', title.title_id)
-
+            # Информация о тайтле справа
+            title_browser.setFixedSize(455, 650)
             html_content = self.get_title_html(title, show_description=True, show_more_link=False)
             title_browser.setHtml(html_content)
 
-            # Connect link click event
-            title_browser.anchorClicked.connect(self.on_link_click)
-
-            # Add the title information to the layout
+            # Добавляем title_browser в layout
             title_layout.addWidget(title_browser)
-
             return title_layout
 
-        elif show_list:
-            self.logger.debug(f"Создаем title_browser для show_list берем title_id: {title.title_id}")
-            title_browser = QTextBrowser(self)
-            title_browser.setPlainText(f"Title: {title.name_en}")
-            title_browser.setOpenExternalLinks(True)
+        elif show_list or show_franchise:
+            self.logger.debug(
+                f"Создаем title_browser для {'show_list' if show_list else 'show_franchise'} берем title_id: {title.title_id}")
             title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
             title_browser.setStyleSheet(
                 """
-                    text-align: right;
-                    border: 1px solid #444;
-                    width: 100%;
-                    height: 100%;
-                    position: relative;
-                    text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                    background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                text-align: right;
+                border: 1px solid #444;
+                width: 100%;
+                height: 100%;
+                position: relative;
+                text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
+                background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                 """
             )
             html_content = self.get_title_html(title, show_text_list=True)
             title_browser.setHtml(html_content)
-            title_browser.anchorClicked.connect(self.on_link_click)
             return title_browser
-
-        elif show_franchise:
-            self.logger.debug(f"Создаем title_browser для show_franchise берем title_id: {title.title_id}")
-            self.logger.debug(f"title: {title}")
-            title_browser = QTextBrowser(self)
-            title_browser.setPlainText(f"Title: {title.name_en}")
-            title_browser.setOpenExternalLinks(True)
-            title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-            title_browser.setStyleSheet(
-                """
-                    text-align: right;
-                    border: 1px solid #444;
-                    width: 100%;
-                    height: 100%;
-                    position: relative;
-                    text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                    background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                """
-            )
-            html_content = self.get_title_html(title, show_text_list=True)
-            title_browser.setHtml(html_content)
-            title_browser.anchorClicked.connect(self.on_link_click)
-            return title_browser
-
 
         else:
             self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-            # Default layout for schedule view
-            title_browser = QTextBrowser(self)
-            title_browser.setPlainText(f"Title: {title.name_en}")
-            title_browser.setOpenExternalLinks(True)
-            title_browser.setFixedSize(550, 650)  # Размер плитки
-            title_browser.setProperty('title_id', title.title_id)
-
+            title_browser.setFixedSize(455, 650)  # Размер плитки
             html_content = self.get_title_html(title, show_description, show_more_link=True)
             title_browser.setHtml(html_content)
-            title_browser.anchorClicked.connect(self.on_link_click)
-           # title_browser.mouseDoubleClickEvent(self.display_info(title.title_id))
             return title_browser
 
     def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
@@ -1000,7 +1046,7 @@ class AnimePlayerAppVer3(QWidget):
         if len(title_ids) == 1:
             self.display_info(title_ids[0])
         else:
-            self.logger.debug(f"4389579834759834{title_ids}")
+            self.logger.debug(f"Get titles from the search with title_ids: {title_ids}")
             self.display_titles(title_ids)
 
         # Сохраняем текущие данные
@@ -1020,7 +1066,6 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.debug(f"Find poster link: {poster_url[-41:]}")
                     if poster_links:
                         self.poster_manager.write_poster_links(poster_links)
-
         return True
 
     def get_poster(self, title_data):
@@ -1049,6 +1094,9 @@ class AnimePlayerAppVer3(QWidget):
 
             if link.startswith('display_info/'):
                 # Получаем title_id из ссылки и вызываем display_info
+                title_id = int(link.split('/')[1])
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
+            elif link.startswith('search_title_id/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif link.startswith('play_all/'):

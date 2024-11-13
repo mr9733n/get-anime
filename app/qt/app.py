@@ -266,69 +266,61 @@ class AnimePlayerAppVer3(QWidget):
         # Загружаем первую партию тайтлов
         match (bool(title_ids), titles_text_list, franchises):
             case (True, _, _):
-                titles = self.db_manager.get_titles_from_db(show_all=False, batch_size=self.titles_batch_size,
+                self.logger.debug(f"4389579834759834{title_ids}")
+                show_mode = 'title_ids'
+                titles = self.db_manager.get_titles_from_db(show_all=False,
                                                             offset=self.current_offset, title_ids=title_ids)
+                self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             case (False, True, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
+                show_mode = 'titles_text_list'
+                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
             case (False, False, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
                                                             offset=self.current_offset)
+                show_mode = 'default'
+                self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             case (False,False,True):
                 titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
-        self.logger.debug(f"{titles}")
+                show_mode = 'franchise_list'
+                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
+        self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
+        # self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
 
-
         # Сохраняем загруженные тайтлы в список для доступа позже
         self.total_titles = titles
-        self.logger.debug(f"self.total_titles:{len(self.total_titles)}")
-        # Отображаем тайтлы в UI
-        if titles_text_list:
-            self.logger.debug(f"titles_text_list:{len(titles)}")
-            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
+        len_total_titles = len(self.total_titles)
+        self.logger.debug(f"self.total_titles:{len_total_titles}")
 
-        elif franchises:
-            self.logger.debug(f"franchises:{len(titles)}")
-            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
-        else:
-            self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False):
         """Создает виджет для тайтла и добавляет его в макет."""
         self.clear_previous_posters()
-        match len(titles), titles_text_list, franchises_list:
-            case 1, _, _:
-                # Если у нас один тайтл, отображаем его с полным описанием
-                title = titles[0]
-                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
-                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+        if len(titles) == 1:
+            # Если у нас один тайтл, отображаем его с полным описанием
+            title = titles[0]
+            self.logger.debug(f"One title ;)")
+            title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
+            self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+            self.logger.debug(f"Displayed one title.")
+        else:
+            for index, title in enumerate(titles):
+                row = (index + row_start) // num_columns
+                column = (index + col_start) % num_columns
 
-            case _, True, _:
-                self.logger.debug(f"titles_text_list: {len(titles)}")
-                for index, title in enumerate(titles):
-                    row = (index + row_start) // num_columns
-                    column = (index + col_start) % num_columns
+                if titles_text_list:
+                    show_mode = 'titles_text_list'
                     title_browser = self.create_title_browser(title, show_list=True)
-                    self.posters_layout.addWidget(title_browser, row, column)
-
-                self.logger.debug(f"Displayed text list of {len(titles)} titles.")
-            case _, _, True:
-                self.logger.debug(f"franchise_list: {len(titles)}")
-                for index, title in enumerate(titles):
-                    row = (index + row_start) // num_columns
-                    column = (index + col_start) % num_columns
+                elif franchises_list:
+                    show_mode = 'franchise_list'
                     title_browser = self.create_title_browser(title, show_franchise=True)
-                    self.posters_layout.addWidget(title_browser, row, column)
-
-                self.logger.debug(f"Displayed franchises list of {len(titles)} titles.")
-            case _, _, _:
-                # Если тайтлов несколько, отображаем их в виде сетки
-                for index, title in enumerate(titles):
-                    row = (index + row_start) // num_columns
-                    column = (index + col_start) % num_columns
+                else:
+                    show_mode = 'default'
                     title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-                    self.posters_layout.addWidget(title_browser, row, column)
+                self.logger.debug(f"Displayed {show_mode} {len(titles)} titles.")
+                self.posters_layout.addWidget(title_browser, row, column)
 
     def display_info(self, title_id):
         """Отображает информацию о конкретном тайтле."""
@@ -578,9 +570,9 @@ class AnimePlayerAppVer3(QWidget):
     def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
         """Генерирует HTML для отображения информации о тайтле."""
         year_html = self.generate_year_html(title)
-
         # Получаем данные постера
         poster_html = self.generate_poster_html(title, need_background=True) if show_more_link else f"background-image: url('static/background.png');"
+
         if show_text_list:
             body_html = f'''
         <div class="header">

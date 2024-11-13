@@ -484,7 +484,7 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
-    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
+    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None, system=False):
         """Получает все тайтлы вместе с информацией о франшизах."""
         with self.Session as session:
             try:
@@ -499,6 +499,10 @@ class DatabaseManager:
                         FranchiseRelease.franchise_id == franchise_subquery,
                         FranchiseRelease.franchise_id.isnot(None)
                     )
+
+                elif system:
+                    # Используем outerjoin, чтобы получить все тайтлы, включая те, у которых нет франшиз
+                    query = session.query(Title).outerjoin(FranchiseRelease).outerjoin(Franchise)
                 else:
                     # Если show_all=True, получить все тайтлы, у которых есть франшизы
                     query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(

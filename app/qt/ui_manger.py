@@ -147,9 +147,25 @@ class UIManager:
         self.parent.scroll_area.setWidget(self.parent.poster_container)
         main_layout.addWidget(self.parent.scroll_area)
 
+        # Создаем горизонтальный макет для кнопок
+        button_layout = QHBoxLayout()
+
         # Load More Button
         self.parent.load_more_button = self.create_button('LOAD MORE', 0, self.parent.load_more_titles)
-        main_layout.addWidget(self.parent.load_more_button)
+        button_layout.addWidget(self.parent.load_more_button)
+
+        # Добавление кнопки для отображения всех тайтлов
+        self.parent.display_titles_button = self.create_button('TITLES LIST', 0,
+                                                               self.parent.display_titles_text_list)
+        button_layout.addWidget(self.parent.display_titles_button)
+
+        # Добавление кнопки для отображения всех тайтлов
+        self.parent.display_titles_button = self.create_button('FRANCHISES', 0,
+                                                               self.parent.display_franchises)
+        button_layout.addWidget(self.parent.display_titles_button)
+
+        # Добавляем горизонтальный макет в основной макет
+        main_layout.addLayout(button_layout)
 
         # Apply shadow effects to buttons
         self.apply_shadow_effects([

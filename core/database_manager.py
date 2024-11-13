@@ -47,7 +47,7 @@ class DatabaseManager:
                     with open('static/no_image.png', 'rb') as image_file:
                         poster_blob = image_file.read()
                         placeholder_poster = Poster(
-                            title_id=2,  # Используем отрицательный идентификатор для заглушки
+                            title_id=-2,  # Используем отрицательный идентификатор для заглушки
                             poster_blob=poster_blob,
                             last_updated=datetime.utcnow()
                         )
@@ -484,6 +484,41 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
+    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
+        """Получает все тайтлы вместе с информацией о франшизах."""
+        with self.Session as session:
+            try:
+                # Начинаем формирование базового запроса
+                if title_id:
+                    # Если указан title_id, находим все связанные тайтлы
+                    franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
+                        FranchiseRelease.title_id == title_id
+                    ).scalar_subquery()
+
+                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                        FranchiseRelease.franchise_id == franchise_subquery,
+                        FranchiseRelease.franchise_id.isnot(None)
+                    )
+                else:
+                    # Если show_all=True, получить все тайтлы, у которых есть франшизы
+                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                        FranchiseRelease.franchise_id.isnot(None)
+                    )
+
+                # Если указан batch_size, применяем лимит и смещение
+                if show_all:
+                    if batch_size:
+                        query = query.offset(offset).limit(batch_size)
+
+                # Получаем результат запроса
+                titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
+
+                return titles
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")
+                return []
+
     def get_poster_blob(self, title_id):
         with self.Session as session:
             try:
@@ -595,8 +630,8 @@ class Title(Base):
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
     last_updated = Column(DateTime, default=datetime.utcnow)
 
-    franchises = relationship("Franchise", back_populates="title")
-    releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
+    franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
+    #releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
     genres = relationship("TitleGenreRelation", back_populates="title")
     team_members = relationship("TitleTeamRelation", back_populates="title")
     episodes = relationship("Episode", back_populates="title")
@@ -618,7 +653,7 @@ class FranchiseRelease(Base):
     name_alternative = Column(String, nullable=True)
 
     franchise = relationship("Franchise", back_populates="releases")
-    title = relationship("Title", back_populates="releases")
+    title = relationship("Title", back_populates="franchises")
 
 class Franchise(Base):
     __tablename__ = 'franchises'
@@ -627,7 +662,6 @@ class Franchise(Base):
     franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
     franchise_name = Column(String, nullable=False)  # Название франшизы
 
-    title = relationship("Title", back_populates="franchises")
     releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
 
 class Genre(Base):

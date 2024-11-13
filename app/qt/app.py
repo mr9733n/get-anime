@@ -143,7 +143,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle('Anime Player v3')
-        self.setGeometry(100, 100, 980, 780)
+        self.setGeometry(100, 100, 980, 800)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -244,62 +244,91 @@ class AnimePlayerAppVer3(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
-    def display_titles(self, title_ids=None):
-        """Отображение первых тайтлов при старте."""
-        # Загружаем первую партию тайтлов
-        if title_ids is None:
-            titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
-        else:
-            titles = self.db_manager.get_titles_from_db(show_all=False, batch_size=self.titles_batch_size, offset=self.current_offset, title_ids=title_ids)
-
-
-        # self.logger.debug(f"{titles}")
-        # Обновляем offset для следующей загрузки
-        self.current_offset += self.titles_batch_size
-
-        # Сохраняем загруженные тайтлы в список для доступа позже
-        self.total_titles = titles
-
-        # Отображаем тайтлы в UI
-        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-
-    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2):
-        """Создает виджет для тайтла и добавляет его в макет."""
-
-        if len(titles) == 1:
-            # Если у нас один тайтл, отображаем его с полным описанием
-            title = titles[0]
-            title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
-            self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
-        else:
-            # Если тайтлов несколько, отображаем их в виде сетки
-            for index, title in enumerate(titles):
-                row = (index + row_start) // num_columns
-                column = (index + col_start) % num_columns
-                title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-                self.posters_layout.addWidget(title_browser, row, column)
+    def display_titles_text_list(self):
+        """Загружает и отображает тайтлы DISPLAY TITLES."""
+        self.display_titles(titles_text_list=True)
+        return True
 
     def load_more_titles(self):
-        """Загружает и отображает следующие тайтлы."""
-        titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size, offset=self.current_offset)
+        """Загружает и отображает тайтлы LOAD MORE."""
+        self.display_titles()
+        return True
 
-        # Если тайтлы закончились, прекращаем загрузку
-        if not titles:
-            self.logger.info("Больше нет тайтлов для загрузки.")
-            return
+    def display_franchises(self):
+        self.display_titles(franchises=True)
 
+    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False):
+        """Отображение первых тайтлов при старте.
+        :param franchises:
+        :param title_ids: Отображение нескольких тайтлов по title_id
+        :param titles_text_list: Отображение списка тайтлов.
+        """
+        # Загружаем первую партию тайтлов
+        match (bool(title_ids), titles_text_list, franchises):
+            case (True, _, _):
+                titles = self.db_manager.get_titles_from_db(show_all=False, batch_size=self.titles_batch_size,
+                                                            offset=self.current_offset, title_ids=title_ids)
+            case (False, True, False):
+                titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
+            case (False, False, False):
+                titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
+                                                            offset=self.current_offset)
+            case (False,False,True):
+                titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
+        self.logger.debug(f"{titles}")
         # Обновляем offset для следующей загрузки
         self.current_offset += self.titles_batch_size
 
+
         # Сохраняем загруженные тайтлы в список для доступа позже
         self.total_titles = titles
-
+        self.logger.debug(f"self.total_titles:{len(self.total_titles)}")
         # Отображаем тайтлы в UI
-        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+        if titles_text_list:
+            self.logger.debug(f"titles_text_list:{len(titles)}")
+            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
 
-    def start_create_title_task(self, title, row, column):
-        task = CreateTitleBrowserTask(self, title, row, column, show_description=False, show_one_title=False)
-        self.thread_pool.start(task)
+        elif franchises:
+            self.logger.debug(f"franchises:{len(titles)}")
+            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
+        else:
+            self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+
+    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False):
+        """Создает виджет для тайтла и добавляет его в макет."""
+        self.clear_previous_posters()
+        match len(titles), titles_text_list, franchises_list:
+            case 1, _, _:
+                # Если у нас один тайтл, отображаем его с полным описанием
+                title = titles[0]
+                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
+                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+
+            case _, True, _:
+                self.logger.debug(f"titles_text_list: {len(titles)}")
+                for index, title in enumerate(titles):
+                    row = (index + row_start) // num_columns
+                    column = (index + col_start) % num_columns
+                    title_browser = self.create_title_browser(title, show_list=True)
+                    self.posters_layout.addWidget(title_browser, row, column)
+
+                self.logger.debug(f"Displayed text list of {len(titles)} titles.")
+            case _, _, True:
+                self.logger.debug(f"franchise_list: {len(titles)}")
+                for index, title in enumerate(titles):
+                    row = (index + row_start) // num_columns
+                    column = (index + col_start) % num_columns
+                    title_browser = self.create_title_browser(title, show_franchise=True)
+                    self.posters_layout.addWidget(title_browser, row, column)
+
+                self.logger.debug(f"Displayed franchises list of {len(titles)} titles.")
+            case _, _, _:
+                # Если тайтлов несколько, отображаем их в виде сетки
+                for index, title in enumerate(titles):
+                    row = (index + row_start) // num_columns
+                    column = (index + col_start) % num_columns
+                    title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+                    self.posters_layout.addWidget(title_browser, row, column)
 
     def display_info(self, title_id):
         """Отображает информацию о конкретном тайтле."""
@@ -437,7 +466,7 @@ class AnimePlayerAppVer3(QWidget):
             poster_data = self.db_manager.get_poster_blob(2)
         return poster_data
 
-    def create_title_browser(self, title, show_description=False, show_one_title=False):
+    def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
         """Создает элемент интерфейса для отображения информации о тайтле."""
         self.logger.debug("Начинаем создание title_browser...")
         if show_one_title:
@@ -481,6 +510,56 @@ class AnimePlayerAppVer3(QWidget):
 
             return title_layout
 
+        elif show_list:
+            self.logger.debug(f"Создаем title_browser для show_list берем title_id: {title.title_id}")
+            title_browser = QTextBrowser(self)
+            title_browser.setPlainText(f"Title: {title.name_en}")
+            title_browser.setOpenExternalLinks(True)
+            title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            title_browser.setStyleSheet(
+                """
+                    text-align: right;
+                    border: 1px solid #444;
+                    width: 100%;
+                    height: 100%;
+                    position: relative;
+                    text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
+                    background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                """
+            )
+            html_content = self.get_title_html(title, show_text_list=True)
+            title_browser.setHtml(html_content)
+            title_browser.anchorClicked.connect(self.on_link_click)
+            return title_browser
+
+        elif show_franchise:
+            self.logger.debug(f"Создаем title_browser для show_franchise берем title_id: {title.title_id}")
+            self.logger.debug(f"title: {title}")
+            title_browser = QTextBrowser(self)
+            title_browser.setPlainText(f"Title: {title.name_en}")
+            title_browser.setOpenExternalLinks(True)
+            title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            title_browser.setStyleSheet(
+                """
+                    text-align: right;
+                    border: 1px solid #444;
+                    width: 100%;
+                    height: 100%;
+                    position: relative;
+                    text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
+                    background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                """
+            )
+            html_content = self.get_title_html(title, show_text_list=True)
+            title_browser.setHtml(html_content)
+            title_browser.anchorClicked.connect(self.on_link_click)
+            return title_browser
+
+
         else:
             self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
             # Default layout for schedule view
@@ -496,23 +575,61 @@ class AnimePlayerAppVer3(QWidget):
            # title_browser.mouseDoubleClickEvent(self.display_info(title.title_id))
             return title_browser
 
-    def get_title_html(self, title, show_description=False, show_more_link=False):
+    def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
         """Генерирует HTML для отображения информации о тайтле."""
-        # Получаем данные постера
-        poster_html = self.generate_poster_html(title) if show_more_link else f"background-image: url('static/background.png');"
-        # Декодируем жанры и получаем другие поля
-        genres_html = self.generate_genres_html(title)
-        announce_html = self.generate_announce_html(title)
-        status_html = self.generate_status_html(title)
-        show_more_html = self.generate_show_more_html(title) if show_more_link else ""
-        # Добавляем информацию об эпизодах
-        episodes_html = self.generate_episodes_html(title)
-        play_all_html = self.generate_play_all_html(title)
-        description_html = self.generate_description_html(title) if show_description else ""
         year_html = self.generate_year_html(title)
-        type_html = self.generate_type_html(title)
-        torrents_html = self.generate_torrents_html(title)
 
+        # Получаем данные постера
+        poster_html = self.generate_poster_html(title, need_background=True) if show_more_link else f"background-image: url('static/background.png');"
+        if show_text_list:
+            body_html = f'''
+        <div class="header">
+        <a href="display_info/{title.title_id}">{title.name_en} ({title.name_ru})</a>
+        </div>
+        {year_html}<br>
+
+        '''
+        else:
+            # Декодируем жанры и получаем другие поля
+            genres_html = self.generate_genres_html(title)
+            announce_html = self.generate_announce_html(title)
+            status_html = self.generate_status_html(title)
+            show_more_html = self.generate_show_more_html(title) if show_more_link else ""
+            # Добавляем информацию об эпизодах
+            episodes_html = self.generate_episodes_html(title)
+            play_all_html = self.generate_play_all_html(title)
+            description_html = self.generate_description_html(title) if show_description else ""
+
+            type_html = self.generate_type_html(title)
+            torrents_html = self.generate_torrents_html(title)
+
+
+            body_html = f'''
+                <div>
+                    <p class="header">{title.name_en}</p>
+                    <p class="header">{title.name_ru}</p>
+                    <p class="header">{show_more_html}</p>
+                    <div>
+                        {announce_html}
+                        {status_html}
+                        {description_html}
+                        {genres_html}
+                        {year_html}
+                        {type_html}
+                    </div>
+                    <div>
+                        <p class="header_p">Эпизоды: {play_all_html}</p>
+                        {episodes_html}
+                    </div>
+                    <div>
+                        <p class="header_p">Torrents:</p>
+                        {torrents_html}
+                    </div>
+                </div>
+                <div>
+                    <br><br><br><br><br><br><br><br><br>
+                </div>
+            '''
 
         # Генерируем полный HTML
         html_content = f"""
@@ -528,10 +645,7 @@ class AnimePlayerAppVer3(QWidget):
 
                     body {{
                         {poster_html}
-                        background-repeat: no-repeat;
-                        background-position: center;
-                        background-size: cover;
-                        background-attachment: fixed;
+
                         background-color: rgb(240, 240, 240); /* Светлее, чем #999 */
 
                         font-size: 12pt;
@@ -627,32 +741,7 @@ class AnimePlayerAppVer3(QWidget):
                     }}
                 </style>
             </head>
-            <body>
-                <div>
-                    <p class="header">{title.name_en}</p>
-                    <p class="header">{title.name_ru}</p>
-                    <p class="header">{show_more_html}</p>
-                    <div>
-                        {announce_html}
-                        {status_html}
-                        {description_html}
-                        {genres_html}
-                        {year_html}
-                        {type_html}
-                    </div>
-                    <div>
-                        <p class="header_p">Эпизоды: {play_all_html}</p>
-                        {episodes_html}
-                    </div>
-                    <div>
-                        <p class="header_p">Torrents:</p>
-                        {torrents_html}
-                    </div>
-                </div>
-                    <div>
-                        <br><br><br><br><br><br><br><br><br>
-                    </div>
-            </body> 
+            <body>{body_html}</body> 
         </html>
         """
         return html_content
@@ -699,7 +788,7 @@ class AnimePlayerAppVer3(QWidget):
 
         return torrents_html
 
-    def generate_poster_html(self, title):
+    def generate_poster_html(self, title, need_image=False, need_background=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
         # Попытка получить постер из базы данных
         poster_data = self.db_manager.get_poster_blob(title.title_id)
@@ -711,12 +800,14 @@ class AnimePlayerAppVer3(QWidget):
 
         # Если даже заглушка не найдена, возвращаем URL к статическому изображению
         if not poster_data:
+            # TODO: fix this return
             return f"background-image: url('static/background.png');"
 
         try:
             pixmap = QPixmap()
             if not pixmap.loadFromData(poster_data):
                 self.logger.error(f"Error: Failed to load image data for title_id: {title.title_id}")
+                # TODO: fix this return
                 return f"background-image: url('static/background.png');"
 
             # Используем QBuffer для сохранения в байтовый массив
@@ -725,13 +816,22 @@ class AnimePlayerAppVer3(QWidget):
             buffer.open(QBuffer.WriteOnly)
             if not pixmap.save(buffer, 'PNG'):
                 self.logger.error(f"Error: Failed to save image as PNG for title_id: {title.title_id}")
+                # TODO: fix this return
                 return f"background-image: url('static/background.png');"
 
             # Преобразуем данные в Base64
             poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-            return f'background-image: url("data:image/png;base64,{poster_base64}");'
+
+            if need_image:
+                return f'<img src="data:image/png;base64,{poster_base64}" alt="{title.title_id}.{title.code}" style=\"float: left; margin-right: 20px;\"" />'
+            elif need_background:
+                return f'background-image: url("data:image/png;base64,{poster_base64}");'
+
+            # TODO: fix this return
+            return f"background-image: url('static/background.png');"
         except Exception as e:
             self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
+            # TODO: fix this return
             return f"background-image: url('static/background.png');"
 
     def generate_genres_html(self, title):
@@ -807,11 +907,8 @@ class AnimePlayerAppVer3(QWidget):
 
             else:
                 episodes_html += f'<li>{episode_name} (нет ссылки для качества {selected_quality})</li>'
-
-
         episodes_html += "</ul>"
         # Добавляем имя эпизода в sanitized_titles
-
         sanitized_name = self.sanitize_filename(title.code)
         self.sanitized_titles.append(sanitized_name)
 
@@ -911,6 +1008,7 @@ class AnimePlayerAppVer3(QWidget):
         if len(title_ids) == 1:
             self.display_info(title_ids[0])
         else:
+            self.logger.debug(f"4389579834759834{title_ids}")
             self.display_titles(title_ids)
 
         # Сохраняем текущие данные

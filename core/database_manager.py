@@ -518,7 +518,7 @@ class DatabaseManager:
                         WHERE blocked_geoip = 1 OR blocked_copyrights = 1
                     """,
                     'blocked_titles': """
-                        SELECT GROUP_CONCAT(DISTINCT CONCAT(title_id, ' (', name_en, ')'))
+                        SELECT GROUP_CONCAT(DISTINCT title_id || ' (' || name_en || ')')
                         FROM titles
                         WHERE blocked_geoip = 1 OR blocked_copyrights = 1;
                     """,

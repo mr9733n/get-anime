@@ -27,7 +27,7 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
-APP_VERSION = '3.6.0'
+APP_VERSION = '3.6.1'
 
 class CreateTitleBrowserTask(QRunnable):
     def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
@@ -379,8 +379,12 @@ class AnimePlayerAppVer3(QWidget):
                 data = self.get_schedule(day_of_week)
                 self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
                 if data:
-                    # Сохраняем новые данные в базе и отображаем их
-                    self.invoke_database_save(data)
+                    parsed_data = self.parse_schedule_data(data)
+                    # Сохраняем данные в базе данных
+                    for item in parsed_data:
+                        self.db_manager.save_schedule(item["day"], item["title_id"])
+                        self.logger.debug(f"Saved title_id from API: {item['title_id']} on day {item['day']}")
+
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
                     self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
@@ -392,29 +396,39 @@ class AnimePlayerAppVer3(QWidget):
         try:
             # Получаем актуальные данные из API
             new_data = self.get_schedule(day_of_week)
-            if new_data:
-                for day_info in new_data:
-                    if day_info.get("day") == day_of_week:
-                        new_titles = day_info.get("list", [])
 
-                        # Проверка, изменилось ли количество тайтлов
-                        if len(new_titles) != len(current_titles):
-                            self.logger.info(
-                                f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных..."
+            # Парсим новые данные с использованием общего метода
+            parsed_data = self.parse_schedule_data(new_data)
+
+            # Фильтруем данные только для конкретного дня недели
+            new_titles = [item for item in parsed_data if item["day"] == day_of_week]
+
+            # Проверка, изменилось ли количество тайтлов
+            if len(new_titles) != len(current_titles):
+                self.logger.info(
+                    f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных..."
+                )
+                # Сохранение новых данных в базу данных
+                for item in new_titles:
+                    self.db_manager.save_schedule(item["day"], item["title_id"])
+                    self.logger.debug(f"saved title_id from api: {item['title_id']} on day {item['day']}")
+            else:
+                # Дополнительная проверка на изменения в данных каждого тайтла
+                for new_title, current_title in zip(new_titles, current_titles):
+                    # Проверка изменения по идентификатору, коду или объявлению
+                    if new_title.get('title_id') != current_title.title_id or \
+                            new_title.get('code') != current_title.code or \
+                            new_title.get('announce') != current_title.announce or \
+                            self.is_update_required(new_title, current_title):
+                        self.logger.info(
+                            f"Обнаружены изменения в тайтле {new_title.get('title_id')}, обновляем базу данных..."
+                        )
+                        # Сохранение изменений в базу данных
+                        for item in new_titles:
+                            self.db_manager.save_schedule(item["day"], item["title_id"])
+                            self.logger.debug(
+                                f"saved title_id from api: {item['title_id']} on day {item['day']}"
                             )
-                            self.invoke_database_save(new_titles)
-                        else:
-                            # Дополнительная проверка на изменения в данных каждого тайтла
-                            for new_title, current_title in zip(new_titles, current_titles):
-                                # Проверка изменения по идентификатору, коду или объявлению
-                                if new_title.get('id') != current_title.title_id or \
-                                        new_title.get('code') != current_title.code or \
-                                        new_title.get('announce') != current_title.announce or \
-                                        self.is_update_required(new_title, current_title):
-                                    self.logger.info(
-                                        f"Обнаружены изменения в тайтле {new_title.get('code')}, обновляем базу данных..."
-                                    )
-                                    self.invoke_database_save([new_title])
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
 
@@ -1045,25 +1059,58 @@ class AnimePlayerAppVer3(QWidget):
     def get_schedule(self, day):
         try:
             data = self.api_client.get_schedule(day)
-            if 'error' in data:
+
+            # Проверка на ошибку в данных
+            if isinstance(data, dict) and 'error' in data:
                 self.logger.error(data['error'])
                 return None
-            if data is not None:
-                for day_info in data:
-                    day = day_info.get("day")
-                    title_list = day_info.get("list")
-                    for title in title_list:
-                        title_id = title.get('id')
-                        if title_id:
-                            self.db_manager.save_schedule(day, title_id)
 
-                    self.invoke_database_save(title_list)
+            # Парсим данные с помощью общего метода
+            parsed_data = self.parse_schedule_data(data)
+
+            # Сохраняем данные в базу
+            for item in parsed_data:
+                self.db_manager.save_schedule(item["day"], item["title_id"])
+                self.logger.debug(f"Saved title_id from API: {item['title_id']} on day {item['day']}")
 
             self.current_data = data
             return data  # Возвращаем данные вместо True
+
         except Exception as e:
             self.logger.error(f"Ошибка при получении расписания: {e}")
             return None
+
+    def parse_schedule_data(self, data):
+        """Парсит данные расписания и возвращает данные, подготовленные для сохранения."""
+        parsed_data = []
+
+        if not isinstance(data, list):
+            self.logger.error(f"Ожидался список, получен: {type(data).__name__}")
+            return parsed_data
+
+        for day_info in data:
+            # Проверяем, что каждый элемент day_info - это словарь
+            if not isinstance(day_info, dict):
+                self.logger.error(f"Неправильный формат данных: ожидался словарь, получен {type(day_info).__name__}")
+                continue
+
+            day = day_info.get("day")
+            title_list = day_info.get("list")
+
+            # Проверка, что title_list является списком
+            if not isinstance(title_list, list):
+                self.logger.error(
+                    f"Неправильный формат данных 'list': ожидался список, получен {type(title_list).__name__}")
+                continue
+
+            for title in title_list:
+                if isinstance(title, dict):
+                    title_id = title.get('id')
+                    if title_id:
+                        parsed_data.append({"day": day, "title_id": title_id})
+                        self.logger.debug(f"find title_id from api: {title_id} on day {day}")
+
+        return parsed_data
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.text()

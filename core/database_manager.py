@@ -62,6 +62,7 @@ class DatabaseManager:
     def save_title(self, title_data):
         with self.Session as session:
             title_id = title_data['title_id']
+            self.logger.info(f"save_title started for {title_id}")
             try:
                 # Проверка на наличие и корректность данных
                 if not isinstance(title_data, dict):
@@ -335,38 +336,38 @@ class DatabaseManager:
         if isinstance(title, dict):
             try:
                 title_data = {
-                        'title_id': title.get('id'),
-                        'code': title.get('code'),
-                        'name_ru': title.get('names', {}).get('ru'),
-                        'name_en': title.get('names', {}).get('en'),
-                        'alternative_name': title.get('names', {}).get('alternative'),
-                        'announce': title.get('announce'),
-                        'status_string': title.get('status', {}).get('string'),
-                        'status_code': title.get('status', {}).get('code'),
-                        'poster_path_small': title.get('posters', {}).get('small', {}).get('url'),
-                        'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url'),
-                        'poster_path_original': title.get('posters', {}).get('original', {}).get('url'),
-                        'updated': title.get('updated'),
-                        'last_change': title.get('last_change'),
-                        'type_full_string': title.get('type', {}).get('full_string'),
-                        'type_code': title.get('type', {}).get('code'),
-                        'type_string': title.get('type', {}).get('string'),
-                        'type_episodes': title.get('type', {}).get('episodes'),
-                        'type_length': title.get('type', {}).get('length'),
-                        'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
-                        'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
-                        'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
-                        'season_string': title.get('season', {}).get('string'),
-                        'season_code': title.get('season', {}).get('code'),
-                        'season_year': title.get('season', {}).get('year'),
-                        'season_week_day': title.get('season', {}).get('week_day'),
-                        'description': title.get('description'),
-                        'in_favorites': title.get('in_favorites'),
-                        'blocked_copyrights': title.get('blocked', {}).get('copyrights'),
-                        'blocked_geoip': title.get('blocked', {}).get('geoip'),
-                        'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                        'last_updated': datetime.utcnow()  # Использование метода utcnow()
-                    }
+                    'title_id': title.get('id', None),
+                    'code': title.get('code', ''),
+                    'name_ru': title.get('names', {}).get('ru', ''),
+                    'name_en': title.get('names', {}).get('en', ''),
+                    'alternative_name': title.get('names', {}).get('alternative', ''),
+                    'announce': title.get('announce', ''),
+                    'status_string': title.get('status', {}).get('string', ''),
+                    'status_code': title.get('status', {}).get('code', None),
+                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url', ''),
+                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url', ''),
+                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url', ''),
+                    'updated': title.get('updated', 0) if title.get('updated') is not None else 0,
+                    'last_change': title.get('last_change', 0) if title.get('last_change') is not None else 0,
+                    'type_full_string': title.get('type', {}).get('full_string', ''),
+                    'type_code': title.get('type', {}).get('code', None),
+                    'type_string': title.get('type', {}).get('string', ''),
+                    'type_episodes': title.get('type', {}).get('episodes', None),
+                    'type_length': title.get('type', {}).get('length', ''),
+                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
+                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
+                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
+                    'season_string': title.get('season', {}).get('string', ''),
+                    'season_code': title.get('season', {}).get('code', None),
+                    'season_year': title.get('season', {}).get('year', None),
+                    'season_week_day': title.get('season', {}).get('week_day', None),
+                    'description': title.get('description', ''),
+                    'in_favorites': title.get('in_favorites', 0),
+                    'blocked_copyrights': title.get('blocked', {}).get('copyrights', False),
+                    'blocked_geoip': title.get('blocked', {}).get('geoip', False),
+                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
+                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
+                }
                 self.save_title(title_data)
 
                 title_id = title_data['title_id']

@@ -650,19 +650,21 @@ class AnimePlayerAppVer3(QWidget):
 
     def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
         """Генерирует HTML для отображения информации о тайтле."""
-        year_html = self.generate_year_html(title)
+
+
         # Получаем данные постера
         poster_html = self.generate_poster_html(title, need_background=True) if show_more_link else f"background-image: url('static/background.png');"
 
         if show_text_list:
+            year_html = self.generate_year_html(title,show_text_list=True)
             body_html = f'''
+        <p class="header_p">{title.title_id} | {year_html}</p>
         <div class="header">
-        <a href="display_info/{title.title_id}">{title.name_en} ({title.name_ru})</a>
+            <a href="display_info/{title.title_id}">{title.name_en} ({title.name_ru})</a>
         </div>
-        {year_html}<br>
-
         '''
         else:
+            year_html = self.generate_year_html(title)
             # Декодируем жанры и получаем другие поля
             genres_html = self.generate_genres_html(title)
             announce_html = self.generate_announce_html(title)
@@ -679,6 +681,7 @@ class AnimePlayerAppVer3(QWidget):
 
             body_html = f'''
                 <div>
+                    <p class="header_p">{title.title_id}</p>
                     <p class="header">{title.name_en}</p>
                     <p class="header">{title.name_ru}</p>
                     <p class="header">{show_more_html}</p>
@@ -939,10 +942,13 @@ class AnimePlayerAppVer3(QWidget):
         else:
             return ""
 
-    def generate_year_html(self, title):
+    def generate_year_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения года выпуска."""
         title_year = title.season_year if title.season_year else "Год отсутствует"
-        return f"""<p>Год выпуска: {title_year}</p>"""
+        if show_text_list:
+            return f"""{title_year}"""
+        else:
+            return f"""<p>Год выпуска: {title_year}</p>"""
 
     def generate_type_html(self, title):
         """Генерирует HTML для отображения типа аниме."""

@@ -4,3 +4,7 @@ SQLAlchemy~=2.0.36
 pydantic
 aiohttp
 PyQt5~=5.15.11
+typing_extensions~=4.12.2
+greenlet~=3.1.1
+attrs~=24.2.0
+pyinstaller~=5.13.2

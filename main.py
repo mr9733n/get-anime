@@ -6,24 +6,14 @@ import threading
 from PyQt5.QtWidgets import QApplication
 
 # Импортируем классы версий приложения
-from app.tinker_v1.app import AnimePlayerAppVer1 # Tinker version 1
-from app.tinker_v2.app import AnimePlayerAppVer2  # Tkinter версия 2
 from core.database_manager import DatabaseManager  # База данных
 from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 
-def run_tkinter_app_v1():
-    import tkinter as tk
-    window = tk.Tk()
-    app = AnimePlayerAppVer1(window)
-    window.mainloop()
-
-def run_tkinter_app_v2(db_manager):
-    import tkinter as tk
-    window = tk.Tk()
-    app = AnimePlayerAppVer2(window, db_manager)
-    window.mainloop()
-
 if __name__ == "__main__":
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
 
     # Construct the path to the database in the main directory
@@ -40,35 +30,12 @@ if __name__ == "__main__":
     db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
 
-    # Парсим аргументы командной строки
-    parser = argparse.ArgumentParser(description="Запуск версий Anime Player")
-    parser.add_argument('--version1', action='store_true', help="Запустить версию с Tkinter version 1.0.0")
-    parser.add_argument('--version2', action='store_true', help="Запустить версию с Tkinter version 2.0.0")
-    parser.add_argument('--version3', action='store_true', help="Запустить версию с PyQt version 3.0.0")
-    args = parser.parse_args()
 
-    # Запуск выбранных версий в разных потоках
-    threads = []
-
-    if args.version1:
-        thread_tk_v1 = threading.Thread(target=run_tkinter_app_v1)
-        threads.append(thread_tk_v1)
-
-    if args.version2:
-        thread_tk_v2 = threading.Thread(target=run_tkinter_app_v2, args=(db_manager,))
-        threads.append(thread_tk_v2)
-
-    # Запуск всех потоков
-    for thread in threads:
-        thread.start()
 
     # Ожидание завершения всех потоков
-    for thread in threads:
-        thread.join()
 
-    if args.version3:
-        app_pyqt = QApplication(sys.argv)
-        window_pyqt = AnimePlayerAppVer3(db_manager)
-        window_pyqt.show()
-        sys.exit(app_pyqt.exec_())
+    app_pyqt = QApplication(sys.argv)
+    window_pyqt = AnimePlayerAppVer3(db_manager)
+    window_pyqt.show()
+    sys.exit(app_pyqt.exec_())
 

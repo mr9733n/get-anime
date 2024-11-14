@@ -3,7 +3,8 @@ import logging
 import os
 
 import sqlalchemy
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
+    and_
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -614,6 +615,44 @@ class DatabaseManager:
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
                 return None
+
+    def get_titles_by_keywords(self, search_string):
+        """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
+        keywords = search_string.split()
+        if not keywords:
+            return []
+        self.logger.debug(f"keyword for processing: {keywords}")
+        with self.Session as session:
+            try:
+                # Check if the search string is a valid title_id
+                if len(keywords) == 1 and keywords[0].isdigit():
+                    title_id = int(keywords[0])
+                    query = session.query(Title).filter(Title.title_id == title_id)
+                    titles = query.all()
+                else:
+                    # Build dynamic filter using SQLAlchemy's 'or_' to match any keyword in any column
+                    filters = [
+                        and_(
+                            or_(
+                                Title.code.ilike(f"%{keyword}%"),
+                                Title.name_ru.ilike(f"%{keyword}%"),
+                                Title.name_en.ilike(f"%{keyword}%"),
+                                Title.alternative_name.ilike(f"%{keyword}%")
+                            )
+                            for keyword in keywords
+                        )
+                    ]
+                    # Combine filters using 'and_' so that all keywords must match (across any field)
+                    query = session.query(Title).filter(*filters)
+                    # Execute the query and get all matches
+                    titles = query.all()
+
+                # Extract and return only the title_ids from the matched titles
+                title_ids = [title.title_id for title in titles]
+                return title_ids
+            except Exception as e:
+                self.logger.error(f"Error during title search: {e}")
+                return []
 
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
         """Получает список тайтлов из базы данных через DatabaseManager."""

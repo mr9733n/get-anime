@@ -51,7 +51,7 @@ class UIManager:
     def setup_controls_layout(self, layout):
         # Search Field
         self.parent.title_search_entry = QLineEdit(self.parent)
-        self.parent.title_search_entry.setPlaceholderText('TITLE NAME')
+        self.parent.title_search_entry.setPlaceholderText('TITLE ID OR NAME')
         self.parent.title_search_entry.setMinimumWidth(180)
         self.parent.title_search_entry.setMaximumWidth(255)
         self.parent.title_search_entry.setStyleSheet("""

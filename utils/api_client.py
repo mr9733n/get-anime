@@ -54,6 +54,11 @@ class APIClient:
         params = {'search': search_text}
         return self.send_request(endpoint, params)
 
+    def get_search_by_title_id(self, title_id):
+        endpoint = "title"
+        params = {'id': title_id}
+        return self.send_request(endpoint, params)
+
     def get_random_title(self):
         endpoint = "title/random"
         data = self.send_request(endpoint)

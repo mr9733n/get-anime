@@ -50,6 +50,8 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        'pkg_resources', 
+        'pkg_resources.extern',
 		'multiprocessing',
 		'requests.compat',
 		'cryptography',

@@ -1117,25 +1117,52 @@ class AnimePlayerAppVer3(QWidget):
         if not search_text:
             return
 
-        data = self.api_client.get_search_by_title(search_text)
+        self.logger.debug(f"keywords: {search_text}")
+        title_ids = self.db_manager.get_titles_by_keywords(search_text)
+
+        if title_ids:
+            self._handle_found_titles(title_ids, search_text)
+        else:
+            self._handle_no_titles_found(search_text)
+
+    def _handle_found_titles(self, title_ids, search_text):
+        if len(title_ids) == 1:
+            # If only one title is found, display its information directly
+            self.display_info(title_ids[0])
+        else:
+            # If multiple titles are found, extract all title_ids for display_titles
+            self.logger.debug(f"Get titles from DB with title_ids: {title_ids} by keyword {search_text}")
+            self.display_titles(title_ids)
+
+    def _handle_no_titles_found(self, search_text):
+        if search_text.isdigit():
+            title_id = int(search_text)
+            data = self.api_client.get_search_by_title_id(title_id)
+        else:
+            data = self.api_client.get_search_by_title(search_text)
+
         if 'error' in data:
             self.logger.error(data['error'])
             return
 
-        # Получаем список тайтлов из ответа
-        title_list = data.get('list', [])
+        # Проверяем тип данных в ответе
+        if isinstance(data, dict) and 'list' in data:
+            title_list = data['list']
+        elif isinstance(data, dict):
+            # Если это одиночный тайтл, оборачиваем его в список
+            title_list = [data]
+        else:
+            self.logger.error("No titles found in the response.")
+            return
+
         if not title_list:
             self.logger.error("No titles found in the response.")
             return
+
         self.invoke_database_save(title_list)
 
         title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
-
-        if len(title_ids) == 1:
-            self.display_info(title_ids[0])
-        else:
-            self.logger.debug(f"Get titles from the search with title_ids: {title_ids}")
-            self.display_titles(title_ids)
+        self._handle_found_titles(title_ids, search_text)
 
         # Сохраняем текущие данные
         self.current_data = data

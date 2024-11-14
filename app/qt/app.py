@@ -27,7 +27,7 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
-APP_VERSION = '3.5.3'
+APP_VERSION = '3.6.0'
 
 class CreateTitleBrowserTask(QRunnable):
     def __init__(self, app, title, row, column, show_description=False, show_one_title=False):

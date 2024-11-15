@@ -781,9 +781,9 @@ class Title(Base):
     blocked_copyrights = Column(Boolean)
     blocked_geoip = Column(Boolean)
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
+    last_updated = Column(DateTime, default=datetime.utcnow)
     host_for_player = Column(String)
     alternative_player = Column(String)
-    last_updated = Column(DateTime, default=datetime.utcnow)
 
     franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
     #releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")

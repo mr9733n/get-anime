@@ -1,15 +1,35 @@
 import logging.config
 import os
+import re
+import subprocess
 import sys
 import argparse
 import threading
 from PyQt5.QtWidgets import QApplication
+from PyQt5.uic.Compiler.qobjectcreator import logger
 
 # Импортируем классы версий приложения
 from core.database_manager import DatabaseManager  # База данных
 from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 
+
+def fetch_version():
+    global version
+    try:
+        commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B'], text=True).strip()
+        version_pattern = r"^\d+\.\d+\.\d+$"
+        match = re.match(version_pattern, commit_message)
+
+        if match:
+            version = match.group()
+        else:
+            version = '3.6.x'
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error occurred while getting commit message: {e}")
+        version = '3.6.x'
+
 if __name__ == "__main__":
+    logger = logging.getLogger(__name__)
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -30,12 +50,13 @@ if __name__ == "__main__":
     db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
 
-
-
-    # Ожидание завершения всех потоков
-
+    # Запускаем поток для получения версии
+    version_thread = threading.Thread(target=fetch_version)
+    version_thread.start()
+    # Ждем, пока поток завершится, прежде чем показывать интерфейс
+    version_thread.join()
+    # Пока версия загружается, можем начать работу интерфейса
     app_pyqt = QApplication(sys.argv)
-    window_pyqt = AnimePlayerAppVer3(db_manager)
+    window_pyqt = AnimePlayerAppVer3(db_manager, version)
     window_pyqt.show()
     sys.exit(app_pyqt.exec_())
-

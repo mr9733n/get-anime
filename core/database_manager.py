@@ -50,7 +50,7 @@ class DatabaseManager:
                     with open('static/no_image.png', 'rb') as image_file:
                         poster_blob = image_file.read()
                         placeholder_poster = Poster(
-                            title_id=-2,  # Используем отрицательный идентификатор для заглушки
+                            title_id=2,  # Используем отрицательный идентификатор для заглушки
                             poster_blob=poster_blob,
                             last_updated=datetime.utcnow()
                         )
@@ -368,7 +368,9 @@ class DatabaseManager:
                     'blocked_copyrights': title.get('blocked', {}).get('copyrights', False),
                     'blocked_geoip': title.get('blocked', {}).get('geoip', False),
                     'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                    'last_updated': datetime.utcnow()  # Использование метода utcnow()
+                    'host_for_player': title.get('player', {}).get('host', ''),
+                    'alternative_player': title.get('player', {}).get('alternative_player', ''),
+                    'last_updated': datetime.utcnow(),
                 }
                 self.save_title(title_data)
 
@@ -779,6 +781,8 @@ class Title(Base):
     blocked_copyrights = Column(Boolean)
     blocked_geoip = Column(Boolean)
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
+    host_for_player = Column(String)
+    alternative_player = Column(String)
     last_updated = Column(DateTime, default=datetime.utcnow)
 
     franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")

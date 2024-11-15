@@ -288,7 +288,8 @@ class AnimePlayerAppVer3(QWidget):
         if start:
             self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
         if show_next:
-            self.current_offset += self.titles_batch_size
+            max_offset = max(0, len(self.total_titles) - self.titles_batch_size)
+            self.current_offset = min(max_offset, self.current_offset + self.titles_batch_size)
             self.logger.debug(f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
         if show_previous:
             self.current_offset =  max(0, self.current_offset - self.titles_batch_size)
@@ -394,11 +395,12 @@ class AnimePlayerAppVer3(QWidget):
                 data = self.get_schedule(day_of_week)
                 self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
                 if data:
-                    parsed_data = self.parse_schedule_data(data)
+                    parsed_data, titles_list = self.parse_schedule_data(data)
                     # Сохраняем данные в базе данных
                     for item in parsed_data:
                         self.db_manager.save_schedule(item["day"], item["title_id"])
                         self.logger.debug(f"Saved title_id from API: {item['title_id']} on day {item['day']}")
+                        self.invoke_database_save(titles_list)
 
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
@@ -413,7 +415,7 @@ class AnimePlayerAppVer3(QWidget):
             new_data = self.get_schedule(day_of_week)
 
             # Парсим новые данные с использованием общего метода
-            parsed_data = self.parse_schedule_data(new_data)
+            parsed_data, titles_list = self.parse_schedule_data(new_data)
 
             # Фильтруем данные только для конкретного дня недели
             new_titles = [item for item in parsed_data if item["day"] == day_of_week]
@@ -427,6 +429,7 @@ class AnimePlayerAppVer3(QWidget):
                 for item in new_titles:
                     self.db_manager.save_schedule(item["day"], item["title_id"])
                     self.logger.debug(f"saved title_id from api: {item['title_id']} on day {item['day']}")
+                    self.invoke_database_save(titles_list)
             else:
                 # Дополнительная проверка на изменения в данных каждого тайтла
                 for new_title, current_title in zip(new_titles, current_titles):
@@ -1081,13 +1084,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(data['error'])
                 return None
 
-            # Парсим данные с помощью общего метода
-            parsed_data = self.parse_schedule_data(data)
 
-            # Сохраняем данные в базу
-            for item in parsed_data:
-                self.db_manager.save_schedule(item["day"], item["title_id"])
-                self.logger.debug(f"Saved title_id from API: {item['title_id']} on day {item['day']}")
 
             self.current_data = data
             return data  # Возвращаем данные вместо True
@@ -1097,12 +1094,13 @@ class AnimePlayerAppVer3(QWidget):
             return None
 
     def parse_schedule_data(self, data):
-        """Парсит данные расписания и возвращает данные, подготовленные для сохранения."""
+        """Парсит данные расписания и возвращает данные, подготовленные для сохранения, и список тайтлов."""
         parsed_data = []
+        titles_list = []
 
         if not isinstance(data, list):
             self.logger.error(f"Ожидался список, получен: {type(data).__name__}")
-            return parsed_data
+            return parsed_data, titles_list
 
         for day_info in data:
             # Проверяем, что каждый элемент day_info - это словарь
@@ -1123,10 +1121,13 @@ class AnimePlayerAppVer3(QWidget):
                 if isinstance(title, dict):
                     title_id = title.get('id')
                     if title_id:
+                        # Добавляем данные о дне и title_id в parsed_data
                         parsed_data.append({"day": day, "title_id": title_id})
+                        # Добавляем полные данные о тайтле в titles_list
+                        titles_list.append(title)
                         self.logger.debug(f"find title_id from api: {title_id} on day {day}")
 
-        return parsed_data
+        return parsed_data, titles_list
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.text()
@@ -1346,27 +1347,4 @@ class AnimePlayerAppVer3(QWidget):
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
 
-# TODO: this run not work cuz not right base folder
-if __name__ == '__main__':
-
-    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
-
-    # Construct the path to the database in the main directory
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(base_dir, 'db')
-
-    # Ensure the database directory exists
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
-
-    db_path = os.path.join(db_dir, 'anime_player.db')
-
-    # Создаем и инициализируем таблицы базы данных
-    db_manager = DatabaseManager(db_path)
-    db_manager.initialize_tables()
-
-
-    app = QApplication(sys.argv)
-    window = AnimePlayerAppVer3(database_manager)
-    window.show()
-    sys.exit(app.exec_())
+pass

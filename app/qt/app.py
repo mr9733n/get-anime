@@ -128,7 +128,7 @@ class AnimePlayerAppVer3(QWidget):
         self.playlist_manager = PlaylistManager()
         self.db_manager = db_manager
         self.poster_manager = PosterManager(
-            save_callback=self.db_manager.save_poster_to_db,
+            save_callback=self.db_manager.save_poster,
         )
 
         self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
@@ -288,12 +288,15 @@ class AnimePlayerAppVer3(QWidget):
         if start:
             self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
         if show_next:
-            max_offset = max(0, len(self.total_titles) - self.titles_batch_size)
-            self.current_offset = min(max_offset, self.current_offset + self.titles_batch_size)
-            self.logger.debug(f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+            # FIXME: would be increment offset at the end of title list
+            self.current_offset += self.titles_batch_size
+            self.logger.debug(
+                f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+
         if show_previous:
-            self.current_offset =  max(0, self.current_offset - self.titles_batch_size)
+            self.current_offset = max(0, self.current_offset - self.titles_batch_size)  # Ограничиваем offset снизу
             self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+
         match (bool(title_ids), titles_text_list, franchises):
             case (True, _, _):
                 show_mode = 'title_ids'
@@ -712,7 +715,7 @@ class AnimePlayerAppVer3(QWidget):
             genres_html = self.generate_genres_html(title)
             announce_html = self.generate_announce_html(title)
             status_html = self.generate_status_html(title)
-            show_more_html = self.generate_show_more_html(title) if show_more_link else ""
+            show_more_html = self.generate_show_more_html(title.title_id) if show_more_link else ""
             # Добавляем информацию об эпизодах
             episodes_html = self.generate_episodes_html(title)
             play_all_html = self.generate_play_all_html(title)
@@ -720,6 +723,7 @@ class AnimePlayerAppVer3(QWidget):
 
             type_html = self.generate_type_html(title)
             torrents_html = self.generate_torrents_html(title)
+            rating_html = self.generate_rating_html(title)
 
 
             body_html = f'''
@@ -729,6 +733,7 @@ class AnimePlayerAppVer3(QWidget):
                     <p class="header">{title.name_ru}</p>
                     <p class="header">{show_more_html}</p>
                     <div>
+                    {rating_html}
                         {announce_html}
                         {status_html}
                         {description_html}
@@ -865,9 +870,36 @@ class AnimePlayerAppVer3(QWidget):
         """
         return html_content
 
-    def generate_show_more_html(self, title):
+    def generate_show_more_html(self, title_id):
         """Generates HTML to display 'show more' link"""
-        return f'<a href=display_info/{title.title_id}>Подробнее</a>'
+        return f'<a href=display_info/{title_id}>Подробнее</a>'
+
+    def generate_rating_html(self, title):
+        """Generates HTML to display ratings and allows updating"""
+        ratings = self.db_manager.get_rating_from_db(title.title_id)
+        rating_star_images = []
+        poster_base64_full = self.prepare_generate_poster_html(4)
+        poster_base64_blank = self.prepare_generate_poster_html(3)
+        if ratings:
+            rating_name = ratings.rating_name
+            rating_value = ratings.rating_value
+            for i in range(5):
+                if i < rating_value:
+                    rating_star_images.append(
+                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_full}" /></a>')
+                else:
+                    rating_star_images.append(
+                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_blank}" /></a>')
+        else:
+            rating_name = 'CMERS'
+            for i in range(5):
+                poster_base64 = self.prepare_generate_poster_html(3)
+                rating_star_images.append(f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64}" /></a>')
+
+        rating_value = ''.join(rating_star_images)
+        return f'''
+        <p>{rating_name}: {rating_value}</p>
+        '''
 
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
@@ -878,7 +910,7 @@ class AnimePlayerAppVer3(QWidget):
             discovered_links = playlist['links']
             if discovered_links:
                 filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links,
-                                                               self.stream_video_url)
+                                                               title.host_for_player)
                 self.logger.debug(
                     f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
                 return f'<a href="play_all/{title.title_id}/{filename}">Play all</a>'
@@ -907,30 +939,37 @@ class AnimePlayerAppVer3(QWidget):
 
         return torrents_html
 
-    def generate_poster_html(self, title, need_image=False, need_background=False):
-        """Generates HTML for the poster in Base64 format or returns a placeholder."""
-        # Попытка получить постер из базы данных
-        poster_data = self.get_poster_or_placeholder(title.title_id)
+    def prepare_generate_poster_html(self, title_id):
+        poster_data = self.get_poster_or_placeholder(title_id)
 
         try:
             pixmap = QPixmap()
             if not pixmap.loadFromData(poster_data):
-                self.logger.error(f"Error: Failed to load image data for title_id: {title.title_id}")
-                # TODO: fix this return
-                return f"background-image: url('static/background.png');"
+                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
+
+                return None
 
             # Используем QBuffer для сохранения в байтовый массив
             byte_array = QByteArray()
             buffer = QBuffer(byte_array)
             buffer.open(QBuffer.WriteOnly)
             if not pixmap.save(buffer, 'PNG'):
-                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title.title_id}")
-                # TODO: fix this return
-                return f"background-image: url('static/background.png');"
+                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
+                return None
 
             # Преобразуем данные в Base64
             poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
+            return poster_base64
 
+        except Exception as e:
+            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
+            return None
+
+    def generate_poster_html(self, title, need_image=False, need_background=False):
+        """Generates HTML for the poster in Base64 format or returns a placeholder."""
+        # Попытка получить постер из базы данных
+        poster_base64 = self.prepare_generate_poster_html(title.title_id)
+        try:
             if need_image:
                 return f'<img src="data:image/png;base64,{poster_base64}" alt="{title.title_id}.{title.code}" style=\"float: left; margin-right: 20px;\"" />'
             elif need_background:
@@ -1220,9 +1259,20 @@ class AnimePlayerAppVer3(QWidget):
                 # Получаем title_id из ссылки и вызываем display_info
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
-            elif link.startswith('search_title_id/'):
-                title_id = int(link.split('/')[1])
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
+
+                #set_rating/{title.title_id}/{i+1}
+            elif link.startswith('set_rating/'):
+                parts = link.split('/')
+                if len(parts) >= 4:
+                    title_id = int(parts[1])
+                    rating_name = parts[2]
+                    rating_value = parts[3]
+                    self.logger.debug(f"Setting rating for title_id: {title_id}, rating: {rating_name}:{rating_value}")
+                    self.db_manager.save_ratings(title_id, rating_name=rating_name, rating_value=rating_value)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid play_all link structure: {link}")
+
             elif link.startswith('play_all/'):
                 # Получаем title_id и filename из ссылки и вызываем play_playlist_wrapper
                 parts = link.split('/')
@@ -1347,4 +1397,3 @@ class AnimePlayerAppVer3(QWidget):
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
 
-pass

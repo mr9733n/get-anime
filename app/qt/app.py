@@ -27,11 +27,11 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
-APP_VERSION = '3.6.2'
 
 class CreateTitleBrowserTask(QRunnable):
     def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
         super().__init__()
+        self.logger = logging.getLogger(__name__)
         self.app = app
         self.title = title
         self.row = row
@@ -55,8 +55,9 @@ class CreateTitleBrowserTask(QRunnable):
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
 
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, version):
         super().__init__()
+        self.logger = logging.getLogger(__name__)
         self.current_titles = None
         self.selected_quality = None
         self.torrent_data = None
@@ -85,16 +86,15 @@ class AnimePlayerAppVer3(QWidget):
         self.sanitized_titles = []
         self.title_names = []
         self.playlists = {}
-        self.titles_batch_size = 2  # Количество тайтлов, которые загружаются за раз
-        self.current_offset = 0     # Текущий смещение для выборки тайтлов
-        self.num_columns = 2  # Количество колонок для отображения
+        self.app_version = version
+
         self.row_start = 0
         self.col_start = 0
         self.total_titles = []
 
-        self.logger = logging.getLogger(__name__)
 
-        self.logger.debug("Initializing AnimePlayerApp Version 3")
+
+        self.logger.debug(f"Initializing AnimePlayerApp Version {self.app_version}")
 
         self.cache_file_path = "temp/poster_cache.txt"
         self.config_manager = ConfigManager('config/config.ini')
@@ -103,6 +103,12 @@ class AnimePlayerAppVer3(QWidget):
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
+
+        self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
+        self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
+        self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
+
+
         self.torrent_save_path = "torrents/"  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
@@ -153,7 +159,7 @@ class AnimePlayerAppVer3(QWidget):
         self.setLayout(main_layout)
 
         # Load 4 titles on start from DB
-        self.display_titles()
+        self.display_titles(start=True)
 
     def refresh_display(self):
         """Обработчик кнопки REFRESH, выполняющий обновление текущего экрана."""
@@ -253,7 +259,14 @@ class AnimePlayerAppVer3(QWidget):
 
     def load_more_titles(self):
         """Загружает и отображает тайтлы LOAD MORE."""
-        self.display_titles()
+        self.logger.debug(f"LOAD MORE BUTTON PRESSED")
+        self.display_titles(show_next=True)
+        return True
+
+    def load_previous_titles(self):
+        """Загружает и отображает тайтлы LOAD PREV."""
+        self.logger.debug(f"LOAD PREV BUTTON PRESSED")
+        self.display_titles(show_previous=True)
         return True
 
     def display_franchises(self):
@@ -262,49 +275,51 @@ class AnimePlayerAppVer3(QWidget):
     def display_system(self):
         self.display_titles(system=True)
 
-    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False, system=False):
+    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False, system=False, show_previous=False, show_next=False, start=False):
         """Отображение первых тайтлов при старте.
+        :param start:
+        :param show_next:
+        :param show_previous:
         :param system:  Show system layout
         :param franchises: Отображение нескольких тайтлов with relationship Franchise по title_id
         :param title_ids: Отображение нескольких тайтлов по title_id
         :param titles_text_list: Отображение списка тайтлов.
         """
-        # Загружаем первую партию тайтлов
-        match (bool(title_ids), titles_text_list, franchises, system):
-            case (True, _, _, _):
-                # self.logger.debug(f"4389579834759834{title_ids}")
+        if start:
+            self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+        if show_next:
+            self.current_offset += self.titles_batch_size
+            self.logger.debug(f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+        if show_previous:
+            self.current_offset =  max(0, self.current_offset - self.titles_batch_size)
+            self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+        match (bool(title_ids), titles_text_list, franchises):
+            case (True, _, _):
                 show_mode = 'title_ids'
                 titles = self.db_manager.get_titles_from_db(show_all=False,
                                                             offset=self.current_offset, title_ids=title_ids)
                 self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False, True, False, False):
+            case (False, True, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                 show_mode = 'titles_text_list'
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
-            case (False, False, False, False):
+            case (False, False, False):
                 titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
                                                             offset=self.current_offset)
                 show_mode = 'default'
                 self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False, False, True, False):
+            case (False, False, True):
                 titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                 show_mode = 'franchise_list'
                 self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
-            case (False, False, False, True):
-                # TODO: we show on UI titles, so we take tiles instead statistics but all work fine.
-                titles = self.db_manager.get_statistics_from_db()
-                show_mode = 'system'
-                self.logger.debug(f"System is {system}")
-                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
-        # TODO: when system we count statistics lines
         self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
         # self.logger.debug(f"{titles}")
-        # Обновляем offset для следующей загрузки
-        self.current_offset += self.titles_batch_size
 
+        if system:
+            titles = self.db_manager.get_statistics_from_db()
+            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
         # Сохраняем загруженные тайтлы в список для доступа позже
-        # TODO: we don't need count self.total_titles when system
-        if not system:
+        else:
             self.total_titles = titles
             len_total_titles = len(self.total_titles)
             self.logger.debug(f"self.total_titles:{len_total_titles}")
@@ -517,7 +532,7 @@ class AnimePlayerAppVer3(QWidget):
         container_layout = QVBoxLayout(container_widget)
 
         # Информация о версии приложения
-        app_version = APP_VERSION
+        app_version = self.app_version
 
         # Извлечение статистики из аргумента statistics
         titles_count = statistics.get('titles_count', 0)
@@ -559,6 +574,7 @@ class AnimePlayerAppVer3(QWidget):
             """
             text-align: left;
             border: 1px solid #444;
+            color: #000;
             font-size: 14pt;
             font-weight: bold;
             position: relative;

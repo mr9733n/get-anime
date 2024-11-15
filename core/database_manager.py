@@ -5,7 +5,7 @@ import os
 import sqlalchemy
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_
+    and_, SmallInteger
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -40,7 +40,7 @@ class DatabaseManager:
                         self.logger.info("Placeholder image 'background.png' was added to posters table.")
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error initializing placeholder image in posters table: {e}")
+                self.logger.error(f"Error initializing 'background.png' image in posters table: {e}")
 
         # Добавляем заглушку изображения, если оно не добавлено
         with self.Session as session:
@@ -59,7 +59,43 @@ class DatabaseManager:
                         self.logger.info("Placeholder image 'no_image.png' was added to posters table.")
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error initializing placeholder image in posters table: {e}")
+                self.logger.error(f"Error initializing 'no_image.png' image in posters table: {e}")
+        # Добавляем rating_star_blank изображения, если оно не добавлено
+        with self.Session as session:
+            try:
+                placeholder_poster = session.query(Poster).filter_by(title_id=3).first()
+                if not placeholder_poster:
+                    with open('static/rating_star_blank.png', 'rb') as image_file:
+                        poster_blob = image_file.read()
+                        placeholder_poster = Poster(
+                            title_id=3,  # Используем отрицательный идентификатор для заглушки
+                            poster_blob=poster_blob,
+                            last_updated=datetime.utcnow()
+                        )
+                        session.add(placeholder_poster)
+                        session.commit()
+                        self.logger.info("Placeholder image 'rating_star_blank.png' was added to posters table.")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error initializing 'rating_star_blank.png' image in posters table: {e}")
+        # Добавляем rating_star изображения, если оно не добавлено
+        with self.Session as session:
+            try:
+                placeholder_poster = session.query(Poster).filter_by(title_id=4).first()
+                if not placeholder_poster:
+                    with open('static/rating_star.png', 'rb') as image_file:
+                        poster_blob = image_file.read()
+                        placeholder_poster = Poster(
+                            title_id=4,  # Используем отрицательный идентификатор для заглушки
+                            poster_blob=poster_blob,
+                            last_updated=datetime.utcnow()
+                        )
+                        session.add(placeholder_poster)
+                        session.commit()
+                        self.logger.info("Placeholder image 'rating_star.png' was added to posters table.")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error initializing 'rating_star.png' image in posters table: {e}")
 
     def save_title(self, title_data):
         with self.Session as session:
@@ -470,7 +506,7 @@ class DatabaseManager:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
         return True
 
-    def save_poster_to_db(self, title_id, poster_blob):
+    def save_poster(self, title_id, poster_blob):
         with self.Session as session:
             try:
                 # Проверяем, существует ли уже постер для данного title_id
@@ -489,6 +525,48 @@ class DatabaseManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+
+    def save_ratings(self, title_id, rating_value, rating_name='CMERS'):
+        """
+        "Comprehensive Media Evaluation Rating System" or CMERS
+        The CMERS system would operate as follows:
+            - Title Appearance Frequency
+            - Watched Episode Count
+            - Individual Title Prominence
+            - User-Provided Ratings
+            - External Source Ratings
+            :param title_id:
+            :param rating_value:
+            :type rating_name: object
+        """
+        with self.Session as session:
+            try:
+                existing_rating = session.query(Rating).filter_by(title_id=title_id).one_or_none()
+                if existing_rating:
+                    existing_rating.rating_value = rating_value
+                    existing_rating.rating_name = rating_name
+                    self.logger.debug(f"Updated rating for title_id: {title_id}")
+                else:
+                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name)
+                    session.add(new_rating)
+                    self.logger.debug(f"Added new rating for title_id: {title_id}")
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error saving rating for title_id {title_id}: {e}")
+                raise
+
+    def get_rating_from_db(self, title_id):
+        with self.Session as session:
+            try:
+                ratings = session.query(Rating).filter_by(title_id=title_id).one_or_none()
+                if ratings:
+                    self.logger.debug(f"Rating '{ratings.rating_value}' for title_id: {ratings.title_id}")
+                    return ratings
+            except Exception as e:
+                self.logger.error(f"Error fetching rating for title_id {title_id}: {e}")
+                raise
+
 
     def get_statistics_from_db(self):
         """Получает статистику из базы данных."""
@@ -622,19 +700,21 @@ class DatabaseManager:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
-                    self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
-                    return poster.poster_blob, False  # Это реальный постер
+                    if title_id in [3, 4]:
+                        # TODO: No need log message for rating stars images
+                        return poster.poster_blob, False
+                    else:
+                        self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
+                        return poster.poster_blob, False
 
                 # Используем placeholder, если постер не найден
                 placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
                 if placeholder_poster:
                     self.logger.debug(
-                        f"Poster image was not found in database for title_id: {title_id}. Using placeholder.")
-                    return placeholder_poster.poster_blob, True  # Это плейсхолдер
-
+                    f"Poster image was not found in database for title_id: {title_id}. Using placeholder.")
+                    return placeholder_poster.poster_blob, True
                 self.logger.warning(f"No poster found for title_id: {title_id} and no placeholder available.")
                 return None, False
-
             except Exception as e:
                 self.logger.error(f"Error fetching poster from database: {e}")
                 return None, False
@@ -781,9 +861,9 @@ class Title(Base):
     blocked_copyrights = Column(Boolean)
     blocked_geoip = Column(Boolean)
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
-    last_updated = Column(DateTime, default=datetime.utcnow)
     host_for_player = Column(String)
     alternative_player = Column(String)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
     #releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
@@ -793,6 +873,17 @@ class Title(Base):
     torrents = relationship("Torrent", back_populates="title")
     posters = relationship("Poster", back_populates="title")
     schedules = relationship("Schedule", back_populates="title")
+    ratings = relationship("Rating", back_populates="title")
+
+class Rating(Base):
+    __tablename__ = 'ratings'
+
+    rating_id = Column(Integer, primary_key=True)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    rating_name = Column(String, default='CMERS', nullable=False)
+    rating_value = Column(SmallInteger, nullable=False)
+
+    title = relationship("Title", back_populates="ratings")
 
 # Таблица связей между Title и Franchise
 class FranchiseRelease(Base):

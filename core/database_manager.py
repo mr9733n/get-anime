@@ -3,9 +3,10 @@ import logging
 import os
 
 import sqlalchemy
+
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
     and_
-from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload
+from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -580,17 +581,61 @@ class DatabaseManager:
                 self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")
                 return []
 
-    def get_poster_blob(self, title_id):
+    def get_poster_link(self, title_id):
         with self.Session as session:
             try:
-                poster = session.query(Poster).filter_by(title_id=title_id).first()
-                self.logger.debug(f"Poster image was found in database. title_id: {'2 : placeholder' if title_id == 2 else title_id}")
-                if poster:
-                    return poster.poster_blob
+                self.logger.debug(f"Processing poster link for title_id: {title_id}")
+
+                # Запрос для получения poster_path_small для конкретного title_id
+                poster_link = session.query(Title.poster_path_small).filter(Title.title_id == title_id).scalar()
+
+                if poster_link:
+                    self.logger.debug(f"Poster link found for title_id: {title_id}, link: {poster_link}")
+                    return poster_link
+
+                self.logger.warning(f"No poster link found for title_id: {title_id}")
                 return None
+
             except Exception as e:
                 self.logger.error(f"Error fetching poster from database: {e}")
                 return None
+
+    def check_poster_exists(self, title_id):
+        """
+        Checks if a poster exists in the database for a given title_id.
+        """
+        with self.Session as session:
+            try:
+                return session.query(Poster.title_id).filter_by(title_id=title_id).scalar() is not None
+            except Exception as e:
+                self.logger.error(f"Error checking poster existence in database: {e}")
+                return False
+
+    def get_poster_blob(self, title_id):
+        """
+        Retrieves the poster blob for a given title_id.
+        If check_exists_only is True, returns a boolean indicating whether the poster exists.
+        """
+        with self.Session as session:
+            try:
+                poster = session.query(Poster).filter_by(title_id=title_id).first()
+                if poster:
+                    self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
+                    return poster.poster_blob, False  # Это реальный постер
+
+                # Используем placeholder, если постер не найден
+                placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
+                if placeholder_poster:
+                    self.logger.debug(
+                        f"Poster image was not found in database for title_id: {title_id}. Using placeholder.")
+                    return placeholder_poster.poster_blob, True  # Это плейсхолдер
+
+                self.logger.warning(f"No poster found for title_id: {title_id} and no placeholder available.")
+                return None, False
+
+            except Exception as e:
+                self.logger.error(f"Error fetching poster from database: {e}")
+                return None, False
 
     def get_torrents_from_db(self, title_id):
         with self.Session as session:
@@ -618,33 +663,31 @@ class DatabaseManager:
 
     def get_titles_by_keywords(self, search_string):
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
-        keywords = search_string.split()
+        keywords = search_string.split(',')
+        keywords = [kw.strip() for kw in keywords]
         if not keywords:
             return []
         self.logger.debug(f"keyword for processing: {keywords}")
         with self.Session as session:
             try:
-                # Check if the search string is a valid title_id
-                if len(keywords) == 1 and keywords[0].isdigit():
-                    title_id = int(keywords[0])
-                    query = session.query(Title).filter(Title.title_id == title_id)
+                # Check if the keywords contain only title_ids
+                if all(kw.isdigit() for kw in keywords):
+                    title_ids = [int(kw) for kw in keywords]
+                    query = session.query(Title).filter(Title.title_id.in_(title_ids))
                     titles = query.all()
                 else:
                     # Build dynamic filter using SQLAlchemy's 'or_' to match any keyword in any column
                     filters = [
                         and_(
-                            or_(
-                                Title.code.ilike(f"%{keyword}%"),
-                                Title.name_ru.ilike(f"%{keyword}%"),
-                                Title.name_en.ilike(f"%{keyword}%"),
-                                Title.alternative_name.ilike(f"%{keyword}%")
-                            )
-                            for keyword in keywords
+                            Title.code.ilike(f"%{keyword}%"),
+                            Title.name_ru.ilike(f"%{keyword}%"),
+                            Title.name_en.ilike(f"%{keyword}%"),
+                            Title.alternative_name.ilike(f"%{keyword}%")
                         )
+                        for keyword in keywords
                     ]
                     # Combine filters using 'and_' so that all keywords must match (across any field)
                     query = session.query(Title).filter(*filters)
-                    # Execute the query and get all matches
                     titles = query.all()
 
                 # Extract and return only the title_ids from the matched titles

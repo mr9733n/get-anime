@@ -488,12 +488,22 @@ class AnimePlayerAppVer3(QWidget):
                     self.clear_layout(item.layout())
 
     def get_poster_or_placeholder(self, title_id):
-        poster_data = self.db_manager.get_poster_blob(title_id)
-        if not poster_data:
-            # Если постер не найден, попробуем получить заглушку с title_id=-1
-            self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
-            poster_data = self.db_manager.get_poster_blob(2)
-        return poster_data
+        try:
+            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
+            if is_placeholder:
+                self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
+                poster_link = self.db_manager.get_poster_link(title_id)
+                processed_link = self.perform_poster_link(poster_link)
+                link_to_download = []
+                if processed_link:
+                    link_to_download.append((title_id, processed_link))
+                if link_to_download:
+                    self.poster_manager.write_poster_links(link_to_download)
+            return poster_data
+
+        except Exception as e:
+            self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
+            return None
 
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
@@ -881,17 +891,7 @@ class AnimePlayerAppVer3(QWidget):
     def generate_poster_html(self, title, need_image=False, need_background=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
         # Попытка получить постер из базы данных
-        poster_data = self.db_manager.get_poster_blob(title.title_id)
-
-        # Если постер не найден, берем постер-заглушку с title_id=-1
-        if not poster_data:
-            self.logger.warning(f"Warning: No poster data for title_id: {title.title_id}, using placeholder.")
-            poster_data = self.db_manager.get_poster_blob(1)
-
-        # Если даже заглушка не найдена, возвращаем URL к статическому изображению
-        if not poster_data:
-            # TODO: fix this return
-            return f"background-image: url('static/background.png');"
+        poster_data = self.get_poster_or_placeholder(title.title_id)
 
         try:
             pixmap = QPixmap()
@@ -1016,8 +1016,8 @@ class AnimePlayerAppVer3(QWidget):
         return episodes_html
 
     def invoke_database_save(self, title_list):
+        self.logger.debug(f"Processing title data: {title_list}")
         processes = {
-            self.process_poster_links: "poster links",
             self.db_manager.process_episodes: "episodes",
             self.db_manager.process_torrents: "torrents",
             self.db_manager.process_titles: "titles"
@@ -1135,9 +1135,16 @@ class AnimePlayerAppVer3(QWidget):
             self.display_titles(title_ids)
 
     def _handle_no_titles_found(self, search_text):
-        if search_text.isdigit():
-            title_id = int(search_text)
+        keywords = search_text.split(',')
+        keywords = [kw.strip() for kw in keywords]
+
+        if len(keywords) == 1 and keywords[0].isdigit():
+            title_id = int(keywords[0])
             data = self.api_client.get_search_by_title_id(title_id)
+        elif all(kw.isdigit() for kw in keywords):
+            title_ids = [int(kw) for kw in keywords]
+            data = self.api_client.get_search_by_title_ids(title_ids)
+
         else:
             data = self.api_client.get_search_by_title(search_text)
 
@@ -1148,9 +1155,11 @@ class AnimePlayerAppVer3(QWidget):
         # Проверяем тип данных в ответе
         if isinstance(data, dict) and 'list' in data:
             title_list = data['list']
-        elif isinstance(data, dict):
+        elif isinstance(data, dict) and 'id' in data:
             # Если это одиночный тайтл, оборачиваем его в список
             title_list = [data]
+        elif isinstance(data, list):
+            title_list = data
         else:
             self.logger.error("No titles found in the response.")
             return
@@ -1158,7 +1167,7 @@ class AnimePlayerAppVer3(QWidget):
         if not title_list:
             self.logger.error("No titles found in the response.")
             return
-
+        self.logger.debug(f"Processing title data: {title_list}")
         self.invoke_database_save(title_list)
 
         title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
@@ -1167,28 +1176,11 @@ class AnimePlayerAppVer3(QWidget):
         # Сохраняем текущие данные
         self.current_data = data
 
-    def process_poster_links(self, title_data):
-        poster_links = []
-        if "posters" in title_data and title_data.get("posters", {}).get("small"):
-            poster_url = self.get_poster(title_data)
-            title_id = title_data['id']
-            if poster_url:
-                poster_image = self.db_manager.get_poster_blob(title_id)
-                if poster_image:
-                    self.logger.debug(f"Find poster in database: {poster_image[:10]}")
-                else:
-                    poster_links.append((title_id, poster_url))
-                    self.logger.debug(f"Find poster link: {poster_url[-41:]}")
-                    if poster_links:
-                        self.poster_manager.write_poster_links(poster_links)
-        return True
-
-    def get_poster(self, title_data):
+    def perform_poster_link(self, poster_link):
         try:
-            # Construct the poster URL
-            poster_url = self.pre + self.base_url + title_data["posters"]["small"]["url"]
+            self.logger.debug(f"Processing poster link: {poster_link}")
+            poster_url = self.pre + self.base_url + poster_link
 
-            # Standardize the poster URL
             standardized_url = self.standardize_url(poster_url)
             self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
 

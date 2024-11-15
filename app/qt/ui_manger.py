@@ -77,7 +77,7 @@ class UIManager:
         # Day Buttons
         self.parent.day_buttons = []
         for i, day in enumerate(self.parent.days_of_week):
-            button = self.create_button(day, i + 1, lambda checked, inx=i: self.parent.display_titles_for_day(i))
+            button = self.create_button(day, i + 1, lambda checked, i=i: self.parent.display_titles_for_day(i))
             layout.addWidget(button)
             self.parent.day_buttons.append(button)
 

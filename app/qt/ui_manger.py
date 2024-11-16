@@ -74,6 +74,10 @@ class UIManager:
         self.parent.display_button = self.create_button('FIND', 0, self.parent.get_search_by_title)
         layout.addWidget(self.parent.display_button)
 
+        # Random Button
+        self.parent.random_button = self.create_button('RANDOM', 5, self.parent.get_random_title)
+        layout.addWidget(self.parent.random_button)
+
         # Day Buttons
         self.parent.day_buttons = []
         for i, day in enumerate(self.parent.days_of_week):
@@ -81,11 +85,9 @@ class UIManager:
             layout.addWidget(button)
             self.parent.day_buttons.append(button)
 
-        # Random Button
-        self.parent.random_button = self.create_button('RANDOM', 5, self.parent.get_random_title)
-        layout.addWidget(self.parent.random_button)
-
-
+        # Refresh Button
+        self.parent.refresh_button = self.create_button('RELOAD', 6, self.parent.reload_schedule)
+        layout.addWidget(self.parent.refresh_button)
 
         # Quality Dropdown
         self.parent.quality_dropdown = QComboBox(self.parent)
@@ -111,12 +113,7 @@ class UIManager:
             }
         """)
         layout.addWidget(self.parent.quality_dropdown)
-
-        # Refresh Button
-        self.parent.refresh_button = self.create_button('REFRESH', 6, self.parent.refresh_display)
-        layout.addWidget(self.parent.refresh_button)
-
-
+        self.parent.quality_dropdown.currentIndexChanged.connect(self.parent.refresh_display)
 
     def setup_main_layout(self, main_layout):
         # Adding control layout

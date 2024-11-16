@@ -324,81 +324,77 @@ class DatabaseManager:
                 self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
 
     def process_titles(self, title_data):
-        title = title_data
-        # Сохранение данных в базу данных через DatabaseManager
-        if isinstance(title, dict):
-            try:
-                title_data = {
-                    'title_id': title.get('id', None),
-                    'code': title.get('code', ''),
-                    'name_ru': title.get('names', {}).get('ru', ''),
-                    'name_en': title.get('names', {}).get('en', ''),
-                    'alternative_name': title.get('names', {}).get('alternative', ''),
-                    'announce': title.get('announce', ''),
-                    'status_string': title.get('status', {}).get('string', ''),
-                    'status_code': title.get('status', {}).get('code', None),
-                    'poster_path_small': title.get('posters', {}).get('small', {}).get('url', ''),
-                    'poster_path_medium': title.get('posters', {}).get('medium', {}).get('url', ''),
-                    'poster_path_original': title.get('posters', {}).get('original', {}).get('url', ''),
-                    'updated': title.get('updated', 0) if title.get('updated') is not None else 0,
-                    'last_change': title.get('last_change', 0) if title.get('last_change') is not None else 0,
-                    'type_full_string': title.get('type', {}).get('full_string', ''),
-                    'type_code': title.get('type', {}).get('code', None),
-                    'type_string': title.get('type', {}).get('string', ''),
-                    'type_episodes': title.get('type', {}).get('episodes', None),
-                    'type_length': title.get('type', {}).get('length', ''),
-                    'team_voice': json.dumps(title.get('team', {}).get('voice', [])),
-                    'team_translator': json.dumps(title.get('team', {}).get('translator', [])),
-                    'team_timing': json.dumps(title.get('team', {}).get('timing', [])),
-                    'season_string': title.get('season', {}).get('string', ''),
-                    'season_code': title.get('season', {}).get('code', None),
-                    'season_year': title.get('season', {}).get('year', None),
-                    'season_week_day': title.get('season', {}).get('week_day', None),
-                    'description': title.get('description', ''),
-                    'in_favorites': title.get('in_favorites', 0),
-                    'blocked_copyrights': title.get('blocked', {}).get('copyrights', False),
-                    'blocked_geoip': title.get('blocked', {}).get('geoip', False),
-                    'blocked_geoip_list': json.dumps(title.get('blocked', {}).get('geoip_list', [])),
-                    'host_for_player': title.get('player', {}).get('host', ''),
-                    'alternative_player': title.get('player', {}).get('alternative_player', ''),
-                    'last_updated': datetime.utcnow(),
-                }
-                self.save_title(title_data)
+        try:
+            title_data = {
+                'title_id': title_data.get('id', None),
+                'code': title_data.get('code', ''),
+                'name_ru': title_data.get('names', {}).get('ru', ''),
+                'name_en': title_data.get('names', {}).get('en', ''),
+                'alternative_name': title_data.get('names', {}).get('alternative', ''),
+                'announce': title_data.get('announce', ''),
+                'status_string': title_data.get('status', {}).get('string', ''),
+                'status_code': title_data.get('status', {}).get('code', None),
+                'poster_path_small': title_data.get('posters', {}).get('small', {}).get('url', ''),
+                'poster_path_medium': title_data.get('posters', {}).get('medium', {}).get('url', ''),
+                'poster_path_original': title_data.get('posters', {}).get('original', {}).get('url', ''),
+                'updated': title_data.get('updated', 0) if title_data.get('updated') is not None else 0,
+                'last_change': title_data.get('last_change', 0) if title_data.get('last_change') is not None else 0,
+                'type_full_string': title_data.get('type', {}).get('full_string', ''),
+                'type_code': title_data.get('type', {}).get('code', None),
+                'type_string': title_data.get('type', {}).get('string', ''),
+                'type_episodes': title_data.get('type', {}).get('episodes', None),
+                'type_length': title_data.get('type', {}).get('length', ''),
+                'team_voice': json.dumps(title_data.get('team', {}).get('voice', [])),
+                'team_translator': json.dumps(title_data.get('team', {}).get('translator', [])),
+                'team_timing': json.dumps(title_data.get('team', {}).get('timing', [])),
+                'season_string': title_data.get('season', {}).get('string', ''),
+                'season_code': title_data.get('season', {}).get('code', None),
+                'season_year': title_data.get('season', {}).get('year', None),
+                'season_week_day': title_data.get('season', {}).get('week_day', None),
+                'description': title_data.get('description', ''),
+                'in_favorites': title_data.get('in_favorites', 0),
+                'blocked_copyrights': title_data.get('blocked', {}).get('copyrights', False),
+                'blocked_geoip': title_data.get('blocked', {}).get('geoip', False),
+                'blocked_geoip_list': json.dumps(title_data.get('blocked', {}).get('geoip_list', [])),
+                'host_for_player': title_data.get('player', {}).get('host', ''),
+                'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
+                'last_updated': datetime.utcnow(),
+            }
+            self.save_title(title_data)
 
-                title_id = title_data['title_id']
+            title_id = title_data['title_id']
 
-                # Сохранение данных в связанные таблицы
-                franchises = title.get('franchises', [])
-                if franchises:
-                    for franchise in franchises:
-                        franchise_data = {
-                            'title_id': title_id,
-                            'franchise_id': franchise.get('franchise', {}).get('id'),
-                            'franchise_name': franchise.get('franchise', {}).get('name'),
-                            'releases': franchise.get('releases', [])
-                        }
-                        self.logger.debug(f"franchises found for title_id: {title_id} : {franchise_data}")
-                        self.save_franchise(franchise_data)
+            # Сохранение данных в связанные таблицы
+            franchises = title_data.get('franchises', [])
+            if franchises:
+                for franchise in franchises:
+                    franchise_data = {
+                        'title_id': title_id,
+                        'franchise_id': franchise.get('franchise', {}).get('id'),
+                        'franchise_name': franchise.get('franchise', {}).get('name'),
+                        'releases': franchise.get('releases', [])
+                    }
+                    self.logger.debug(f"franchises found for title_id: {title_id} : {franchise_data}")
+                    self.save_franchise(franchise_data)
 
-                genres = title.get('genres', [])
-                self.logger.debug(f"GENRES: {title_id}:{genres}")
-                self.save_genre(title_id, genres)
+            genres = title_data.get('genres', [])
+            self.logger.debug(f"GENRES: {title_id}:{genres}")
+            self.save_genre(title_id, genres)
 
-                # Извлечение данных команды напрямую
-                team_data = {
-                    'voice': title.get('team', {}).get('voice', []),
-                    'translator': title.get('team', {}).get('translator', []),
-                    'timing': title.get('team', {}).get('timing', []),
-                }
-                self.logger.debug(f"TEAM DATA: {title_id}:{team_data}")
+            # Извлечение данных команды напрямую
+            team_data = {
+                'voice': title_data.get('team', {}).get('voice', []),
+                'translator': title_data.get('team', {}).get('translator', []),
+                'timing': title_data.get('team', {}).get('timing', []),
+            }
+            self.logger.debug(f"TEAM DATA: {title_id}:{team_data}")
 
-                # Проверяем, что данные команды существуют и сохраняем их
-                if team_data:
-                    self.save_team_members(title_id, team_data)
-
-            except Exception as e:
-                self.logger.error(f"Failed to save title to database: {e}")
-        return True
+            # Проверяем, что данные команды существуют и сохраняем их
+            if team_data:
+                self.save_team_members(title_id, team_data)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to save title to database: {e}")
 
     def process_episodes(self, title_data):
         for episode in title_data.get("player", {}).get("list", {}).values():
@@ -410,8 +406,7 @@ class DatabaseManager:
                 try:
                     self.logger.debug(f"episode: {episode}")
                     episode_data = {
-
-                        'title_id': title_data.get('id'),
+                        'title_id': title_data.get('id', None),
                         'episode_number': episode.get('episode'),
                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
                         'uuid': episode.get('uuid'),

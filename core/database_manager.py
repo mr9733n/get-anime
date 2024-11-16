@@ -23,79 +23,34 @@ class DatabaseManager:
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
 
-        # Добавляем заглушку изображения, если оно не добавлено
-        with self.Session as session:
-            try:
-                placeholder_poster = session.query(Poster).filter_by(title_id=1).first()
-                if not placeholder_poster:
-                    with open('static/background.png', 'rb') as image_file:
-                        poster_blob = image_file.read()
-                        placeholder_poster = Poster(
-                            title_id=1,  # Используем отрицательный идентификатор для заглушки
-                            poster_blob=poster_blob,
-                            last_updated=datetime.utcnow()
-                        )
-                        session.add(placeholder_poster)
-                        session.commit()
-                        self.logger.info("Placeholder image 'background.png' was added to posters table.")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error initializing 'background.png' image in posters table: {e}")
+        # Добавляем заглушки изображений, если они не добавлены
+        placeholders = [
+            {'title_id': 1, 'file_name': 'background.png'},
+            {'title_id': 2, 'file_name': 'no_image.png'},
+            {'title_id': 3, 'file_name': 'rating_star_blank.png'},
+            {'title_id': 4, 'file_name': 'rating_star.png'},
+            {'title_id': 5, 'file_name': 'watch_me.png'},
+            {'title_id': 6, 'file_name': 'watched.png'}
+        ]
 
-        # Добавляем заглушку изображения, если оно не добавлено
         with self.Session as session:
-            try:
-                placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
-                if not placeholder_poster:
-                    with open('static/no_image.png', 'rb') as image_file:
-                        poster_blob = image_file.read()
-                        placeholder_poster = Poster(
-                            title_id=2,  # Используем отрицательный идентификатор для заглушки
-                            poster_blob=poster_blob,
-                            last_updated=datetime.utcnow()
-                        )
-                        session.add(placeholder_poster)
-                        session.commit()
-                        self.logger.info("Placeholder image 'no_image.png' was added to posters table.")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error initializing 'no_image.png' image in posters table: {e}")
-        # Добавляем rating_star_blank изображения, если оно не добавлено
-        with self.Session as session:
-            try:
-                placeholder_poster = session.query(Poster).filter_by(title_id=3).first()
-                if not placeholder_poster:
-                    with open('static/rating_star_blank.png', 'rb') as image_file:
-                        poster_blob = image_file.read()
-                        placeholder_poster = Poster(
-                            title_id=3,  # Используем отрицательный идентификатор для заглушки
-                            poster_blob=poster_blob,
-                            last_updated=datetime.utcnow()
-                        )
-                        session.add(placeholder_poster)
-                        session.commit()
-                        self.logger.info("Placeholder image 'rating_star_blank.png' was added to posters table.")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error initializing 'rating_star_blank.png' image in posters table: {e}")
-        # Добавляем rating_star изображения, если оно не добавлено
-        with self.Session as session:
-            try:
-                placeholder_poster = session.query(Poster).filter_by(title_id=4).first()
-                if not placeholder_poster:
-                    with open('static/rating_star.png', 'rb') as image_file:
-                        poster_blob = image_file.read()
-                        placeholder_poster = Poster(
-                            title_id=4,  # Используем отрицательный идентификатор для заглушки
-                            poster_blob=poster_blob,
-                            last_updated=datetime.utcnow()
-                        )
-                        session.add(placeholder_poster)
-                        session.commit()
-                        self.logger.info("Placeholder image 'rating_star.png' was added to posters table.")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error initializing 'rating_star.png' image in posters table: {e}")
+            for placeholder in placeholders:
+                try:
+                    placeholder_poster = session.query(Poster).filter_by(title_id=placeholder['title_id']).first()
+                    if not placeholder_poster:
+                        with open(f'static/{placeholder["file_name"]}', 'rb') as image_file:
+                            poster_blob = image_file.read()
+                            placeholder_poster = Poster(
+                                title_id=placeholder['title_id'],
+                                poster_blob=poster_blob,
+                                last_updated=datetime.utcnow()
+                            )
+                            session.add(placeholder_poster)
+                            session.commit()
+                            self.logger.info(f"Placeholder image '{placeholder['file_name']}' was added to posters table.")
+                except Exception as e:
+                    session.rollback()
+                    self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
 
     def save_title(self, title_data):
         with self.Session as session:
@@ -453,8 +408,9 @@ class DatabaseManager:
 
             if "hls" in episode:
                 try:
+                    self.logger.debug(f"episode: {episode}")
                     episode_data = {
-                        'episode_id': episode.get('id'),
+
                         'title_id': title_data.get('id'),
                         'episode_number': episode.get('episode'),
                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
@@ -526,6 +482,34 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
+    def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False):
+        with self.Session as session:
+            try:
+                # Проверка на существование записи о просмотре
+                existing_watch = session.query(WatchHistory).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id).one_or_none()
+                if existing_watch:
+                    existing_watch.previous_watched_at = existing_watch.last_watched_at  # Сохраняем дату до изменения
+                    existing_watch.is_watched = is_watched
+                    existing_watch.last_watched_at = datetime.utcnow()
+                    existing_watch.status_change_count += 1  # Увеличиваем счетчик изменений статуса
+                    self.logger.debug(f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id} STATUS: {is_watched}")
+                else:
+                    new_watch = WatchHistory(
+                        user_id=user_id,
+                        title_id=title_id,
+                        episode_id=episode_id if episode_id is not None else None,
+                        is_watched=is_watched,
+                        last_watched_at=datetime.utcnow(),
+                        status_change_count=1
+                    )
+                    session.add(new_watch)
+                    self.logger.debug(f"Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}")
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error saving watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
+                raise
+
     def save_ratings(self, title_id, rating_value, rating_name='CMERS'):
         """
         "Comprehensive Media Evaluation Rating System" or CMERS
@@ -556,6 +540,19 @@ class DatabaseManager:
                 self.logger.error(f"Error saving rating for title_id {title_id}: {e}")
                 raise
 
+    def get_watch_status(self, user_id, title_id, episode_id=None):
+        with self.Session as session:
+            try:
+                watch_status = session.query(WatchHistory).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id).one_or_none()
+                if watch_status:
+                    self.logger.debug(f"user_id: {user_id} Watch status: {watch_status.is_watched} for title_id: {title_id}, episode_id: {episode_id}")
+                    days_ago = (datetime.utcnow() - watch_status.last_watched_at).days if watch_status.last_watched_at else 0
+                    return watch_status.is_watched, watch_status.last_watched_at, days_ago
+                return False, None, 0
+            except Exception as e:
+                self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
+                raise
+
     def get_rating_from_db(self, title_id):
         with self.Session as session:
             try:
@@ -566,7 +563,6 @@ class DatabaseManager:
             except Exception as e:
                 self.logger.error(f"Error fetching rating for title_id {title_id}: {e}")
                 raise
-
 
     def get_statistics_from_db(self):
         """Получает статистику из базы данных."""
@@ -700,8 +696,13 @@ class DatabaseManager:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
-                    if title_id in [3, 4]:
+                    if title_id in [3, 4, 5, 6, 7, 8, 9]:
                         # TODO: No need log message for rating stars images
+                        # 3, 4 : rating images
+                        # 5, 6 : watch images
+                        # 7 : download image
+                        # 8, 9 : reserved
+
                         return poster.poster_blob, False
                     else:
                         self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
@@ -874,6 +875,21 @@ class Title(Base):
     posters = relationship("Poster", back_populates="title")
     schedules = relationship("Schedule", back_populates="title")
     ratings = relationship("Rating", back_populates="title")
+    watch_history = relationship("WatchHistory", back_populates="title")
+
+class WatchHistory(Base):
+    __tablename__ = 'watch_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)  # Предполагается, что `user_id` будет использоваться для идентификации пользователя
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    episode_id = Column(Integer, ForeignKey('episodes.episode_id'), nullable=True)
+    is_watched = Column(Boolean, default=False)
+    last_watched_at = Column(DateTime, default=datetime.utcnow)
+    status_change_count = Column(Integer, default=0)
+    previous_watched_at = Column(DateTime, nullable=True)
+
+    title = relationship("Title", back_populates="watch_history")
+    episode = relationship("Episode", back_populates="watch_history")
 
 class Rating(Base):
     __tablename__ = 'ratings'
@@ -962,21 +978,13 @@ class Episode(Base):
     skips_ending = Column(String)
 
     title = relationship("Title", back_populates="episodes")
+    watch_history = relationship("WatchHistory", back_populates="episode")
 
     @validates('created_timestamp', 'last_updated')
     def validate_timestamp(self, key, value):
         if isinstance(value, (int, float)):
             return datetime.utcfromtimestamp(value)
         return value
-
-class WatchHistory(Base):
-    __tablename__ = 'watch_history'
-    id = Column(Integer, primary_key=True, autoincrement=True)  # Добавлен Primary Key для уникальности
-    user_id = Column(Integer, nullable=False)  # Предполагается, что `user_id` будет использоваться для идентификации пользователя
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    episode_number = Column(Integer)
-    is_watched = Column(Boolean, default=False)
-    last_watched_at = Column(DateTime, default=datetime.utcnow)
 
 class Torrent(Base):
     __tablename__ = 'torrents'

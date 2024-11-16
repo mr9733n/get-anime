@@ -413,7 +413,6 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(f"Error fetching titles from schedule: {e}")
 
     def _save_parsed_data(self, parsed_data):
-        # Сохраняем данные в базе данных
         for i, item in enumerate(parsed_data):
             self.db_manager.save_schedule(item["day"], item["title_id"])
             self.logger.debug(
@@ -427,6 +426,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(
                 f"[XXX] Saving title_id from API: {title_id}")
             self.invoke_database_save(titles_list)
+            self.current_data = titles_list
             return True
         except Exception as e:
             self.logger.error(f"Ошибка при save titles расписания: {e}")

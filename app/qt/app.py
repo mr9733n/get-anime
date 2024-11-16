@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
+from sqlalchemy.orm.loading import instances
 
 from app.qt.ui_manger import UIManager
 from core import database_manager
@@ -72,6 +73,7 @@ class AnimePlayerAppVer3(QWidget):
         self.posters_layout = None
         self.day_buttons = None
         self.days_of_week = None
+        self.day_of_week = None
         self.refresh_button = None
         self.quality_dropdown = None
         self.quality_label = None
@@ -251,9 +253,14 @@ class AnimePlayerAppVer3(QWidget):
 
     def reload_schedule(self):
         """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
-        day = self.days_of_week
+        day = self.day_of_week
         titles = self.current_titles
-        self.check_and_update_schedule_after_display(day, titles)
+        if not day:
+            # Если day невозможно преобразовать в целое число, установим его в 0
+            day = 0
+        status, title_ids = self.check_and_update_schedule_after_display(day, titles)
+        if status:
+            self.display_titles(title_ids)
         return True
 
     def display_titles_text_list(self):
@@ -395,7 +402,7 @@ class AnimePlayerAppVer3(QWidget):
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             # Проверяем и обновляем расписание после отображения
-            QTimer.singleShot(10000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+            QTimer.singleShot(60000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
         else:
             try:
                 # Если тайтлы отсутствуют, получаем данные с сервера
@@ -416,7 +423,7 @@ class AnimePlayerAppVer3(QWidget):
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
                     self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-                    self.days_of_week = day_of_week
+                    self.day_of_week = day_of_week
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
 
@@ -456,27 +463,30 @@ class AnimePlayerAppVer3(QWidget):
                 # Сохраняем данные в базе данных
                 self._save_titles_list(titles_list)
 
-                #self.logger.debug(f"Title list from db {titles_list}")
-                #self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
-                #self.logger.debug(f"DATA from API {data}")
-                #self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
+                self.logger.debug(f"Title list from db {titles_list}")
+                self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
+                self.logger.debug(f"DATA from API {data}")
+
+                new_title_ids = {title_data.get('id') for title_data in titles_list}
+                if current_titles:
+                    self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
 
                 # Сравнение данных из базы с данными, полученными из API
-                current_title_ids = {title_data.title_id for title_data in current_titles}
-                new_title_ids = {title_data.get('id') for title_data in titles_list}
+                    current_title_ids = {title_data.title_id for title_data in current_titles}
 
-                # Находим тайтлы, которые отсутствуют в новых данных из API
-                titles_to_remove = current_title_ids - new_title_ids
-                if titles_to_remove:
-                    self.logger.debug(f"find titles for remove: {titles_to_remove}")
 
-                    # TODO: fix ths
-                    # 10 -
-                    new_day_of_week = 10
+                    # Находим тайтлы, которые отсутствуют в новых данных из API
+                    titles_to_remove = current_title_ids - new_title_ids
+                    if titles_to_remove:
+                        self.logger.debug(f"find titles for remove: {titles_to_remove}")
 
-                    self.db_manager.remove_schedule_day(titles_to_remove, day_of_week, new_day_of_week)
-                self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
-            return True
+                        # TODO: fix ths
+                        # 10 -
+                        new_day_of_week = 10
+
+                        self.db_manager.remove_schedule_day(titles_to_remove, day_of_week, new_day_of_week)
+                    self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
+                return True, new_title_ids
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
 

@@ -28,14 +28,26 @@ class PlaylistManager:
         file_name = "".join(sanitized_titles)[:100] + ".m3u"  # Limit the length to avoid file name issues
         file_path = os.path.join(self.playlist_path, file_name)
 
+        filtered_links = [link for link in links if link.endswith('.m3u8')]
+
         if os.path.exists(file_path):
-            self.logger.warning(f"Playlist '{file_name}' already exists. Skipping save.")
-            return file_name
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    existing_content = file.read()
+                    new_content = "#EXTM3U\n" + "\n".join(
+                        [f"{self.pre}{stream_video_url}{link}" for link in filtered_links]) + "\n"
+
+                    if existing_content == new_content:
+                        self.logger.info(f"Playlist '{file_name}' is up-to-date. No changes needed.")
+                        return file_name
+                    else:
+                        self.logger.info(f"Playlist '{file_name}' differs from the new data. Updating...")
+            except Exception as e:
+                self.logger.error(f"Failed to read existing playlist: {str(e)}")
 
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 file.write("#EXTM3U\n")
-                filtered_links = [link for link in links if link.endswith('.m3u8')]
                 for link in filtered_links:
                     full_url = f"{self.pre}{stream_video_url}{link}"
                     file.write(full_url + '\n')

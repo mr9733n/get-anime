@@ -58,10 +58,6 @@ class AnimePlayerAppVer3(QWidget):
     def __init__(self, db_manager, version):
         super().__init__()
         self.logger = logging.getLogger(__name__)
-        self.current_titles = None
-        self.selected_quality = None
-        self.torrent_data = None
-        self.load_more_button = None
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
@@ -70,7 +66,6 @@ class AnimePlayerAppVer3(QWidget):
         self.save_playlist_button = None
         self.current_data = None
         self.display_button = None
-        self.discovered_links = []
         self.current_link = None
         self.poster_container = None
         self.scroll_area = None
@@ -83,31 +78,33 @@ class AnimePlayerAppVer3(QWidget):
         self.random_button = None
         self.display_button = None
         self.title_search_entry = None
+        self.current_titles = None
+        self.selected_quality = None
+        self.torrent_data = None
+        self.load_more_button = None
+        self.discovered_links = []
         self.sanitized_titles = []
         self.title_names = []
+        self.total_titles = []
         self.playlists = {}
         self.app_version = version
-
         self.row_start = 0
         self.col_start = 0
-        self.total_titles = []
-
-
 
         self.logger.debug(f"Initializing AnimePlayerApp Version {self.app_version}")
-
         self.cache_file_path = "temp/poster_cache.txt"
         self.config_manager = ConfigManager('config/config.ini')
 
         """Loads the configuration settings needed by the application."""
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
+        # self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
+        self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
 
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
         self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
         self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
-
+        self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
 
         self.torrent_save_path = "torrents/"  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
@@ -395,15 +392,19 @@ class AnimePlayerAppVer3(QWidget):
         else:
             try:
                 # Если тайтлы отсутствуют, получаем данные с сервера
+                titles_list = []
                 data = self.get_schedule(day_of_week)
                 self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
                 if data:
-                    parsed_data, titles_list = self.parse_schedule_data(data)
+                    parsed_data = self.parse_schedule_data(data)
+                    self.logger.debug(f"parsed_data: {parsed_data}")
+                    self._save_parsed_data(parsed_data)
+
+                    for titles_list in data:
+                        titles_list = titles_list.get("list", [])
+                    self.logger.debug(f"title_list: {len(titles_list)}")
                     # Сохраняем данные в базе данных
-                    for item in parsed_data:
-                        self.db_manager.save_schedule(item["day"], item["title_id"])
-                        self.logger.debug(f"Saved title_id from API: {item['title_id']} on day {item['day']}")
-                        self.invoke_database_save(titles_list)
+                    self._save_titles_list(titles_list)
 
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
@@ -411,45 +412,43 @@ class AnimePlayerAppVer3(QWidget):
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
 
+    def _save_parsed_data(self, parsed_data):
+        # Сохраняем данные в базе данных
+        for i, item in enumerate(parsed_data):
+            self.db_manager.save_schedule(item["day"], item["title_id"])
+            self.logger.debug(
+                f"[{i + 1}/{len(parsed_data)}] Saved title_id from API: {item['title_id']} on day {item['day']}")
+        return True
+
+    def _save_titles_list(self, titles_list):
+        try:
+            for title_data in titles_list:
+                title_id = title_data.get('id', {})
+                self.logger.debug(
+                f"[XXX] Saving title_id from API: {title_id}")
+            self.invoke_database_save(titles_list)
+            return True
+        except Exception as e:
+            self.logger.error(f"Ошибка при save titles расписания: {e}")
+
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
         """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
         try:
             # Получаем актуальные данные из API
-            new_data = self.get_schedule(day_of_week)
+            titles_list = []
+            data = self.get_schedule(day_of_week)
+            if data:
+                parsed_data = self.parse_schedule_data(data)
+                self.logger.debug(f"parsed_data: {parsed_data}")
+                self._save_parsed_data(parsed_data)
 
-            # Парсим новые данные с использованием общего метода
-            parsed_data, titles_list = self.parse_schedule_data(new_data)
+                for titles_list in data:
+                    titles_list = titles_list.get("list", [])
+                self.logger.debug(f"title_list: {len(titles_list)}")
+                # Сохраняем данные в базе данных
+                self._save_titles_list(titles_list)
 
-            # Фильтруем данные только для конкретного дня недели
-            new_titles = [item for item in parsed_data if item["day"] == day_of_week]
-
-            # Проверка, изменилось ли количество тайтлов
-            if len(new_titles) != len(current_titles):
-                self.logger.info(
-                    f"Обнаружены изменения в расписании для дня {day_of_week}, обновляем базу данных..."
-                )
-                # Сохранение новых данных в базу данных
-                for item in new_titles:
-                    self.db_manager.save_schedule(item["day"], item["title_id"])
-                    self.logger.debug(f"saved title_id from api: {item['title_id']} on day {item['day']}")
-                    self.invoke_database_save(titles_list)
-            else:
-                # Дополнительная проверка на изменения в данных каждого тайтла
-                for new_title, current_title in zip(new_titles, current_titles):
-                    # Проверка изменения по идентификатору, коду или объявлению
-                    if new_title.get('title_id') != current_title.title_id or \
-                            new_title.get('code') != current_title.code or \
-                            new_title.get('announce') != current_title.announce or \
-                            self.is_update_required(new_title, current_title):
-                        self.logger.info(
-                            f"Обнаружены изменения в тайтле {new_title.get('title_id')}, обновляем базу данных..."
-                        )
-                        # Сохранение изменений в базу данных
-                        for item in new_titles:
-                            self.db_manager.save_schedule(item["day"], item["title_id"])
-                            self.logger.debug(
-                                f"saved title_id from api: {item['title_id']} on day {item['day']}"
-                            )
+            return True
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
 
@@ -724,7 +723,7 @@ class AnimePlayerAppVer3(QWidget):
             type_html = self.generate_type_html(title)
             torrents_html = self.generate_torrents_html(title)
             rating_html = self.generate_rating_html(title)
-
+            watch_html = self.generate_watch_history_html(title.title_id)
 
             body_html = f'''
                 <div>
@@ -733,7 +732,7 @@ class AnimePlayerAppVer3(QWidget):
                     <p class="header">{title.name_ru}</p>
                     <p class="header">{show_more_html}</p>
                     <div>
-                    {rating_html}
+                        {rating_html}{watch_html}
                         {announce_html}
                         {status_html}
                         {description_html}
@@ -901,16 +900,32 @@ class AnimePlayerAppVer3(QWidget):
         <p>{rating_name}: {rating_value}</p>
         '''
 
+    def generate_watch_history_html(self, title_id, episode_id=None):
+        """Generates HTML to display watch history"""
+        poster_base64_watched = self.prepare_generate_poster_html(6)
+        poster_base64_blank = self.prepare_generate_poster_html(5)
+        # TODO: fix it later
+        user_id = self.user_id
+
+        if episode_id or title_id:
+            is_watched, last_watched_at, days_ago = self.db_manager.get_watch_status(user_id, title_id, episode_id=episode_id)
+            self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched} days ago:{days_ago} last watched:{last_watched_at} ")
+            if is_watched:
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_watched}" /></a> {days_ago} days ago'
+
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_blank}" /></a> {days_ago} days ago'
+
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
-
+        self.stream_video_url = title.host_for_player
         playlist = self.playlists.get(title.title_id)
         if playlist:
             sanitized_title = playlist['sanitized_title']
             discovered_links = playlist['links']
             if discovered_links:
                 filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links,
-                                                               title.host_for_player)
+                                                               self.stream_video_url)
+
                 self.logger.debug(
                     f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
                 return f'<a href="play_all/{title.title_id}/{filename}">Play all</a>'
@@ -1052,7 +1067,9 @@ class AnimePlayerAppVer3(QWidget):
 
             # Проверяем, что ссылка существует
             if link:
-                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a></li>'
+                watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode.episode_id)
+                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>{watched_html}</li>'
+
                 # Добавляем ссылку в discovered_links
                 self.discovered_links.append(link)
 
@@ -1135,14 +1152,14 @@ class AnimePlayerAppVer3(QWidget):
     def parse_schedule_data(self, data):
         """Парсит данные расписания и возвращает данные, подготовленные для сохранения, и список тайтлов."""
         parsed_data = []
-        titles_list = []
 
         if not isinstance(data, list):
             self.logger.error(f"Ожидался список, получен: {type(data).__name__}")
-            return parsed_data, titles_list
+            return parsed_data
 
+        # prepare info saving to schedules table as dict
         for day_info in data:
-            # Проверяем, что каждый элемент day_info - это словарь
+
             if not isinstance(day_info, dict):
                 self.logger.error(f"Неправильный формат данных: ожидался словарь, получен {type(day_info).__name__}")
                 continue
@@ -1162,11 +1179,8 @@ class AnimePlayerAppVer3(QWidget):
                     if title_id:
                         # Добавляем данные о дне и title_id в parsed_data
                         parsed_data.append({"day": day, "title_id": title_id})
-                        # Добавляем полные данные о тайтле в titles_list
-                        titles_list.append(title)
-                        self.logger.debug(f"find title_id from api: {title_id} on day {day}")
 
-        return parsed_data, titles_list
+        return parsed_data
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.text()
@@ -1260,7 +1274,25 @@ class AnimePlayerAppVer3(QWidget):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
 
-                #set_rating/{title.title_id}/{i+1}
+            elif link.startswith('set_watch_status/'):
+                parts = link.split('/')
+                if len(parts) >= 4:
+                    user_id = int(parts[1])
+                    title_id = int(parts[2])
+                    episode_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
+                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
+
+                    current_status, _, _ = self.db_manager.get_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id)
+                    # Переключаем статус
+                    new_status = not current_status
+                    self.logger.debug(
+                        f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_status}")
+                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id,
+                                                      is_watched=new_status)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
+
             elif link.startswith('set_rating/'):
                 parts = link.split('/')
                 if len(parts) >= 4:
@@ -1271,7 +1303,7 @@ class AnimePlayerAppVer3(QWidget):
                     self.db_manager.save_ratings(title_id, rating_name=rating_name, rating_value=rating_value)
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
-                    self.logger.error(f"Invalid play_all link structure: {link}")
+                    self.logger.error(f"Invalid set_rating/ link structure: {link}")
 
             elif link.startswith('play_all/'):
                 # Получаем title_id и filename из ссылки и вызываем play_playlist_wrapper

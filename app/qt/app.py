@@ -249,6 +249,13 @@ class AnimePlayerAppVer3(QWidget):
             error_message = "Unsupported data format. Please fetch data first."
             self.logger.error(error_message)
 
+    def reload_schedule(self):
+        """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
+        day = self.days_of_week
+        titles = self.current_titles
+        self.check_and_update_schedule_after_display(day, titles)
+        return True
+
     def display_titles_text_list(self):
         """Загружает и отображает тайтлы DISPLAY TITLES."""
         self.display_titles(titles_text_list=True)
@@ -388,7 +395,7 @@ class AnimePlayerAppVer3(QWidget):
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             # Проверяем и обновляем расписание после отображения
-            QTimer.singleShot(100, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+            QTimer.singleShot(10000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
         else:
             try:
                 # Если тайтлы отсутствуют, получаем данные с сервера
@@ -409,6 +416,7 @@ class AnimePlayerAppVer3(QWidget):
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
                     self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+                    self.days_of_week = day_of_week
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
 

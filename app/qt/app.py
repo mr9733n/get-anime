@@ -9,7 +9,7 @@ import subprocess
 import sys
 import base64
 import datetime
-
+from datetime import datetime, timezone
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect,
@@ -414,7 +414,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def _save_parsed_data(self, parsed_data):
         for i, item in enumerate(parsed_data):
-            self.db_manager.save_schedule(item["day"], item["title_id"])
+            self.db_manager.save_schedule(item["day"], item["title_id"], last_updated=datetime.utcnow())
             self.logger.debug(
                 f"[{i + 1}/{len(parsed_data)}] Saved title_id from API: {item['title_id']} on day {item['day']}")
         return True
@@ -448,40 +448,29 @@ class AnimePlayerAppVer3(QWidget):
                 # Сохраняем данные в базе данных
                 self._save_titles_list(titles_list)
 
+                #self.logger.debug(f"Title list from db {titles_list}")
+                #self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
+                #self.logger.debug(f"DATA from API {data}")
+                #self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
+
+                # Сравнение данных из базы с данными, полученными из API
+                current_title_ids = {title_data.title_id for title_data in current_titles}
+                new_title_ids = {title_data.get('id') for title_data in titles_list}
+
+                # Находим тайтлы, которые отсутствуют в новых данных из API
+                titles_to_remove = current_title_ids - new_title_ids
+                if titles_to_remove:
+                    self.logger.debug(f"find titles for remove: {titles_to_remove}")
+
+                    # TODO: fix ths
+                    # 10 -
+                    new_day_of_week = 10
+
+                    self.db_manager.remove_schedule_day(titles_to_remove, day_of_week, new_day_of_week)
+                self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
             return True
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
-
-    def is_update_required(self, new_title, current_title):
-        """Проверяет, требуют ли обновления поля `updated` или `last_change`."""
-        try:
-            new_updated = new_title.get('updated', 0)
-            new_last_change = new_title.get('last_change', 0)
-
-            # Преобразование существующих данных из формата UTC в Unix timestamp
-            existing_updated = self.convert_to_unix_timestamp(current_title.updated) if current_title.updated else 0
-            existing_last_change = self.convert_to_unix_timestamp(
-                current_title.last_change) if current_title.last_change else 0
-
-            # Если новая дата обновления или изменения больше, возвращаем True
-            return (new_updated > existing_updated) or (new_last_change > existing_last_change)
-        except Exception as e:
-            self.logger.error(f"Ошибка при проверке даты обновления для тайтла {new_title.get('id')}: {e}")
-            return False
-
-    def convert_to_unix_timestamp(self, date_value):
-        """Конвертирует строку UTC даты в Unix timestamp."""
-        if isinstance(date_value, str):
-            try:
-                # Предполагаем, что формат даты '%Y-%m-%d %H:%M:%S'
-                dt = datetime.datetime.strptime(date_value, "%Y-%m-%d %H:%M:%S")
-                return int(dt.timestamp())
-            except ValueError as e:
-                self.logger.error(f"Ошибка при преобразовании даты '{date_value}': {e}")
-                return 0
-        elif isinstance(date_value, datetime.datetime):
-            return int(date_value.timestamp())
-        return 0
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие виджеты из сетки постеров."""

@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import os
@@ -5,7 +6,7 @@ import os
 import sqlalchemy
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_, SmallInteger
+    and_, SmallInteger, PrimaryKeyConstraint
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -200,7 +201,14 @@ class DatabaseManager:
     def save_team_members(self, title_id, team_data):
         with self.Session as session:
             try:
-                for role, members in team_data.items():
+                for role, members_str in team_data.items():
+                    try:
+                        # Convert the string representation of list into an actual list
+                        members = ast.literal_eval(members_str)
+                    except (SyntaxError, ValueError) as e:
+                        self.logger.error(f"Failed to decode team data for role '{role}' in title_id {title_id}: {e}")
+                        continue
+
                     for member_name in members:
                         # Проверяем, существует ли уже участник с таким именем и ролью
                         existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
@@ -272,24 +280,44 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
 
-    def save_schedule(self, day_of_week, title_id):
+    def save_schedule(self, day_of_week, title_id, last_updated=None):
         with self.Session as session:
             try:
-                schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id)
-                session.add(schedule_entry)
+                # Check if the entry already exists
+                existing_schedule = session.query(Schedule).filter_by(day_of_week=day_of_week,
+                                                                      title_id=title_id).first()
+                if existing_schedule:
+                    # If it exists, update the last_updated field
+                    existing_schedule.last_updated = last_updated or datetime.utcnow()
+                    self.logger.debug(
+                        f"Schedule entry for day {day_of_week} and title_id {title_id} already exists. Updating last_updated.")
+                else:
+                    # If it doesn't exist, create a new schedule entry
+                    schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id, last_updated=last_updated)
+                    session.add(schedule_entry)
+                    self.logger.debug(f"Adding new schedule entry for day {day_of_week} and title_id {title_id}.")
+
                 session.commit()
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении расписания: {e}")
 
-    def get_titles_for_day(self, day_of_week):
-        """Загружает тайтлы для указанного дня недели из базы данных."""
-        with self.Session as session:
-            try:
-                return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
+    def remove_schedule_day(self, title_ids, day_of_week, new_day_of_week):
+        try:
+            with self.Session as session:
+                schedules_to_update = (
+                    session.query(Schedule)
+                    .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
+                )
+                schedules_to_update.update(
+                    {"day_of_week": new_day_of_week},
+                    synchronize_session=False  # Используйте True для синхронизации состояния
+                )
+                session.commit()
+                self.logger.debug(f"Updated {day_of_week} for all specified titles to {title_ids} to new {new_day_of_week}")
+        except Exception as e:
+            session.rollback()
+            self.logger.error(f"Ошибка при обновлении дня для title_id {title_ids}: {e}")
 
     def save_torrent(self, torrent_data):
         with self.Session as session:
@@ -323,6 +351,31 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
 
+    def process_franchises(self, title_data):
+        franchises_str = title_data['title_franchises']
+
+        try:
+            self.logger.debug(f"franchises_str: {franchises_str}")
+
+            # Use json.loads to parse the JSON string
+            franchises = json.loads(franchises_str)
+        except json.JSONDecodeError as e:
+            self.logger.error(
+                f"Failed to parse franchises data for title_id: {title_data.get('title_id', 'unknown')}: {e}"
+            )
+            return
+
+        if franchises:
+            for franchise in franchises:
+                franchise_data = {
+                    'title_id': title_data['title_id'],
+                    'franchise_id': franchise.get('franchise', {}).get('id'),
+                    'franchise_name': franchise.get('franchise', {}).get('name'),
+                    'releases': franchise.get('releases', [])
+                }
+                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {franchise_data}")
+                self.save_franchise(franchise_data)
+
     def process_titles(self, title_data):
         try:
             title_data = {
@@ -331,6 +384,7 @@ class DatabaseManager:
                 'name_ru': title_data.get('names', {}).get('ru', ''),
                 'name_en': title_data.get('names', {}).get('en', ''),
                 'alternative_name': title_data.get('names', {}).get('alternative', ''),
+                'title_franchises': json.dumps(title_data.get('franchises', [])),
                 'announce': title_data.get('announce', ''),
                 'status_string': title_data.get('status', {}).get('string', ''),
                 'status_code': title_data.get('status', {}).get('code', None),
@@ -344,6 +398,7 @@ class DatabaseManager:
                 'type_string': title_data.get('type', {}).get('string', ''),
                 'type_episodes': title_data.get('type', {}).get('episodes', None),
                 'type_length': title_data.get('type', {}).get('length', ''),
+                'title_genres': json.dumps(title_data.get('genres', [])),
                 'team_voice': json.dumps(title_data.get('team', {}).get('voice', [])),
                 'team_translator': json.dumps(title_data.get('team', {}).get('translator', [])),
                 'team_timing': json.dumps(title_data.get('team', {}).get('timing', [])),
@@ -365,27 +420,20 @@ class DatabaseManager:
             title_id = title_data['title_id']
 
             # Сохранение данных в связанные таблицы
-            franchises = title_data.get('franchises', [])
-            if franchises:
-                for franchise in franchises:
-                    franchise_data = {
-                        'title_id': title_id,
-                        'franchise_id': franchise.get('franchise', {}).get('id'),
-                        'franchise_name': franchise.get('franchise', {}).get('name'),
-                        'releases': franchise.get('releases', [])
-                    }
-                    self.logger.debug(f"franchises found for title_id: {title_id} : {franchise_data}")
-                    self.save_franchise(franchise_data)
+            self.process_franchises(title_data)
 
-            genres = title_data.get('genres', [])
-            self.logger.debug(f"GENRES: {title_id}:{genres}")
-            self.save_genre(title_id, genres)
+            genres = title_data['title_genres']
+            decoded_genres = ast.literal_eval(genres)  # Decode each genre
+            self.logger.debug(f"GENRES: {title_id}:{decoded_genres}")
+            self.save_genre(title_id, decoded_genres)
 
             # Извлечение данных команды напрямую
+
+
             team_data = {
-                'voice': title_data.get('team', {}).get('voice', []),
-                'translator': title_data.get('team', {}).get('translator', []),
-                'timing': title_data.get('team', {}).get('timing', []),
+                'voice': title_data['team_voice'],
+                'translator': title_data['team_translator'],
+                'timing': title_data['team_timing'],
             }
             self.logger.debug(f"TEAM DATA: {title_id}:{team_data}")
 
@@ -535,6 +583,15 @@ class DatabaseManager:
                 self.logger.error(f"Error saving rating for title_id {title_id}: {e}")
                 raise
 
+    def get_titles_for_day(self, day_of_week):
+        """Загружает тайтлы для указанного дня недели из базы данных."""
+        with self.Session as session:
+            try:
+                return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
+
     def get_watch_status(self, user_id, title_id, episode_id=None):
         with self.Session as session:
             try:
@@ -596,7 +653,7 @@ class DatabaseManager:
                         FROM titles
                         WHERE blocked_geoip = 1 OR blocked_copyrights = 1;
                     """,
-                    'schedules_count': "SELECT COUNT(DISTINCT schedule_id) FROM schedule",
+                    'schedules_count': "SELECT COUNT(DISTINCT title_id) FROM schedule",
                     'watch_history_count': "SELECT COUNT(DISTINCT id) FROM watch_history",
                     'torrents_count': "SELECT COUNT(DISTINCT torrent_id) FROM torrents",
                     'genres_count': """
@@ -832,6 +889,7 @@ class Title(Base):
     name_ru = Column(String, nullable=False)
     name_en = Column(String)
     alternative_name = Column(String)
+    title_franchises = Column(String)
     announce = Column(String)
     status_string = Column(String)
     status_code = Column(Integer)
@@ -845,6 +903,7 @@ class Title(Base):
     type_string = Column(String)
     type_episodes = Column(Integer)
     type_length = Column(String)
+    title_genres = Column(String)
     team_voice = Column(String)  # Сохраняется как строка в формате JSON
     team_translator = Column(String)  # Сохраняется как строка в формате JSON
     team_timing = Column(String)  # Сохраняется как строка в формате JSON
@@ -871,6 +930,18 @@ class Title(Base):
     schedules = relationship("Schedule", back_populates="title")
     ratings = relationship("Rating", back_populates="title")
     watch_history = relationship("WatchHistory", back_populates="title")
+
+class Schedule(Base):
+    __tablename__ = 'schedule'
+    # schedule_id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
+    day_of_week = Column(Integer, nullable=False)
+    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (
+        PrimaryKeyConstraint('day_of_week', 'title_id'),
+    )
+
+    title = relationship("Title", back_populates="schedules")
 
 class WatchHistory(Base):
     __tablename__ = 'watch_history'
@@ -1012,12 +1083,3 @@ class Poster(Base):
     last_updated = Column(DateTime, default=datetime.utcnow)
 
     title = relationship("Title", back_populates="posters")
-
-class Schedule(Base):
-    __tablename__ = 'schedule'
-    schedule_id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
-    day_of_week = Column(Integer, nullable=False)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-
-    title = relationship("Title", back_populates="schedules")
-

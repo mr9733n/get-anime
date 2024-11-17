@@ -26,15 +26,15 @@ class UIManager:
             }}
         """
         self.button_colors = [
-            ("#4a4a4a", "#5c5c5c", "#3b3b3b"),  # Dark gray for "FIND"
-            ("#6e6e6e", "#7f7f7f", "#595959"),  # Light gray for "MON"
-            ("#7a7a7a", "#8a8a8a", "#626262"),  # Medium gray for "TUE"
-            ("#9a9a9a", "#ababab", "#7b7b7b"),  # Gray for "WED"
-            ("#555555", "#666666", "#3e3e3e"),  # Dark for "THU"
-            ("#8c8c8c", "#9e9e9e", "#767676"),  # Lighter for "FRI"
-            ("#7e7e7e", "#8f8f8f", "#6a6a6a"),  # Saturated for "SAT"
-            ("#6b6b6b", "#7c7c7c", "#525252"),  # Medium for "SUN"
-            ("#5a5a5a", "#6c6c6c", "#474747")   # Dark for others
+            ("#4a4a4a", "#5c5c5c", "#000"),  # Dark gray : 0
+            ("#6e6e6e", "#7f7f7f", "#000"),  # Light gray : 1
+            ("#7a7a7a", "#8a8a8a", "#000"),  # Medium gray : 2
+            ("#9a9a9a", "#ababab", "#000"),  # Gray : 3
+            ("#555555", "#666666", "#000"),  # Dark : 4
+            ("#8c8c8c", "#9e9e9e", "#000"),  # Lighter : 5
+            ("#7e7e7e", "#8f8f8f", "#000"),  # Saturated : 6
+            ("#6b6b6b", "#7c7c7c", "#000"),  # Medium : 7
+            ("#5a5a5a", "#6c6c6c", "#000")   # Dark for others : 8
         ]
 
     def create_button(self, text, color_index, callback):
@@ -75,18 +75,18 @@ class UIManager:
         layout.addWidget(self.parent.display_button)
 
         # Random Button
-        self.parent.random_button = self.create_button('RANDOM', 5, self.parent.get_random_title)
+        self.parent.random_button = self.create_button('RANDOM', 0, self.parent.get_random_title)
         layout.addWidget(self.parent.random_button)
 
         # Day Buttons
         self.parent.day_buttons = []
         for i, day in enumerate(self.parent.days_of_week):
-            button = self.create_button(day, i + 1, lambda checked, i=i: self.parent.display_titles_for_day(i))
+            button = self.create_button(day, 1, lambda checked, i=i: self.parent.display_titles_for_day(i))
             layout.addWidget(button)
             self.parent.day_buttons.append(button)
 
         # Refresh Button
-        self.parent.refresh_button = self.create_button('RELOAD', 6, self.parent.reload_schedule)
+        self.parent.refresh_button = self.create_button('RELOAD', 0, self.parent.reload_schedule)
         layout.addWidget(self.parent.refresh_button)
 
         # Quality Dropdown
@@ -142,29 +142,29 @@ class UIManager:
         button_layout = QHBoxLayout()
 
         # Load More Button
-        self.parent.load_more_button = self.create_button('LOAD PREV', 0, self.parent.load_previous_titles)
+        self.parent.load_more_button = self.create_button('LOAD PREV', 1, self.parent.load_previous_titles)
         button_layout.addWidget(self.parent.load_more_button)
         # Load More Button
-        self.parent.load_more_button = self.create_button('LOAD MORE', 0, self.parent.load_more_titles)
+        self.parent.load_more_button = self.create_button('LOAD MORE', 4, self.parent.load_more_titles)
         button_layout.addWidget(self.parent.load_more_button)
 
         # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('TITLES LIST', 0,
+        self.parent.display_titles_button = self.create_button('TITLES LIST', 7,
                                                                self.parent.display_titles_text_list)
         button_layout.addWidget(self.parent.display_titles_button)
 
         # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('FRANCHISES', 0,
+        self.parent.display_titles_button = self.create_button('FRANCHISES', 8,
                                                                self.parent.display_franchises)
         button_layout.addWidget(self.parent.display_titles_button)
 
         # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('SYSTEM', 0,
+        self.parent.display_titles_button = self.create_button('SYSTEM', 2,
                                                                self.parent.display_system)
         button_layout.addWidget(self.parent.display_titles_button)
 
         # Save Playlist Button
-        self.parent.save_playlist_button = self.create_button('SAVE', 7, self.parent.save_playlist_wrapper)
+        self.parent.save_playlist_button = self.create_button('SAVE', 4, self.parent.save_playlist_wrapper)
         button_layout.addWidget(self.parent.save_playlist_button)
 
         # Play Playlist Button

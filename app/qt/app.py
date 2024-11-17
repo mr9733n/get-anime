@@ -732,12 +732,11 @@ class AnimePlayerAppVer3(QWidget):
             type_html = self.generate_type_html(title)
             torrents_html = self.generate_torrents_html(title)
             rating_html = self.generate_rating_html(title)
-            watch_html = self.generate_watch_history_html(title.title_id)
             reload_html = self.generate_reload_button_html(title.title_id)
 
             body_html = f'''
                     <div class="reload">{reload_html}
- <span class="header_span">{rating_html}{watch_html}</span></div>
+ <span class="header_span">{rating_html}</span></div>
                 </div>
                 <div>
                     <p class="header">{title.name_en}</p>
@@ -813,6 +812,11 @@ class AnimePlayerAppVer3(QWidget):
                         text-align: left;
                         margin-left: -50px;
   
+                    }}
+                    
+                    .episodes {{
+                        text-align: left;
+                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                     }}
                     
                     .header_span {{
@@ -925,7 +929,8 @@ class AnimePlayerAppVer3(QWidget):
         # TODO: fix blank spase
         blank_spase = self.blank_spase
         rating_value = ''.join(rating_star_images)
-        return f'{title.title_id}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
+        watch_html = self.generate_watch_history_html(title.title_id)
+        return f'{watch_html}{blank_spase}{title.title_id}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
 
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
@@ -935,12 +940,25 @@ class AnimePlayerAppVer3(QWidget):
         user_id = self.user_id
 
         if torrent_id:
-            _, _, _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
+            _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
             self.logger.debug(
                 f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
             if is_download:
                 return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_green}" /></a>'
             return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_red}" /></a>'
+
+    def generate_watch_all_episodes_html(self, title_id, episode_ids):
+        """Generates HTML to display watch history"""
+        image_base64_watched = self.prepare_generate_poster_html(6)
+        image_base64_blank = self.prepare_generate_poster_html(5)
+        # TODO: fix it later
+        user_id = self.user_id
+
+        is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_ids)
+        self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_ids} Status:{is_watched}")
+        if is_watched:
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_watched}" /></a>'
+        return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_blank}" /></a>'
 
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
@@ -950,11 +968,11 @@ class AnimePlayerAppVer3(QWidget):
         user_id = self.user_id
 
         if episode_id or title_id:
-            is_watched, last_watched_at, days_ago, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
-            self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched} days ago:{days_ago} last watched:{last_watched_at} ")
+            is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
+            self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
             if is_watched:
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_watched}" /></a> {days_ago}DA'
-            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_blank}" /></a> {days_ago}DA'
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_watched}" /></a>'
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_blank}" /></a>'
 
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
@@ -1114,7 +1132,7 @@ class AnimePlayerAppVer3(QWidget):
             # Проверяем, что ссылка существует
             if link:
                 watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode.episode_id)
-                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>{blank_spase*4}{watched_html}</li>'
+                episodes_html += f'<p class=episodes>{watched_html}{blank_spase*4}<a href="{link}" target="_blank">{episode_name}</a></p>'
 
                 # Добавляем ссылку в discovered_links
                 self.discovered_links.append(link)
@@ -1333,7 +1351,7 @@ class AnimePlayerAppVer3(QWidget):
                     torrent_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
                     self.logger.debug(f"Setting user:{user_id} download status for title_id, torrent_id: {title_id}, {torrent_id}")
                     # Get current status from database
-                    _, _, _, current_download_status = self.db_manager.get_history_status(
+                    _, current_download_status = self.db_manager.get_history_status(
                         user_id=user_id, title_id=title_id, torrent_id=torrent_id)
                     # Toggle the download status if it exists
                     new_download_status = not current_download_status
@@ -1343,6 +1361,37 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_download_status/ link structure: {link}")
+
+            elif link.startswith('set_watch_all_episodes_status/'):
+                parts = link.split('/')
+                if len(parts) >= 4:
+                    user_id = int(parts[1])
+                    title_id = int(parts[2])
+                    episode_ids = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
+                    self.logger.debug(
+                        f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_ids}")
+
+                    # Get current status from the database
+                    current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,
+                                                                        episode_ids=episode_ids)
+                    if current_status:
+                        current_watched_status, _ = current_status
+                        new_watch_status = not current_watched_status
+                        self.logger.debug(
+                            f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_ids}, status: {new_watch_status}"
+                        )
+
+                        # Save the updated status back to the database
+                        self.db_manager.save_watch_status(
+                            user_id=user_id,
+                            title_id=title_id,
+                            episode_ids=episode_ids,
+                            is_watched=new_watch_status
+                        )
+
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
 
             elif link.startswith('set_watch_status/'):
                 parts = link.split('/')
@@ -1357,7 +1406,7 @@ class AnimePlayerAppVer3(QWidget):
                     current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,
                                                                         episode_id=episode_id)
                     if current_status:
-                        current_watched_status, _, _, _ = current_status
+                        current_watched_status, _ = current_status
                         new_watch_status = not current_watched_status
                         self.logger.debug(
                             f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_watch_status}"

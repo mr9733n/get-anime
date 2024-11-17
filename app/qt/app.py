@@ -401,8 +401,8 @@ class AnimePlayerAppVer3(QWidget):
             self.total_titles = titles
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            # Проверяем и обновляем расписание после отображения
-            QTimer.singleShot(60000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+            # Проверяем и обновляем расписание после отображения every 10 min
+            QTimer.singleShot(600000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
         else:
             try:
                 # Если тайтлы отсутствуют, получаем данные с сервера
@@ -463,15 +463,15 @@ class AnimePlayerAppVer3(QWidget):
                 # Сохраняем данные в базе данных
                 self._save_titles_list(titles_list)
 
-                self.logger.debug(f"Title list from db {titles_list}")
-                self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
-                self.logger.debug(f"DATA from API {data}")
+                # self.logger.debug(f"Title list from db {titles_list}")
+                # self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
+                # self.logger.debug(f"DATA from API {data}")
 
                 new_title_ids = {title_data.get('id') for title_data in titles_list}
                 if current_titles:
-                    self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
+                    # self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
 
-                # Сравнение данных из базы с данными, полученными из API
+                    # Сравнение данных из базы с данными, полученными из API
                     current_title_ids = {title_data.title_id for title_data in current_titles}
 
 
@@ -918,9 +918,9 @@ class AnimePlayerAppVer3(QWidget):
             is_watched, last_watched_at, days_ago = self.db_manager.get_watch_status(user_id, title_id, episode_id=episode_id)
             self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched} days ago:{days_ago} last watched:{last_watched_at} ")
             if is_watched:
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_watched}" /></a> {days_ago} days ago'
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_watched}" /></a> {days_ago}DA'
 
-            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_blank}" /></a> {days_ago} days ago'
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_blank}" /></a> {days_ago}DA'
 
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
@@ -1075,7 +1075,7 @@ class AnimePlayerAppVer3(QWidget):
             # Проверяем, что ссылка существует
             if link:
                 watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode.episode_id)
-                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>{watched_html}</li>'
+                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>____{watched_html}</li>'
 
                 # Добавляем ссылку в discovered_links
                 self.discovered_links.append(link)

@@ -1,0 +1,20 @@
+Anime Player App 3.8.3
+4. add reload button in title_browser
+	- static\reload.png
+	- will be triggered self.refresh_display() 
+
+5. добавить к тайтлам отображение студии производства
+	- нужно добавить новую таблицу со связью с тайтлами
+	- функционально я бы хотел иметь таблицу со списком студий производства
+	- я пока не решил как я буду заполнять эту таблицу 
+6. add torrent downloaded status icon
+	- uses watch_history table add torrent downloaded status
+	- filter by torrent_id
+	- relationship title_id
+7. add watch history bulk selection
+	- select all ^-^
+	- select many >_< 
+	- add flag "need to see"
+8. change one title view
+	- need to change width of title browser if window is changed 
+	- idea: you can change window horizontal size and stretch title browser with window

@@ -529,62 +529,78 @@ class DatabaseManager:
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
     def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False, torrent_id=None,
-                          is_download=False):
+                          is_download=False, episode_ids=None):
         with self.Session as session:
             try:
                 # Determine the appropriate filter based on input parameters
-                filters = {'user_id': user_id, 'title_id': title_id}
-                if episode_id is not None:
-                    filters['episode_id'] = episode_id
-                elif torrent_id is not None:
-                    filters['torrent_id'] = torrent_id
+                if episode_ids is not None:
+                    # Bulk update for multiple episodes
+                    existing_statuses = session.query(History).filter(
+                        History.user_id == user_id,
+                        History.title_id == title_id,
+                        History.episode_id.in_(episode_ids)
+                    ).all()
+                    for existing_status in existing_statuses:
+                        existing_status.previous_watched_at = existing_status.last_watched_at
+                        existing_status.is_watched = is_watched
+                        existing_status.last_watched_at = datetime.utcnow()
+                        existing_status.watch_change_count += 1
+                        self.logger.debug(
+                            f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {existing_status.episode_id} STATUS: {is_watched}")
                 else:
-                    filters['episode_id'] = None
-                    filters['torrent_id'] = None
-
-                existing_status = session.query(History).filter_by(**filters).one_or_none()
-
-                if existing_status:
-                    # Update existing status
+                    # Single update for episode or torrent
+                    filters = {'user_id': user_id, 'title_id': title_id}
                     if episode_id is not None:
-                        existing_status.previous_watched_at = existing_status.last_watched_at
-                        existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
-                        existing_status.watch_change_count += 1
-                        self.logger.debug(
-                            f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id} STATUS: {is_watched}")
+                        filters['episode_id'] = episode_id
                     elif torrent_id is not None:
-                        existing_status.previous_download_at = existing_status.last_download_at
-                        existing_status.is_download = is_download
-                        existing_status.last_download_at = datetime.utcnow()
-                        existing_status.download_change_count += 1
-                        self.logger.debug(
-                            f"Updated download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id} STATUS: {is_download}")
+                        filters['torrent_id'] = torrent_id
                     else:
-                        existing_status.previous_watched_at = existing_status.last_watched_at
-                        existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
-                        existing_status.watch_change_count += 1
-                        self.logger.debug(
-                            f"Updated watch status for user_id: {user_id}, title_id: {title_id} STATUS: {is_watched}")
-                else:
-                    # Add a new status if none exists
-                    new_add = History(
-                        user_id=user_id,
-                        title_id=title_id,
-                        torrent_id=torrent_id if torrent_id is not None else None,
-                        episode_id=episode_id if episode_id is not None else None,
-                        is_download=is_download if torrent_id is not None else False,
-                        is_watched=is_watched if episode_id is not None else False,
-                        last_download_at=datetime.utcnow() if torrent_id is not None else None,
-                        last_watched_at=datetime.utcnow() if episode_id is not None else None,
-                        download_change_count=1 if torrent_id is not None else 0,
-                        watch_change_count=1 if episode_id is not None else 0
-                    )
+                        filters['episode_id'] = None
+                        filters['torrent_id'] = None
 
-                    session.add(new_add)
-                    self.logger.debug(
-                        f"Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
+                    existing_status = session.query(History).filter_by(**filters).one_or_none()
+
+                    if existing_status:
+                        # Update existing status
+                        if episode_id is not None:
+                            existing_status.previous_watched_at = existing_status.last_watched_at
+                            existing_status.is_watched = is_watched
+                            existing_status.last_watched_at = datetime.utcnow()
+                            existing_status.watch_change_count += 1
+                            self.logger.debug(
+                                f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id} STATUS: {is_watched}")
+                        elif torrent_id is not None:
+                            existing_status.previous_download_at = existing_status.last_download_at
+                            existing_status.is_download = is_download
+                            existing_status.last_download_at = datetime.utcnow()
+                            existing_status.download_change_count += 1
+                            self.logger.debug(
+                                f"Updated download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id} STATUS: {is_download}")
+                        else:
+                            existing_status.previous_watched_at = existing_status.last_watched_at
+                            existing_status.is_watched = is_watched
+                            existing_status.last_watched_at = datetime.utcnow()
+                            existing_status.watch_change_count += 1
+                            self.logger.debug(
+                                f"Updated watch status for user_id: {user_id}, title_id: {title_id} STATUS: {is_watched}")
+                    else:
+                        # Add a new status if none exists
+                        new_add = History(
+                            user_id=user_id,
+                            title_id=title_id,
+                            torrent_id=torrent_id if torrent_id is not None else None,
+                            episode_id=episode_id if episode_id is not None else None,
+                            is_download=is_download if torrent_id is not None else False,
+                            is_watched=is_watched if episode_id is not None else False,
+                            last_download_at=datetime.utcnow() if torrent_id is not None else None,
+                            last_watched_at=datetime.utcnow() if episode_id is not None else None,
+                            download_change_count=1 if torrent_id is not None else 0,
+                            watch_change_count=1 if episode_id is not None else 0
+                        )
+
+                        session.add(new_add)
+                        self.logger.debug(
+                            f"Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
 
                 session.commit()
             except Exception as e:
@@ -632,15 +648,18 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
 
-    def get_history_status(self, user_id, title_id, episode_id=None, torrent_id=None):
+    def get_history_status(self, user_id, title_id, episode_id=None, torrent_id=None, episode_ids=None):
         with self.Session as session:
             try:
-                history_status = session.query(History).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id, torrent_id=torrent_id).one_or_none()
+                if episode_ids:
+                    history_status = session.query(History).filter_by(user_id=user_id, title_id=title_id,episode_ids=episode_ids).all()
+                else:
+                    history_status = session.query(History).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id, torrent_id=torrent_id).one_or_none()
                 if history_status:
                     self.logger.debug(f"user_id: {user_id} Watch status: {history_status.is_watched} for title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
-                    days_ago = (datetime.utcnow() - history_status.last_watched_at).days if history_status.last_watched_at else 0
-                    return history_status.is_watched, history_status.last_watched_at, days_ago, history_status.is_download
-                return False, None, 0, False
+                    # days_ago = (datetime.utcnow() - history_status.last_watched_at).days if history_status.last_watched_at else 0
+                    return history_status.is_watched, history_status.is_download
+                return False, False
             except Exception as e:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
                 raise

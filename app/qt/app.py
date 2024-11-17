@@ -90,6 +90,8 @@ class AnimePlayerAppVer3(QWidget):
         self.total_titles = []
         self.playlists = {}
         self.app_version = version
+        # TODO: fix blank spase
+        self.blank_spase = '&nbsp;'
         self.row_start = 0
         self.col_start = 0
 
@@ -731,15 +733,17 @@ class AnimePlayerAppVer3(QWidget):
             torrents_html = self.generate_torrents_html(title)
             rating_html = self.generate_rating_html(title)
             watch_html = self.generate_watch_history_html(title.title_id)
+            reload_html = self.generate_reload_button_html(title.title_id)
 
             body_html = f'''
+                    <div class="reload">{reload_html}
+ <span class="header_span">{rating_html}{watch_html}</span></div>
+                </div>
                 <div>
-                    <p class="header_p">{title.title_id}</p>
                     <p class="header">{title.name_en}</p>
                     <p class="header">{title.name_ru}</p>
                     <p class="header">{show_more_html}</p>
                     <div>
-                        {rating_html}{watch_html}
                         {announce_html}
                         {status_html}
                         {description_html}
@@ -805,8 +809,15 @@ class AnimePlayerAppVer3(QWidget):
                         margin-left: 100px;
                     }}
                     
-                    .header_p {{
+                    .reload {{
                         text-align: left;
+                        margin-left: -50px;
+  
+                    }}
+                    
+                    .header_span {{
+                        text-align: right;
+                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                     }}
               
                     /* Специальные стили для заголовка */
@@ -876,6 +887,15 @@ class AnimePlayerAppVer3(QWidget):
         """
         return html_content
 
+    def generate_reload_button_html(self, title_id):
+        """Generates HTML to display reload button"""
+        image_base64 = self.prepare_generate_poster_html(7)
+        # TODO: fix blank spase
+        blank_spase = self.blank_spase
+
+        reload_link = f'<a href="reload_info/{title_id}"><img src="data:image/png;base64,{image_base64}" /></a>{blank_spase*16}'
+        return reload_link
+
     def generate_show_more_html(self, title_id):
         """Generates HTML to display 'show more' link"""
         return f'<a href=display_info/{title_id}>Подробнее</a>'
@@ -902,25 +922,39 @@ class AnimePlayerAppVer3(QWidget):
                 poster_base64 = self.prepare_generate_poster_html(3)
                 rating_star_images.append(f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64}" /></a>')
 
+        # TODO: fix blank spase
+        blank_spase = self.blank_spase
         rating_value = ''.join(rating_star_images)
-        return f'''
-        <p>{rating_name}: {rating_value}</p>
-        '''
+        return f'{title.title_id}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
+
+    def generate_download_history_html(self, title_id, torrent_id):
+        """Generates HTML to display download history"""
+        image_base64_green = self.prepare_generate_poster_html(9)
+        image_base64_red = self.prepare_generate_poster_html(8)
+        # TODO: fix it later
+        user_id = self.user_id
+
+        if torrent_id:
+            _, _, _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
+            self.logger.debug(
+                f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
+            if is_download:
+                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_green}" /></a>'
+            return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_red}" /></a>'
 
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
-        poster_base64_watched = self.prepare_generate_poster_html(6)
-        poster_base64_blank = self.prepare_generate_poster_html(5)
+        image_base64_watched = self.prepare_generate_poster_html(6)
+        image_base64_blank = self.prepare_generate_poster_html(5)
         # TODO: fix it later
         user_id = self.user_id
 
         if episode_id or title_id:
-            is_watched, last_watched_at, days_ago = self.db_manager.get_watch_status(user_id, title_id, episode_id=episode_id)
+            is_watched, last_watched_at, days_ago, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
             self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched} days ago:{days_ago} last watched:{last_watched_at} ")
             if is_watched:
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_watched}" /></a> {days_ago}DA'
-
-            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{poster_base64_blank}" /></a> {days_ago}DA'
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_watched}" /></a> {days_ago}DA'
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_blank}" /></a> {days_ago}DA'
 
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
@@ -945,6 +979,8 @@ class AnimePlayerAppVer3(QWidget):
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
         self.torrent_data = {}
+        # TODO: fix blank spase
+        blank_spase = self.blank_spase
         torrents = self.db_manager.get_torrents_from_db(title.title_id)
 
         if not torrents:
@@ -955,7 +991,8 @@ class AnimePlayerAppVer3(QWidget):
             torrent_quality = torrent.quality if torrent.quality else "Unknown Quality"
             torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
             torrent_link = torrent.url if torrent.url else "#"
-            torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a></li>'
+            download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
+            torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a>{blank_spase*4}{download_html}</li>'
             self.torrent_data = torrent.title_id, title.code, torrent.torrent_id
         torrents_html += "</ul>"
 
@@ -1058,6 +1095,8 @@ class AnimePlayerAppVer3(QWidget):
         # Очищаем списки для ссылок и заголовков перед заполнением
         self.discovered_links = []
         self.sanitized_titles = []
+        # TODO: fix blank spase
+        blank_spase = self.blank_spase
         for i, episode in enumerate(title.episodes):
             episode_name = episode.name if episode.name else f'Серия {i + 1}'
 
@@ -1075,7 +1114,7 @@ class AnimePlayerAppVer3(QWidget):
             # Проверяем, что ссылка существует
             if link:
                 watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode.episode_id)
-                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>____{watched_html}</li>'
+                episodes_html += f'<li><a href="{link}" target="_blank">{episode_name}</a>{blank_spase*4}{watched_html}</li>'
 
                 # Добавляем ссылку в discovered_links
                 self.discovered_links.append(link)
@@ -1281,21 +1320,57 @@ class AnimePlayerAppVer3(QWidget):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
 
+            elif link.startswith('reload_info/'):
+                # Получаем title_id из ссылки и вызываем display_info
+                title_id = int(link.split('/')[1])
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
+
+            elif link.startswith('set_download_status/'):
+                parts = link.split('/')
+                if len(parts) >= 4:
+                    user_id = int(parts[1])
+                    title_id = int(parts[2])
+                    torrent_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
+                    self.logger.debug(f"Setting user:{user_id} download status for title_id, torrent_id: {title_id}, {torrent_id}")
+                    # Get current status from database
+                    _, _, _, current_download_status = self.db_manager.get_history_status(
+                        user_id=user_id, title_id=title_id, torrent_id=torrent_id)
+                    # Toggle the download status if it exists
+                    new_download_status = not current_download_status
+                    self.logger.debug(
+                        f"Setting download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id}, status: {new_download_status}")
+                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, torrent_id=torrent_id, is_download=new_download_status)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid set_download_status/ link structure: {link}")
+
             elif link.startswith('set_watch_status/'):
                 parts = link.split('/')
                 if len(parts) >= 4:
                     user_id = int(parts[1])
                     title_id = int(parts[2])
                     episode_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
-                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
-
-                    current_status, _, _ = self.db_manager.get_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id)
-                    # Переключаем статус
-                    new_status = not current_status
                     self.logger.debug(
-                        f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_status}")
-                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id,
-                                                      is_watched=new_status)
+                        f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
+
+                    # Get current status from the database
+                    current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,
+                                                                        episode_id=episode_id)
+                    if current_status:
+                        current_watched_status, _, _, _ = current_status
+                        new_watch_status = not current_watched_status
+                        self.logger.debug(
+                            f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_watch_status}"
+                        )
+
+                        # Save the updated status back to the database
+                        self.db_manager.save_watch_status(
+                            user_id=user_id,
+                            title_id=title_id,
+                            episode_id=episode_id,
+                            is_watched=new_watch_status
+                        )
+
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
@@ -1311,7 +1386,6 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_rating/ link structure: {link}")
-
             elif link.startswith('play_all/'):
                 # Получаем title_id и filename из ссылки и вызываем play_playlist_wrapper
                 parts = link.split('/')

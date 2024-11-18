@@ -10,7 +10,7 @@ Anime Player App 3.8.3
 	[x] select all ^-^
 	[-] select many >_< 
 	[x] add flag "need to see"+
-	[_] fix statistics
+	[x] fix statistics
 [_]7. change one title view
 	[_] need to change width of title browser if window is changed 
 	[_] idea: you can change window horizontal size and stretch title browser with window

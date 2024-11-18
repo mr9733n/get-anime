@@ -695,19 +695,24 @@ class DatabaseManager:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
                 raise
 
-    def get_all_episodes_watched_status(self, user_id, title_id, watch_all=False):
+    def get_all_episodes_watched_status(self, user_id, title_id):
         with self.Session as session:
             try:
+                # Запрос записей для указанного пользователя и тайтла
                 query = session.query(History).filter(
                     History.user_id == user_id,
                     History.title_id == title_id
                 )
 
-                if not watch_all:
-                    # Если флаг check_all не установлен, выбираем конкретный эпизод
-                    query = query.filter(History.episode_id != None)
+
+                    # Если флаг select_all не установлен, выбираем записи, где episode_id не является None
+                query = query.filter(History.episode_id != None)
 
                 history_statuses = query.all()
+
+                # Если записей нет, возвращаем False, так как нет подтверждения, что все эпизоды просмотрены
+                if not history_statuses:
+                    return False
 
                 # Проверяем, что все записи имеют статус is_watched=True
                 all_watched = all(status.is_watched for status in history_statuses)

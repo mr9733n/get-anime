@@ -951,9 +951,9 @@ class AnimePlayerAppVer3(QWidget):
         # TODO: fix it later
         user_id = self.user_id
 
-        is_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-        self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_ids} Status:{is_watched}")
-        if is_watched:
+        all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
+        self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{episode_ids} Status:{all_watched}")
+        if all_watched:
             return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_watched}" /></a>'
         return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_blank}" /></a>'
 
@@ -1330,6 +1330,8 @@ class AnimePlayerAppVer3(QWidget):
                     if not isinstance(episode_ids, list):
                         raise ValueError("Invalid episode_ids, expected a list.")
                     self.logger.debug(f"Setting user:{user_id} watch status for title_id, all_episodes: {title_id}")
+
+
                     current_watched_status = self.db_manager.get_all_episodes_watched_status(user_id=user_id, title_id=title_id)
                     new_watch_status = not current_watched_status
                     self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id} all_episodes status: {new_watch_status}")

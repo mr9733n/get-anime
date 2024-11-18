@@ -538,13 +538,19 @@ class DatabaseManager:
                     History.user_id == user_id,
                     History.title_id == title_id
                 ).all()
-
-                # Обновление флага need_to_see для всех записей
-                for existing_status in existing_statuses:
-                    existing_status.need_to_see = need_to_see
-                    self.logger.debug(
-                        f"Updated need_to_see for title_id: {title_id}, episode_id: {existing_status.episode_id} to {need_to_see}")
-
+                if existing_statuses:
+                    # Обновление флага need_to_see для всех записей
+                    for existing_status in existing_statuses:
+                        existing_status.need_to_see = need_to_see
+                        self.logger.debug(
+                            f"Updated need_to_see for title_id: {title_id}, episode_id: {existing_status.episode_id} to {need_to_see}")
+                else:
+                    new_add = History(
+                        user_id=user_id,
+                        title_id=title_id,
+                        need_to_see=1
+                    )
+                    session.add(new_add)
                 # Фиксация изменений в базе данных
                 session.commit()
             except Exception as e:
@@ -1116,11 +1122,11 @@ class History(Base):
     episode_id = Column(Integer, ForeignKey('episodes.episode_id'), nullable=True)
     torrent_id = Column(Integer, ForeignKey('torrents.torrent_id'), nullable=True)
     is_watched = Column(Boolean, default=False)
-    last_watched_at = Column(DateTime, default=datetime.utcnow)
+    last_watched_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     previous_watched_at = Column(DateTime, nullable=True)
     watch_change_count = Column(Integer, default=0)
     is_download = Column(Boolean, default=False)
-    last_download_at = Column(DateTime, default=datetime.utcnow)
+    last_download_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     previous_download_at = Column(DateTime, nullable=True)
     download_change_count = Column(Integer, default=0)
     need_to_see = Column(Boolean, default=False)

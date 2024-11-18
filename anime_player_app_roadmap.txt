@@ -11,15 +11,22 @@ Anime Player App 3.8.3
 	[-] select many >_< 
 	[x] add flag "need to see"+
 	[x] fix statistics
-[_]7. change one title view
+[_]7. REFACTORING '-' 3.8.6
+	[x] ui_generator for title_browser
+	[_] ui_system_generator for system_browser
+	[_] Refactor ui_generator
+		[_] titles_browser
+		[_] one_title_browser
+[_]8. change one title view
 	[_] need to change width of title browser if window is changed 
 	[_] idea: you can change window horizontal size and stretch title browser with window
-[_]8. redesign system browser 
+[_]9. redesign system browser
 	[_] need to add new layout window
 	[_] view statics
 	[_] add/update table data
-[_]9. добавить к тайтлам отображение студии производства
+[_]10. добавить к тайтлам отображение студии производства
 	[_] нужно добавить новую таблицу со связью с тайтлами
 	[_] функционально я бы хотел иметь таблицу со списком студий производства
 	[_] я пока не решил как я буду заполнять эту таблицу 
-[_]10. need to think how to merge data from other devices
+[_]11. need to think how to merge data from other devices
+[_]12. need to implement own player window uses vlc_lib

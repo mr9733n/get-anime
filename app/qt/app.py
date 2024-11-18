@@ -555,10 +555,11 @@ class AnimePlayerAppVer3(QWidget):
         unique_translators_count = statistics.get('unique_translators_count', 0)
         teams_count = statistics.get('unique_teams_count', 0)
         blocked_titles_count = statistics.get('blocked_titles_count', 0)
-        # Заблокированные тайтлы могут быть слишком длинными, поэтому мы будем выводить их ограниченно
-        blocked_titles_count = statistics.get('blocked_titles_count', 0)
         blocked_titles = statistics.get('blocked_titles', [])
-
+        history_total_count = statistics.get('history_total_count', 0)
+        history_total_watch_changes = statistics.get('history_total_watch_changes', 0)
+        history_total_download_changes = statistics.get('history_total_download_changes', 0)
+        need_to_see_count = statistics.get('need_to_see_count', 0)
         blocked_titles_list = ""
         if blocked_titles:
             # Разделяем строку на элементы
@@ -610,20 +611,21 @@ class AnimePlayerAppVer3(QWidget):
             <p>Количество уникальных переводчиков: {unique_translators_count}</p>
             <p>Количество команд переводчиков: {teams_count}</p>
             <p>Количество заблокированных тайтлов: {blocked_titles_count}</p>
+            <p>History total count: {history_total_count}</p>
+            <p>History total watch_changes: {history_total_watch_changes}</p>
+            <p>History total download changes: {history_total_download_changes}</p>
+            <p>Need to see: {need_to_see_count}</p>
             <div class="blocked-titles">
                 <p>Заблокированные тайтлы (no more updates):</p>
                 <ul>{blocked_titles_list}</ul>
             </div>
         </div>
         '''
-
         system_browser.setHtml(html_content)
         # Добавляем элементы в layout контейнера
         container_layout.addWidget(system_browser)
-
         # Добавляем контейнер в основной layout
         system_layout.addWidget(container_widget)
-
         return system_layout
 
     def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
@@ -636,23 +638,19 @@ class AnimePlayerAppVer3(QWidget):
         :return:
         """
         self.logger.debug("Начинаем создание title_browser...")
-
         title_browser = QTextBrowser(self)
         title_browser.setPlainText(f"Title: {title.name_en}")
         title_browser.setOpenExternalLinks(True)
         title_browser.setProperty('title_id', title.title_id)
         title_browser.anchorClicked.connect(self.on_link_click)
-
         # Общие настройки для различных режимов отображения
         if show_one_title:
             # Создаем горизонтальный layout для отображения деталей тайтла
             title_layout = QHBoxLayout()
             self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-
             # Постер слева
             poster_label = QLabel(self)
             poster_data = self.get_poster_or_placeholder(title.title_id)
-
             if poster_data:
                 pixmap = QPixmap()
                 if pixmap.loadFromData(poster_data):
@@ -662,18 +660,14 @@ class AnimePlayerAppVer3(QWidget):
                     poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
             else:
                 poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
-
             title_layout.addWidget(poster_label)
-
             # Информация о тайтле справа
             title_browser.setFixedSize(455, 650)
             html_content = self.get_title_html(title, show_description=True, show_more_link=False)
             title_browser.setHtml(html_content)
-
             # Добавляем title_browser в layout
             title_layout.addWidget(title_browser)
             return title_layout
-
         elif show_list or show_franchise:
             self.logger.debug(
                 f"Создаем title_browser для {'show_list' if show_list else 'show_franchise'} берем title_id: {title.title_id}")
@@ -693,7 +687,6 @@ class AnimePlayerAppVer3(QWidget):
             html_content = self.get_title_html(title, show_text_list=True)
             title_browser.setHtml(html_content)
             return title_browser
-
         else:
             self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
             title_browser.setFixedSize(455, 650)  # Размер плитки
@@ -1342,8 +1335,7 @@ class AnimePlayerAppVer3(QWidget):
                     title_id = int(parts[2])
                     self.logger.debug(f"Setting user:{user_id} need to see status for title_id: {title_id}")
                     current_status = self.db_manager.get_need_to_see(user_id=user_id, title_id=title_id)
-                    current_watched_status = current_status
-                    new_watch_status = not current_watched_status
+                    new_watch_status = not current_status
                     self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, status: {new_watch_status}")
                     self.db_manager.save_need_to_see(user_id=user_id, title_id=title_id, need_to_see=new_watch_status)
                     QTimer.singleShot(100, lambda: self.display_info(title_id))

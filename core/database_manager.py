@@ -814,7 +814,11 @@ class DatabaseManager:
                         WHERE blocked_geoip = 1 OR blocked_copyrights = 1;
                     """,
                     'schedules_count': "SELECT COUNT(DISTINCT title_id) FROM schedule",
-                    'watch_history_count': "SELECT COUNT(DISTINCT id) FROM watch_history",
+                    'history_count': "SELECT COUNT(DISTINCT id) FROM history",
+                    'history_total_count': "SELECT COUNT(*) AS total_count FROM history",
+                    'history_total_watch_changes': "SELECT SUM(watch_change_count) AS total_watch_changes FROM history",
+                    'history_total_download_changes': "SELECT SUM(download_change_count) AS total_download_changes FROM history",
+                    'need_to_see_count': "SELECT COUNT(*) AS need_to_see_count FROM history WHERE need_to_see = TRUE",
                     'torrents_count': "SELECT COUNT(DISTINCT torrent_id) FROM torrents",
                     'genres_count': """
                         SELECT COUNT(DISTINCT g.genre_id)

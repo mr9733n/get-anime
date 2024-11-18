@@ -92,12 +92,13 @@ class AnimePlayerAppVer3(QWidget):
         self.total_titles = []
         self.playlists = {}
         self.app_version = version
+        self.logger.debug(f"Initializing AnimePlayerApp Version {self.app_version}")
         # TODO: fix blank spase
         self.blank_spase = '&nbsp;'
         self.row_start = 0
         self.col_start = 0
-
-        self.logger.debug(f"Initializing AnimePlayerApp Version {self.app_version}")
+        self.pre = "https://"
+        self.days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
         self.cache_file_path = "temp/poster_cache.txt"
         self.config_manager = ConfigManager('config/config.ini')
 
@@ -121,7 +122,6 @@ class AnimePlayerAppVer3(QWidget):
             torrent_client_path=self.torrent_client_path
         )
         # Corrected debug logging of paths using setup values
-        self.pre = "https://"
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
@@ -133,10 +133,7 @@ class AnimePlayerAppVer3(QWidget):
         self.poster_manager = PosterManager(
             save_callback=self.db_manager.save_poster,
         )
-
-        self.days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
         self.ui_manager = UIManager(self)
-
         self.init_ui()
 
     @pyqtSlot(QTextBrowser, int, int)
@@ -154,7 +151,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle('Anime Player v3')
-        self.setGeometry(100, 100, 980, 800)
+        self.setGeometry(100, 100, 1000, 800)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()

@@ -11,7 +11,6 @@ import base64
 import datetime
 from datetime import datetime, timezone
 
-from PyInstaller.lib.modulegraph.modulegraph import header
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect,
@@ -19,11 +18,11 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
-from sqlalchemy.orm.loading import instances
 
-from app.qt.ui_manger import UIManager
 from core import database_manager
 from core.database_manager import DatabaseManager
+from app.qt.ui_manger import UIManager
+from app.qt.ui_generator import UIGenerator
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
@@ -63,7 +62,7 @@ class AnimePlayerAppVer3(QWidget):
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
-        self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
+
         self.playlist_filename = None
         self.play_playlist_button = None
         self.save_playlist_button = None
@@ -133,6 +132,9 @@ class AnimePlayerAppVer3(QWidget):
         self.poster_manager = PosterManager(
             save_callback=self.db_manager.save_poster,
         )
+
+        self.ui_generator = UIGenerator(self, self.db_manager)
+        self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.ui_manager = UIManager(self)
         self.init_ui()
 
@@ -342,39 +344,43 @@ class AnimePlayerAppVer3(QWidget):
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False, system=False):
         """Создает виджет для тайтла и добавляет его в макет."""
-        self.clear_previous_posters()
-        if len(titles) == 1:
-            # Если у нас один тайтл, отображаем его с полным описанием
-            title = titles[0]
-            self.logger.debug(f"One title ;)")
-            title_layout = self.create_title_browser(title, show_description=True, show_one_title=True)
-            self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
-            self.logger.debug(f"Displayed one title.")
-        elif system:
-            # Создаем системный экран с количеством тайтлов и франшиз
-            show_mode = 'system'
-            system_widget = QWidget(self)
-            system_layout = self.create_system_browser(titles)
-            system_widget.setLayout(system_layout)
+        try:
+            self.clear_previous_posters()
+            if len(titles) == 1:
+                # Если у нас один тайтл, отображаем его с полным описанием
+                title = titles[0]
+                self.logger.debug(f"One title ;)")
+                # show_description=False, show_one_title=False, show_list=False, show_franchise=False
+                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True, show_list=False, show_franchise=False)
+                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
+                self.logger.debug(f"Displayed one title.")
+            elif system:
+                # Создаем системный экран с количеством тайтлов и франшиз
+                show_mode = 'system'
+                system_widget = QWidget(self)
+                system_layout = self.create_system_browser(titles)
+                system_widget.setLayout(system_layout)
 
-            self.posters_layout.addWidget(system_widget, 0, 0, 1, 2)
-            self.logger.debug(f"Displayed {show_mode}")
-        else:
-            for index, title in enumerate(titles):
-                row = (index + row_start) // num_columns
-                column = (index + col_start) % num_columns
+                self.posters_layout.addWidget(system_widget, 0, 0, 1, 2)
+                self.logger.debug(f"Displayed {show_mode}")
+            else:
+                for index, title in enumerate(titles):
+                    row = (index + row_start) // num_columns
+                    column = (index + col_start) % num_columns
 
-                if titles_text_list:
-                    show_mode = 'titles_text_list'
-                    title_browser = self.create_title_browser(title, show_list=True)
-                elif franchises_list:
-                    show_mode = 'franchise_list'
-                    title_browser = self.create_title_browser(title, show_franchise=True)
-                else:
-                    show_mode = 'default'
-                    title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-                self.logger.debug(f"Displayed {show_mode} {len(titles)} titles.")
-                self.posters_layout.addWidget(title_browser, row, column)
+                    if titles_text_list:
+                        show_mode = 'titles_text_list'
+                        title_browser = self.create_title_browser(title, show_list=True)
+                    elif franchises_list:
+                        show_mode = 'franchise_list'
+                        title_browser = self.create_title_browser(title, show_franchise=True)
+                    else:
+                        show_mode = 'default'
+                        title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+                    self.logger.debug(f"Displayed {show_mode} {len(titles)} titles.")
+                    self.posters_layout.addWidget(title_browser, row, column)
+        except Exception as e:
+            self.logger.error(f"Ошибка display_titles_in_ui: {e}")
 
     def display_info(self, title_id):
         """Отображает информацию о конкретном тайтле."""
@@ -535,627 +541,100 @@ class AnimePlayerAppVer3(QWidget):
 
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
-        self.logger.debug("Начинаем создание system_browser...")
-
-        # Создаем главный вертикальный layout для системного экрана
-        system_layout = QVBoxLayout()
-
-        # Создаем виджет, чтобы обернуть все элементы вместе
-        container_widget = QWidget(self)
-        container_layout = QVBoxLayout(container_widget)
-
-        # Информация о версии приложения
-        app_version = self.app_version
-
-        # Извлечение статистики из аргумента statistics
-        titles_count = statistics.get('titles_count', 0)
-        franchises_count = statistics.get('franchises_count', 0)
-        episodes_count = statistics.get('episodes_count', 0)
-        posters_count = statistics.get('posters_count', 0)
-        unique_translators_count = statistics.get('unique_translators_count', 0)
-        teams_count = statistics.get('unique_teams_count', 0)
-        blocked_titles_count = statistics.get('blocked_titles_count', 0)
-        blocked_titles = statistics.get('blocked_titles', [])
-        history_total_count = statistics.get('history_total_count', 0)
-        history_total_watch_changes = statistics.get('history_total_watch_changes', 0)
-        history_total_download_changes = statistics.get('history_total_download_changes', 0)
-        need_to_see_count = statistics.get('need_to_see_count', 0)
-        blocked_titles_list = ""
-        if blocked_titles:
-            # Разделяем строку на элементы
-            blocked_titles_entries = blocked_titles.split(',')
-            # Формируем HTML список из элементов
-            blocked_titles_list = ''.join(
-                f'<li>{entry.strip()}</li>' for entry in blocked_titles_entries
-            )
-
-        # Логирование статистики
-        self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
-        self.logger.debug(f"Количество эпизодов: {episodes_count}, Количество постеров: {posters_count}")
-        self.logger.debug(
-            f"Количество уникальных переводчиков: {unique_translators_count}, Количество команд: {teams_count}")
-        self.logger.debug(f"Количество заблокированных тайтлов: {blocked_titles_count}")
-        self.logger.debug(f"blocked_titles: {blocked_titles}")
-        # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
-        system_browser = QTextBrowser(self)
-        system_browser.setPlainText(f"Title: SYSTEM")
-
-        #system_browser.setProperty('title_id', title.title_id)
-        system_browser.anchorClicked.connect(self.on_link_click)
-        system_browser.setOpenExternalLinks(True)
-
-        system_browser.setStyleSheet(
-            """
-            text-align: left;
-            border: 1px solid #444;
-            color: #000;
-            font-size: 14pt;
-            font-weight: bold;
-            position: relative;
-            text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-            """
-        )
-
-        # HTML контент для отображения статистики
-        html_content = f'''
-        <div style="font-size: 20pt;">
-            <p>Application version: {app_version}</p>
-            <p>Application DB statistics:</p>
-        </div>
-        <div style="margin: 30px;">
-            <p>Количество тайтлов: {titles_count}</p>
-            <p>Количество франшиз: {franchises_count}</p>
-            <p>Количество эпизодов: {episodes_count}</p>
-            <p>Количество постеров: {posters_count}</p>
-            <p>Количество уникальных переводчиков: {unique_translators_count}</p>
-            <p>Количество команд переводчиков: {teams_count}</p>
-            <p>Количество заблокированных тайтлов: {blocked_titles_count}</p>
-            <p>History total count: {history_total_count}</p>
-            <p>History total watch_changes: {history_total_watch_changes}</p>
-            <p>History total download changes: {history_total_download_changes}</p>
-            <p>Need to see: {need_to_see_count}</p>
-            <div class="blocked-titles">
-                <p>Заблокированные тайтлы (no more updates):</p>
-                <ul>{blocked_titles_list}</ul>
-            </div>
-        </div>
-        '''
-        system_browser.setHtml(html_content)
-        # Добавляем элементы в layout контейнера
-        container_layout.addWidget(system_browser)
-        # Добавляем контейнер в основной layout
-        system_layout.addWidget(container_widget)
-        return system_layout
-
-    def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
-        """Создает элемент интерфейса для отображения информации о тайтле.
-        :param title:
-        :param show_description:
-        :param show_one_title:
-        :param show_list:
-        :param show_franchise:
-        :return:
-        """
-        self.logger.debug("Начинаем создание title_browser...")
-        title_browser = QTextBrowser(self)
-        title_browser.setPlainText(f"Title: {title.name_en}")
-        title_browser.setOpenExternalLinks(True)
-        title_browser.setProperty('title_id', title.title_id)
-        title_browser.anchorClicked.connect(self.on_link_click)
-        # Общие настройки для различных режимов отображения
-        if show_one_title:
-            # Создаем горизонтальный layout для отображения деталей тайтла
-            title_layout = QHBoxLayout()
-            self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-            # Постер слева
-            poster_label = QLabel(self)
-            poster_data = self.get_poster_or_placeholder(title.title_id)
-            if poster_data:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(poster_data):
-                    poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
-                else:
-                    self.logger.error(f"Error: Failed to load pixmap from data for title_id: {title.title_id}")
-                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
-            else:
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
-            title_layout.addWidget(poster_label)
-            # Информация о тайтле справа
-            title_browser.setFixedSize(455, 650)
-            html_content = self.get_title_html(title, show_description=True, show_more_link=False)
-            title_browser.setHtml(html_content)
-            # Добавляем title_browser в layout
-            title_layout.addWidget(title_browser)
-            return title_layout
-        elif show_list or show_franchise:
+        try:
+            self.logger.debug("Начинаем создание system_browser...")
+            # Создаем главный вертикальный layout для системного экрана
+            system_layout = QVBoxLayout()
+            # Создаем виджет, чтобы обернуть все элементы вместе
+            container_widget = QWidget(self)
+            container_layout = QVBoxLayout(container_widget)
+            # Информация о версии приложения
+            app_version = self.app_version
+            # Извлечение статистики из аргумента statistics
+            titles_count = statistics.get('titles_count', 0)
+            franchises_count = statistics.get('franchises_count', 0)
+            episodes_count = statistics.get('episodes_count', 0)
+            posters_count = statistics.get('posters_count', 0)
+            unique_translators_count = statistics.get('unique_translators_count', 0)
+            teams_count = statistics.get('unique_teams_count', 0)
+            blocked_titles_count = statistics.get('blocked_titles_count', 0)
+            blocked_titles = statistics.get('blocked_titles', [])
+            history_total_count = statistics.get('history_total_count', 0)
+            history_total_watch_changes = statistics.get('history_total_watch_changes', 0)
+            history_total_download_changes = statistics.get('history_total_download_changes', 0)
+            need_to_see_count = statistics.get('need_to_see_count', 0)
+            blocked_titles_list = ""
+            if blocked_titles:
+                # Разделяем строку на элементы
+                blocked_titles_entries = blocked_titles.split(',')
+                # Формируем HTML список из элементов
+                blocked_titles_list = ''.join(
+                    f'<li>{entry.strip()}</li>' for entry in blocked_titles_entries
+                )
+            # Логирование статистики
+            self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
+            self.logger.debug(f"Количество эпизодов: {episodes_count}, Количество постеров: {posters_count}")
             self.logger.debug(
-                f"Создаем title_browser для {'show_list' if show_list else 'show_franchise'} берем title_id: {title.title_id}")
-            title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            title_browser.setStyleSheet(
+                f"Количество уникальных переводчиков: {unique_translators_count}, Количество команд: {teams_count}")
+            self.logger.debug(f"Количество заблокированных тайтлов: {blocked_titles_count}")
+            self.logger.debug(f"blocked_titles: {blocked_titles}")
+            # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
+            system_browser = QTextBrowser(self)
+            system_browser.setPlainText(f"Title: SYSTEM")
+            # system_browser.setProperty('title_id', title.title_id)
+            system_browser.anchorClicked.connect(self.on_link_click)
+            system_browser.setOpenExternalLinks(True)
+            system_browser.setStyleSheet(
                 """
-                text-align: right;
+                text-align: left;
                 border: 1px solid #444;
-                width: 100%;
-                height: 100%;
+                color: #000;
+                font-size: 14pt;
+                font-weight: bold;
                 position: relative;
                 text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
                 background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                 """
             )
-            html_content = self.get_title_html(title, show_text_list=True)
-            title_browser.setHtml(html_content)
-            return title_browser
-        else:
-            self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-            title_browser.setFixedSize(455, 650)  # Размер плитки
-            html_content = self.get_title_html(title, show_description, show_more_link=True)
-            title_browser.setHtml(html_content)
-            return title_browser
-
-    def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
-        """Генерирует HTML для отображения информации о тайтле."""
-        poster_html = self.generate_poster_html(title, need_background=True) if show_more_link else f"background-image: url('static/background.png');"
-        if show_text_list:
-            year_html = self.generate_year_html(title,show_text_list=True)
-            body_html = f'''
-        <p class="header_p">{title.title_id} | {year_html}</p>
-        <div class="header">
-            <a href="display_info/{title.title_id}">{title.name_en} ({title.name_ru})</a>
-        </div>
-        '''
-        else:
-            reload_html = self.generate_reload_button_html(title.title_id)
-            rating_html = self.generate_rating_html(title)
-            show_more_html = self.generate_show_more_html(title.title_id) if show_more_link else ""
-            announce_html = self.generate_announce_html(title)
-            status_html = self.generate_status_html(title)
-            description_html = self.generate_description_html(title) if show_description else ""
-            genres_html = self.generate_genres_html(title)
-            year_html = self.generate_year_html(title)
-            type_html = self.generate_type_html(title)
-            episodes_html = self.generate_episodes_html(title)
-            torrents_html = self.generate_torrents_html(title)
-            # TODO: fix empty line:
-            empty_line = f'<br />'
-            body_html = f'''
-                <div class="reload">{reload_html}
-                    <span class="header_span">{rating_html}</span>
+            # HTML контент для отображения статистики
+            html_content = f'''
+            <div style="font-size: 20pt;">
+                <p>Application version: {app_version}</p>
+                <p>Application DB statistics:</p>
+            </div>
+            <div style="margin: 30px;">
+                <p>Количество тайтлов: {titles_count}</p>
+                <p>Количество франшиз: {franchises_count}</p>
+                <p>Количество эпизодов: {episodes_count}</p>
+                <p>Количество постеров: {posters_count}</p>
+                <p>Количество уникальных переводчиков: {unique_translators_count}</p>
+                <p>Количество команд переводчиков: {teams_count}</p>
+                <p>Количество заблокированных тайтлов: {blocked_titles_count}</p>
+                <p>History total count: {history_total_count}</p>
+                <p>History total watch_changes: {history_total_watch_changes}</p>
+                <p>History total download changes: {history_total_download_changes}</p>
+                <p>Need to see: {need_to_see_count}</p>
+                <div class="blocked-titles">
+                    <p>Заблокированные тайтлы (no more updates):</p>
+                    <ul>{blocked_titles_list}</ul>
                 </div>
-                <div>
-                    <p class="header">{title.name_en}</p>
-                    <p class="header">{title.name_ru}</p>
-                    <p class="header">{show_more_html}</p>
-                    <div>
-                        {announce_html}
-                        {status_html}
-                        {description_html}
-                        {genres_html}
-                        {year_html}
-                        {type_html}
-                    </div>
-                    <div>
-                        {episodes_html}
-                    </div>
-                    <div>
-                        <p class="header_p">Torrents:</p>
-                        {torrents_html}
-                    </div>
-                </div>
-                <div>
-                    {empty_line * 6}
-                </div>
+            </div>
             '''
-
-        # Генерируем полный HTML
-        html_content = f"""
-        <html>
-            <head>
-                <style>
-                    html, body {{
-                        width: 100%;
-                        height: 100%;
-                        margin: 0; /* Убираем отступы */
-                        padding: 0;
-                    }}
-
-                    body {{
-                        {poster_html}
-                        background-color: rgb(240, 240, 240); /* Светлее, чем #999 */
-                        font-size: 12pt;
-                        text-align: right;
-                        color: #000;
-                        font-weight: bold;
-                        padding: 20px;
-                        border: 1px solid #444;
-                        margin: 10px;
-                        width: 100%;
-                        height: 100%;
-                        position: relative;
-                    }}
- 
-                    /* Общие стили для текстовых элементов */
-                    h3, p, ul, li {{
-                        margin: 5px 0;
-                        text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                        padding: 3px 6px;
-                        border-radius: 3px;
-                        display: inline-block;  
-                        -webkit-user-select: none;  /* Добавляем для Qt */
-                        user-select: none;
-                        text-align: right;  /* Выравнивание текста по левому краю */
-                        line-height: 0.9;  /* Увеличенный межстрочный интервал */
-                        margin-left: 100px;
-                    }}
-                    
-                    .reload {{
-                        text-align: left;
-                        margin-left: -50px;
-  
-                    }}
-                    
-                    .header_episodes {{
-                        text-align: left;
-                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                    }}
-                    
-                    .episodes {{
-                        text-align: left;
-                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                    }}
-                    
-                    .header_span {{
-                        text-align: right;
-                        background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                    }}
-              
-                    /* Специальные стили для заголовка */
-                    .header {{
-                        font-size: 29pt;
-                        text-shadow: 1px 1px 2px #FFF;
-                        display: inline-block;
-                        margin-bottom: 15px;
-                        line-height: 0.9;
-                        padding: 5px 8px;
-                        background: rgba(255, 255, 0, 0.4)
-                    }}
-                
-                    /* Специальные стили для ссылок */
-                    a {{
-                        text-decoration: none;
-                        padding: 2px 4px;
-                        border-radius: 3px;
-                        -webkit-user-select: none;  /* Добавляем для Qt */
-                        user-select: none;
-                    }}
-                
-                    a:link, a:visited {{
-                        color: #000;
-                        text-shadow: 1px 1px 2px #FFF;
-
-                    }}
-                
-                    a:active {{
-                        color: #FFF7D6;
-                        background: rgba(0, 0, 0, 0.7);
-                        text-decoration: underline;
-                    }}
-                
-                    /* Стили для списков */
-                    ul {{
-                        padding-left: 20px;
-                        list-style-position: inherit;
-                        margin-right: 15px;
-                    }}
-                
-                    li {{
-                        margin-bottom: 8px;
-                        text-align: left;
-                        line-height: 0.8;
-                        margin-left: 50px;
-                    }}
-                    
-                    div {{
-                        padding-top: 10px;
-                        padding-bottom: 10px;
-                    }}
-                
-                    /* Стиль для активного состояния - используем :active вместо :hover */
-                    h3:active, p:active, li:active {{
-                        background: rgba(255, 255, 255, 0.2);
-                    }}
-                
-                    .header:active {{
-                        background: rgba(0, 0, 0, 0.8);
-                        color: #FFE55C;
-                    }}
-                </style>
-            </head>
-            <body>{body_html}</body> 
-        </html>
-        """
-        return html_content
-
-    def generate_reload_button_html(self, title_id):
-        """Generates HTML to display reload button"""
-        image_base64 = self.prepare_generate_poster_html(7)
-        # TODO: fix blank spase
-        blank_spase = self.blank_spase
-
-        reload_link = f'<a href="reload_info/{title_id}" title="Reload title"><img src="data:image/png;base64,{image_base64}" /></a>{blank_spase*16}'
-        return reload_link
-
-    def generate_show_more_html(self, title_id):
-        """Generates HTML to display 'show more' link"""
-        return f'<a href=display_info/{title_id}>Подробнее</a>'
-
-    def generate_rating_html(self, title):
-        """Generates HTML to display ratings and allows updating"""
-        ratings = self.db_manager.get_rating_from_db(title.title_id)
-        rating_star_images = []
-        poster_base64_full = self.prepare_generate_poster_html(4)
-        poster_base64_blank = self.prepare_generate_poster_html(3)
-        if ratings:
-            rating_name = ratings.rating_name
-            rating_value = ratings.rating_value
-            for i in range(5):
-                if i < rating_value:
-                    rating_star_images.append(
-                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_full}" /></a>')
-                else:
-                    rating_star_images.append(
-                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_blank}" /></a>')
-        else:
-            rating_name = 'CMERS'
-            for i in range(5):
-                poster_base64 = self.prepare_generate_poster_html(3)
-                rating_star_images.append(f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64}" /></a>')
-
-        # TODO: fix blank spase
-        blank_spase = self.blank_spase
-        rating_value = ''.join(rating_star_images)
-        watch_html = self.generate_watch_history_html(title.title_id)
-        need_to_see_html = self.generate_nee_to_see_html((title.title_id))
-        return f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
-
-    def generate_download_history_html(self, title_id, torrent_id):
-        """Generates HTML to display download history"""
-        image_base64_green = self.prepare_generate_poster_html(9)
-        image_base64_red = self.prepare_generate_poster_html(8)
-        # TODO: fix it later
-        user_id = self.user_id
-
-        if torrent_id:
-            _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
-            self.logger.debug(
-                f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
-            if is_download:
-                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_green}" alt="Set download status" /></a>'
-            return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_red}" alt="Set download status" /></a>'
-
-    def generate_watch_all_episodes_html(self, title_id, episode_ids):
-        """Generates HTML to display watch history"""
-        image_base64_watched = self.prepare_generate_poster_html(6)
-        image_base64_blank = self.prepare_generate_poster_html(5)
-        # TODO: fix it later
-        user_id = self.user_id
-
-        all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-        self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{episode_ids} Status:{all_watched}")
-        if all_watched:
-            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" /></a>'
-        return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" /></a>'
-
-    def generate_nee_to_see_html(self, title_id):
-        """Generates HTML to display watch history"""
-        image_base64_watched = self.prepare_generate_poster_html(11)
-        image_base64_blank = self.prepare_generate_poster_html(10)
-        # TODO: fix it later
-        user_id = self.user_id
-
-        if title_id:
-            is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
-            self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status:{is_need_to_see}")
-            if is_need_to_see:
-                return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_watched}" alt="Need to see" /></a>'
-            return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_blank}" alt="Need to see" /></a>'
-
-    def generate_watch_history_html(self, title_id, episode_id=None):
-        """Generates HTML to display watch history"""
-        image_base64_watched = self.prepare_generate_poster_html(6)
-        image_base64_blank = self.prepare_generate_poster_html(5)
-        # TODO: fix it later
-        user_id = self.user_id
-
-        if episode_id or title_id:
-            is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
-            self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
-            if is_watched:
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" /></a>'
-            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" /></a>'
-
-    def generate_play_all_html(self, title):
-        """Generates M3U Playlist link"""
-        self.stream_video_url = title.host_for_player
-        playlist = self.playlists.get(title.title_id)
-        if playlist:
-            sanitized_title = playlist['sanitized_title']
-            discovered_links = playlist['links']
-            if discovered_links:
-                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links,
-                                                               self.stream_video_url)
-
-                self.logger.debug(
-                    f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
-                return f'<a href="play_all/{title.title_id}/{filename}">Play all</a>'
-            else:
-                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-                return "No playlist available"
-        else:
-            return "No playlist available"
-
-    def generate_torrents_html(self, title):
-        """Generates HTML to display a list of torrents for a title."""
-        self.torrent_data = {}
-        # TODO: fix blank spase
-        blank_spase = self.blank_spase
-        torrents = self.db_manager.get_torrents_from_db(title.title_id)
-
-        if not torrents:
-            return "<p>Torrents not available</p>"
-
-        torrents_html = "<ul>"
-        for torrent in torrents:
-            torrent_quality = torrent.quality if torrent.quality else "Unknown Quality"
-            torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
-            torrent_link = torrent.url if torrent.url else "#"
-            download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
-            torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a>{blank_spase*4}{download_html}</li>'
-            self.torrent_data = torrent.title_id, title.code, torrent.torrent_id
-        torrents_html += "</ul>"
-
-        return torrents_html
-
-    def prepare_generate_poster_html(self, title_id):
-        poster_data = self.get_poster_or_placeholder(title_id)
-
-        try:
-            pixmap = QPixmap()
-            if not pixmap.loadFromData(poster_data):
-                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
-
-                return None
-
-            # Используем QBuffer для сохранения в байтовый массив
-            byte_array = QByteArray()
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.WriteOnly)
-            if not pixmap.save(buffer, 'PNG'):
-                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
-                return None
-
-            # Преобразуем данные в Base64
-            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-            return poster_base64
-
+            system_browser.setHtml(html_content)
+            # Добавляем элементы в layout контейнера
+            container_layout.addWidget(system_browser)
+            # Добавляем контейнер в основной layout
+            system_layout.addWidget(container_widget)
+            return system_layout
         except Exception as e:
-            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
+            self.logger.error(f"Error create_system_browser: {e}")
             return None
 
-    def generate_poster_html(self, title, need_image=False, need_background=False):
-        """Generates HTML for the poster in Base64 format or returns a placeholder."""
-        # Попытка получить постер из базы данных
-        poster_base64 = self.prepare_generate_poster_html(title.title_id)
-        try:
-            if need_image:
-                return f'<img src="data:image/png;base64,{poster_base64}" alt="{title.title_id}.{title.code}" style=\"float: left; margin-right: 20px;\"" />'
-            elif need_background:
-                return f'background-image: url("data:image/png;base64,{poster_base64}");'
-
-            # TODO: fix this return
-            return f"background-image: url('static/background.png');"
-        except Exception as e:
-            self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
-            # TODO: fix this return
-            return f"background-image: url('static/background.png');"
-
-    def generate_genres_html(self, title):
-        """Генерирует HTML для отображения жанров."""
-        if hasattr(title, 'genre_names') and title.genre_names:
-            try:
-                # Используем жанры в виде списка строк
-                genres_list = title.genre_names
-                genres = ', '.join(genres_list) if genres_list else "Жанры отсутствуют"
-            except Exception as e:
-                self.logger.error(f"Ошибка при генерации HTML жанров: {e}")
-                genres = "Жанры отсутствуют"
-        else:
-            genres = "Жанры отсутствуют"
-
-        return f"""<p>Жанры: {genres}</p>"""
-
-    def generate_announce_html(self, title):
-        """Генерирует HTML для отображения анонса."""
-        title_announced = title.announce if title.announce else 'Анонс отсутствует'
-        return f"""<p>Анонс: {title_announced}</p>"""
-
-    def generate_status_html(self, title):
-        """Генерирует HTML для отображения статуса."""
-        title_status = title.status_string if title.status_string else "Статус отсутствует"
-        return f"""<p>Статус: {title_status}</p>"""
-
-    def generate_description_html(self, title):
-        """Генерирует HTML для отображения описания, если оно есть."""
-        if title.description:
-            return f"""<p>Описание: {title.description}</p>"""
-        else:
-            return ""
-
-    def generate_year_html(self, title, show_text_list=False):
-        """Генерирует HTML для отображения года выпуска."""
-        title_year = title.season_year if title.season_year else "Год отсутствует"
-        if show_text_list:
-            return f"""{title_year}"""
-        else:
-            return f"""<p>Год выпуска: {title_year}</p>"""
-
-    def generate_type_html(self, title):
-        """Генерирует HTML для отображения типа аниме."""
-        title_type = title.type_full_string if title.type_full_string else ""
-        return f"""<p>{title_type}</p>"""
-
-    def generate_episodes_html(self, title):
-        """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
-        selected_quality = self.quality_dropdown.currentText()
-        self.discovered_links = []
-        self.sanitized_titles = []
-        # TODO: fix blank space
-        blank_space = self.blank_spase
-        episode_ids = []
-        episode_links = []
-        for i, episode in enumerate(title.episodes):
-            episode_name = episode.name if episode.name else f'Серия {i + 1}'
-            link = None
-            if selected_quality == 'fhd':
-                link = episode.hls_fhd
-            elif selected_quality == 'hd':
-                link = episode.hls_hd
-            elif selected_quality == 'sd':
-                link = episode.hls_sd
-            else:
-                self.logger.error(f"Неизвестное качество: {selected_quality}")
-                continue
-            if link:
-                episode_ids.append(episode.episode_id)
-                episode_links.append((episode.episode_id, episode_name, link))
-            else:
-                self.logger.warning(f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'")
-        watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids)
-        play_all_html = self.generate_play_all_html(title)
-        if episode_links:
-            episodes_html = f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}Episodes:{blank_space * 6}{play_all_html}</p><ul>'
-            for episode_id, episode_name, link in episode_links:
-                watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
-                episodes_html += f'<p class="episodes">{watched_html}{blank_space * 4}<a href="{link}" target="_blank">{episode_name}</a></p>'
-                self.discovered_links.append(link)
-        else:
-            episodes_html = f'<p class="header_episodes">Episodes:{blank_space * 6}{play_all_html}</p><ul>'
-            episodes_html += f'<li>Нет доступных ссылок для выбранного качества: {selected_quality}</li>'
-        episodes_html += "</ul>"
-        # Добавляем имя эпизода в sanitized_titles
-        sanitized_name = self.sanitize_filename(title.code)
-        self.sanitized_titles.append(sanitized_name)
-        # Обновляем плейлисты, если есть обнаруженные ссылки
-        if self.discovered_links:
-            self.playlists[title.title_id] = {
-                'links': self.discovered_links,
-                'sanitized_title': sanitized_name
-            }
-        self.logger.debug(f"discovered_links: {len(self.discovered_links)}")
-        self.logger.debug(f"sanitized_name: {sanitized_name}")
-        return episodes_html
+    def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
+        """
+        Прокси-метод, который делегирует создание title_browser в UIGenerator.
+        """
+        return self.ui_generator.create_title_browser(title, show_description, show_one_title, show_list, show_franchise)
 
     def invoke_database_save(self, title_list):
         self.logger.debug(f"Processing title data: {title_list}")
@@ -1287,21 +766,74 @@ class AnimePlayerAppVer3(QWidget):
         # Сохраняем текущие данные
         self.current_data = data
 
-    def perform_poster_link(self, poster_link):
+    def save_playlist_wrapper(self):
+        """
+        Wrapper function to handle saving the playlists.
+        Iterates through all discovered playlists and saves them.
+        """
+        self.playlist_filename = None
+        if not self.playlists:
+            self.logger.error("No playlists found to save.")
+            return
+
+        for title_id, playlist in self.playlists.items():
+            sanitized_title = playlist['sanitized_title']
+            discovered_links = playlist['links']
+            if discovered_links:
+                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links, self.stream_video_url)
+                self.logger.debug(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
+            else:
+                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+        # Теперь сохраняем общий комбинированный плейлист
+        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[:100] + ".m3u"
+        combined_links = []
+        # Собираем все ссылки из всех плейлистов
+        for playlist_info in self.playlists.values():
+            combined_links.extend(playlist_info['links'])
+        # Сохраняем комбинированный плейлист
+        if combined_links:
+            if os.path.exists(os.path.join("playlists", combined_playlist_filename)):
+                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"  # Добавляем временной штамп для уникальности
+
+            filename = self.playlist_manager.save_playlist(combined_playlist_filename, combined_links,
+                                                           self.stream_video_url)
+            if filename:
+                self.logger.debug(f"Combined playlist '{filename}' saved.")
+                self.playlist_filename = filename
+            else:
+                self.logger.error("Failed to save the combined playlist.")
+        else:
+            self.logger.error("No valid links found for saving the combined playlist.")
+
+    def play_playlist_wrapper(self, file_name=None):
+        """
+        Wrapper function to handle playing the playlist.
+        Determines the file name and passes it to play_playlist.
+        """
+        if not self.sanitized_titles:
+            self.logger.error("Playlist not found, please save playlist first.")
+            return
+        if file_name is None:
+            file_name = self.playlist_filename
+        video_player_path = self.video_player_path
+        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
+        self.playlist_manager.play_playlist(file_name, video_player_path)
+        self.logger.debug("Opening video player...")
+
+    def save_torrent_wrapper(self, link, title_name, torrent_id):
+        """
+        Wrapper function to handle saving the torrent.
+        Collects title names and links, and passes them to save_torrent_file.
+        """
         try:
-            self.logger.debug(f"Processing poster link: {poster_link}")
-            poster_url = self.pre + self.base_url + poster_link
-            standardized_url = self.standardize_url(poster_url)
-            self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
-            # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
-                return None
-            return standardized_url
+            sanitized_title_name = self.sanitize_filename(title_name)
+            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
+
+            self.torrent_manager.save_torrent_file(link, file_name)
+            self.logger.debug("Opening torrent client ..")
         except Exception as e:
-            error_message = f"An error occurred while getting the poster: {str(e)}"
+            error_message = f"Error in save_torrent_wrapper: {str(e)}"
             self.logger.error(error_message)
-            return None
 
     def on_link_click(self, url):
         try:
@@ -1391,7 +923,7 @@ class AnimePlayerAppVer3(QWidget):
                     title_id = int(parts[1])
                     filename = parts[2]
                     self.logger.debug(f"Play_all: title_id: {title_id}, filename: {filename}")
-                    self.play_playlist_wrapper(filename)
+                    self.lay_playlist_wrapper(filename)
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid play_all link structure: {link}")
@@ -1418,78 +950,6 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(f"Unknown link type: {link}")
         except Exception as e:
             error_message = f"An error occurred while processing the link: {str(e)}"
-            self.logger.error(error_message)
-
-    def save_playlist_wrapper(self):
-        """
-        Wrapper function to handle saving the playlists.
-        Iterates through all discovered playlists and saves them.
-        """
-        self.playlist_filename = None
-        if not self.playlists:
-            self.logger.error("No playlists found to save.")
-            return
-
-        for title_id, playlist in self.playlists.items():
-            sanitized_title = playlist['sanitized_title']
-            discovered_links = playlist['links']
-            if discovered_links:
-                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links, self.stream_video_url)
-                self.logger.debug(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
-            else:
-                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-
-        # Теперь сохраняем общий комбинированный плейлист
-        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[:100] + ".m3u"
-        combined_links = []
-
-        # Собираем все ссылки из всех плейлистов
-        for playlist_info in self.playlists.values():
-            combined_links.extend(playlist_info['links'])
-
-        # Сохраняем комбинированный плейлист
-        if combined_links:
-            if os.path.exists(os.path.join("playlists", combined_playlist_filename)):
-                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"  # Добавляем временной штамп для уникальности
-
-            filename = self.playlist_manager.save_playlist(combined_playlist_filename, combined_links,
-                                                           self.stream_video_url)
-            if filename:
-                self.logger.debug(f"Combined playlist '{filename}' saved.")
-                self.playlist_filename = filename
-            else:
-                self.logger.error("Failed to save the combined playlist.")
-        else:
-            self.logger.error("No valid links found for saving the combined playlist.")
-
-    def play_playlist_wrapper(self, file_name=None):
-        """
-        Wrapper function to handle playing the playlist.
-        Determines the file name and passes it to play_playlist.
-        """
-        if not self.sanitized_titles:
-            self.logger.error("Playlist not found, please save playlist first.")
-            return
-        if file_name is None:
-            file_name = self.playlist_filename
-        video_player_path = self.video_player_path
-        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
-        self.playlist_manager.play_playlist(file_name, video_player_path)
-        self.logger.debug("Opening video player...")
-
-    def save_torrent_wrapper(self, link, title_name, torrent_id):
-        """
-        Wrapper function to handle saving the torrent.
-        Collects title names and links, and passes them to save_torrent_file.
-        """
-        try:
-            sanitized_title_name = self.sanitize_filename(title_name)
-            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
-
-            self.torrent_manager.save_torrent_file(link, file_name)
-            self.logger.debug("Opening torrent client ..")
-        except Exception as e:
-            error_message = f"Error in save_torrent_wrapper: {str(e)}"
             self.logger.error(error_message)
 
     @staticmethod

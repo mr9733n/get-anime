@@ -23,6 +23,7 @@ from core import database_manager
 from core.database_manager import DatabaseManager
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
+from app.qt.ui_s_generator import UISGenerator
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
@@ -134,6 +135,7 @@ class AnimePlayerAppVer3(QWidget):
         )
 
         self.ui_generator = UIGenerator(self, self.db_manager)
+        self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.ui_manager = UIManager(self)
         self.init_ui()
@@ -299,48 +301,51 @@ class AnimePlayerAppVer3(QWidget):
         :param title_ids: Отображение нескольких тайтлов по title_id
         :param titles_text_list: Отображение списка тайтлов.
         """
-        if start:
-            self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
-        if show_next:
-            # FIXME: would be increment offset at the end of title list
-            self.current_offset += self.titles_batch_size
-            self.logger.debug(
-                f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+        try:
+            if start:
+                self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+            if show_next:
+                # FIXME: would be increment offset at the end of title list
+                self.current_offset += self.titles_batch_size
+                self.logger.debug(
+                    f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
-        if show_previous:
-            self.current_offset = max(0, self.current_offset - self.titles_batch_size)  # Ограничиваем offset снизу
-            self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+            if show_previous:
+                self.current_offset = max(0, self.current_offset - self.titles_batch_size)  # Ограничиваем offset снизу
+                self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
-        match (bool(title_ids), titles_text_list, franchises):
-            case (True, _, _):
-                show_mode = 'title_ids'
-                titles = self.db_manager.get_titles_from_db(show_all=False,
-                                                            offset=self.current_offset, title_ids=title_ids)
-                self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False, True, False):
-                titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
-                show_mode = 'titles_text_list'
-                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
-            case (False, False, False):
-                titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
-                                                            offset=self.current_offset)
-                show_mode = 'default'
-                self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-            case (False, False, True):
-                titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
-                show_mode = 'franchise_list'
-                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
-        self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-        # self.logger.debug(f"{titles}")
+            match (bool(title_ids), titles_text_list, franchises):
+                case (True, _, _):
+                    show_mode = 'title_ids'
+                    titles = self.db_manager.get_titles_from_db(show_all=False,
+                                                                offset=self.current_offset, title_ids=title_ids)
+                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+                case (False, True, False):
+                    titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
+                    show_mode = 'titles_text_list'
+                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
+                case (False, False, False):
+                    titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
+                                                                offset=self.current_offset)
+                    show_mode = 'default'
+                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+                case (False, False, True):
+                    titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
+                    show_mode = 'franchise_list'
+                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
+            self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
+            # self.logger.debug(f"{titles}")
 
-        if system:
-            titles = self.db_manager.get_statistics_from_db()
-            self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
-        # Сохраняем загруженные тайтлы в список для доступа позже
-        else:
-            self.total_titles = titles
-            len_total_titles = len(self.total_titles)
-            self.logger.debug(f"self.total_titles:{len_total_titles}")
+            if system:
+                titles = self.db_manager.get_statistics_from_db()
+                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
+            # Сохраняем загруженные тайтлы в список для доступа позже
+            else:
+                self.total_titles = titles
+                len_total_titles = len(self.total_titles)
+                self.logger.debug(f"self.total_titles:{len_total_titles}")
+        except Exception as e:
+            self.logger.error(f"Ошибка display_titles_in_ui: {e}")
 
     def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False, system=False):
         """Создает виджет для тайтла и добавляет его в макет."""
@@ -540,95 +545,13 @@ class AnimePlayerAppVer3(QWidget):
             return None
 
     def create_system_browser(self, statistics):
-        """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
-        try:
-            self.logger.debug("Начинаем создание system_browser...")
-            # Создаем главный вертикальный layout для системного экрана
-            system_layout = QVBoxLayout()
-            # Создаем виджет, чтобы обернуть все элементы вместе
-            container_widget = QWidget(self)
-            container_layout = QVBoxLayout(container_widget)
-            # Информация о версии приложения
-            app_version = self.app_version
-            # Извлечение статистики из аргумента statistics
-            titles_count = statistics.get('titles_count', 0)
-            franchises_count = statistics.get('franchises_count', 0)
-            episodes_count = statistics.get('episodes_count', 0)
-            posters_count = statistics.get('posters_count', 0)
-            unique_translators_count = statistics.get('unique_translators_count', 0)
-            teams_count = statistics.get('unique_teams_count', 0)
-            blocked_titles_count = statistics.get('blocked_titles_count', 0)
-            blocked_titles = statistics.get('blocked_titles', [])
-            history_total_count = statistics.get('history_total_count', 0)
-            history_total_watch_changes = statistics.get('history_total_watch_changes', 0)
-            history_total_download_changes = statistics.get('history_total_download_changes', 0)
-            need_to_see_count = statistics.get('need_to_see_count', 0)
-            blocked_titles_list = ""
-            if blocked_titles:
-                # Разделяем строку на элементы
-                blocked_titles_entries = blocked_titles.split(',')
-                # Формируем HTML список из элементов
-                blocked_titles_list = ''.join(
-                    f'<li>{entry.strip()}</li>' for entry in blocked_titles_entries
-                )
-            # Логирование статистики
-            self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
-            self.logger.debug(f"Количество эпизодов: {episodes_count}, Количество постеров: {posters_count}")
-            self.logger.debug(
-                f"Количество уникальных переводчиков: {unique_translators_count}, Количество команд: {teams_count}")
-            self.logger.debug(f"Количество заблокированных тайтлов: {blocked_titles_count}")
-            self.logger.debug(f"blocked_titles: {blocked_titles}")
-            # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
-            system_browser = QTextBrowser(self)
-            system_browser.setPlainText(f"Title: SYSTEM")
-            # system_browser.setProperty('title_id', title.title_id)
-            system_browser.anchorClicked.connect(self.on_link_click)
-            system_browser.setOpenExternalLinks(True)
-            system_browser.setStyleSheet(
-                """
-                text-align: left;
-                border: 1px solid #444;
-                color: #000;
-                font-size: 14pt;
-                font-weight: bold;
-                position: relative;
-                text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                """
-            )
-            # HTML контент для отображения статистики
-            html_content = f'''
-            <div style="font-size: 20pt;">
-                <p>Application version: {app_version}</p>
-                <p>Application DB statistics:</p>
-            </div>
-            <div style="margin: 30px;">
-                <p>Количество тайтлов: {titles_count}</p>
-                <p>Количество франшиз: {franchises_count}</p>
-                <p>Количество эпизодов: {episodes_count}</p>
-                <p>Количество постеров: {posters_count}</p>
-                <p>Количество уникальных переводчиков: {unique_translators_count}</p>
-                <p>Количество команд переводчиков: {teams_count}</p>
-                <p>Количество заблокированных тайтлов: {blocked_titles_count}</p>
-                <p>History total count: {history_total_count}</p>
-                <p>History total watch_changes: {history_total_watch_changes}</p>
-                <p>History total download changes: {history_total_download_changes}</p>
-                <p>Need to see: {need_to_see_count}</p>
-                <div class="blocked-titles">
-                    <p>Заблокированные тайтлы (no more updates):</p>
-                    <ul>{blocked_titles_list}</ul>
-                </div>
-            </div>
-            '''
-            system_browser.setHtml(html_content)
-            # Добавляем элементы в layout контейнера
-            container_layout.addWidget(system_browser)
-            # Добавляем контейнер в основной layout
-            system_layout.addWidget(container_widget)
-            return system_layout
-        except Exception as e:
-            self.logger.error(f"Error create_system_browser: {e}")
-            return None
+        """
+        Прокси-метод, который делегирует создание system_browser в UISGenerator.
+        """
+        self.logger.debug(f"Пытаемся создать system_browser с параметрами: {[statistics]}")
+        return self.ui_s_generator.create_system_browser(statistics)
+
+
 
     def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
         """
@@ -923,7 +846,7 @@ class AnimePlayerAppVer3(QWidget):
                     title_id = int(parts[1])
                     filename = parts[2]
                     self.logger.debug(f"Play_all: title_id: {title_id}, filename: {filename}")
-                    self.lay_playlist_wrapper(filename)
+                    self.play_playlist_wrapper(filename)
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid play_all link structure: {link}")
@@ -959,6 +882,7 @@ class AnimePlayerAppVer3(QWidget):
         """
         return re.sub(r'[<>:"/\\|?*]', '_', name)
 
+    @staticmethod
     def standardize_url(self, url):
         """
         Standardizes the URL for consistent comparison.

@@ -13,8 +13,10 @@ Anime Player App 3.8.3
 	[x] fix statistics
 [_]7. REFACTORING '-' 3.8.6
 	[x] ui_generator for title_browser
-	[_] ui_system_generator for system_browser
+	[x] ui_system_generator for system_browser
 	[_] Refactor ui_generator
+		[_] html templates in static/ folder
+		[_] save/get html templates from db
 		[_] titles_browser
 		[_] one_title_browser
 [_]8. change one title view

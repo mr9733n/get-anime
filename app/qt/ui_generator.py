@@ -11,10 +11,13 @@ import logging
 
 class UIGenerator:
     def __init__(self, app, db_manager):
+        self.logger = logging.getLogger(__name__)
         self.app = app
         self.db_manager = db_manager
-        self.logger = logging.getLogger(__name__)
         self.blank_spase = '&nbsp;'
+        # TODO: fix this rating system
+        self.rating_name = 'CMERS'
+        self.max_rating = 6
 
     def get_poster_or_placeholder(self, title_id):
         try:
@@ -78,7 +81,7 @@ class UIGenerator:
                 return title_layout
             elif show_list or show_franchise:
                 self.logger.debug(
-                    f"Создаем title_browser для {'show_list' if show_list else 'show_franchise'} берем title_id: {title.title_id}")
+                    f"Create title_browser {'show_list' if show_list else 'show_franchise'}, title_id: {title.title_id}")
                 title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 title_browser.setStyleSheet(
@@ -130,8 +133,7 @@ class UIGenerator:
                 type_html = self.generate_type_html(title)
                 episodes_html = self.generate_episodes_html(title)
                 torrents_html = self.generate_torrents_html(title)
-                # TODO: fix empty line:
-                empty_line = f'<br />'
+                new_line = f'<br />'
                 body_html = f'''
                     <div class="reload">{reload_html}
                         <span class="header_span">{rating_html}</span>
@@ -157,7 +159,7 @@ class UIGenerator:
                         </div>
                     </div>
                     <div>
-                        {empty_line * 6}
+                        {new_line * 6}
                     </div>
                 '''
 
@@ -169,13 +171,13 @@ class UIGenerator:
                         html, body {{
                             width: 100%;
                             height: 100%;
-                            margin: 0; /* Убираем отступы */
+                            margin: 0;
                             padding: 0;
                         }}
     
                         body {{
                             {poster_html}
-                            background-color: rgb(240, 240, 240); /* Светлее, чем #999 */
+                            background-color: rgb(240, 240, 240);
                             font-size: 12pt;
                             text-align: right;
                             color: #000;
@@ -188,18 +190,17 @@ class UIGenerator:
                             position: relative;
                         }}
     
-                        /* Общие стили для текстовых элементов */
                         h3, p, ul, li {{
                             margin: 5px 0;
-                            text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                            text-shadow: 1px 1px 2px #FFF;
+                            background: rgba(255, 255, 0, 0.5);
                             padding: 3px 6px;
                             border-radius: 3px;
                             display: inline-block;  
-                            -webkit-user-select: none;  /* Добавляем для Qt */
+                            -webkit-user-select: none;
                             user-select: none;
-                            text-align: right;  /* Выравнивание текста по левому краю */
-                            line-height: 0.9;  /* Увеличенный межстрочный интервал */
+                            text-align: right;
+                            line-height: 0.9;
                             margin-left: 100px;
                         }}
     
@@ -211,20 +212,19 @@ class UIGenerator:
     
                         .header_episodes {{
                             text-align: left;
-                            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                            background: rgba(255, 255, 0, 0.5);
                         }}
     
                         .episodes {{
                             text-align: left;
-                            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                            background: rgba(255, 255, 0, 0.5);
                         }}
     
                         .header_span {{
                             text-align: right;
-                            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                            background: rgba(255, 255, 0, 0.5);
                         }}
     
-                        /* Специальные стили для заголовка */
                         .header {{
                             font-size: 29pt;
                             text-shadow: 1px 1px 2px #FFF;
@@ -235,12 +235,11 @@ class UIGenerator:
                             background: rgba(255, 255, 0, 0.4)
                         }}
     
-                        /* Специальные стили для ссылок */
                         a {{
                             text-decoration: none;
                             padding: 2px 4px;
                             border-radius: 3px;
-                            -webkit-user-select: none;  /* Добавляем для Qt */
+                            -webkit-user-select: none;
                             user-select: none;
                         }}
     
@@ -256,7 +255,6 @@ class UIGenerator:
                             text-decoration: underline;
                         }}
     
-                        /* Стили для списков */
                         ul {{
                             padding-left: 20px;
                             list-style-position: inherit;
@@ -275,7 +273,6 @@ class UIGenerator:
                             padding-bottom: 10px;
                         }}
     
-                        /* Стиль для активного состояния - используем :active вместо :hover */
                         h3:active, p:active, li:active {{
                             background: rgba(255, 255, 255, 0.2);
                         }}
@@ -322,28 +319,30 @@ class UIGenerator:
             rating_star_images = []
             poster_base64_full = self.prepare_generate_poster_html(4)
             poster_base64_blank = self.prepare_generate_poster_html(3)
+            image_html_full = f'<img src="data:image/png;base64,{poster_base64_full}" />'
+            image_html_blank = f'<img src="data:image/png;base64,{poster_base64_blank}" />'
+
             if ratings:
                 rating_name = ratings.rating_name
                 rating_value = ratings.rating_value
-                for i in range(5):
+                for i in range(self.max_rating):
                     if i < rating_value:
                         rating_star_images.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_full}" /></a>')
+                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_full}</a>')
                     else:
                         rating_star_images.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64_blank}" /></a>')
+                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_blank}</a>')
             else:
-                rating_name = 'CMERS'
-                for i in range(5):
-                    poster_base64 = self.prepare_generate_poster_html(3)
+                rating_name = self.rating_name
+                for i in range(self.max_rating):
                     rating_star_images.append(
-                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}"><img src="data:image/png;base64,{poster_base64}" /></a>')
+                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_blank}</a>')
 
             # TODO: fix blank spase
             blank_spase = self.blank_spase
             rating_value = ''.join(rating_star_images)
             watch_html = self.generate_watch_history_html(title.title_id)
-            need_to_see_html = self.generate_nee_to_see_html((title.title_id))
+            need_to_see_html = self.generate_nee_to_see_html(title.title_id)
             return f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 4}{rating_name}:{blank_spase}{rating_value}'
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"
@@ -354,6 +353,8 @@ class UIGenerator:
         try:
             image_base64_green = self.prepare_generate_poster_html(9)
             image_base64_red = self.prepare_generate_poster_html(8)
+            image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Set download status" />'
+            image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Set download status" />'
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -362,8 +363,9 @@ class UIGenerator:
                 self.logger.debug(
                     f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
                 if is_download:
-                    return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_green}" alt="Set download status" /></a>'
-                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_red}" alt="Set download status" /></a>'
+                    html = f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_green}</a>'
+                    return html
+                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_red}</a>'
         except Exception as e:
             error_message = f"Error in generate_download_history_html: {str(e)}"
             self.logger.error(error_message)
@@ -373,14 +375,16 @@ class UIGenerator:
         try:
             image_base64_watched = self.prepare_generate_poster_html(6)
             image_base64_blank = self.prepare_generate_poster_html(5)
+            image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" />'
+            image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" />'
             # TODO: fix it later
             user_id = self.app.user_id
 
             all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
             self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{episode_ids} Status:{all_watched}")
             if all_watched:
-                return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" /></a>'
-            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" /></a>'
+                return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_green}</a>'
+            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_red}</a>'
         except Exception as e:
             error_message = f"Error in generate_watch_all_episodes_html: {str(e)}"
             self.logger.error(error_message)
@@ -388,8 +392,10 @@ class UIGenerator:
     def generate_nee_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
         try:
-            image_base64_watched = self.prepare_generate_poster_html(11)
-            image_base64_blank = self.prepare_generate_poster_html(10)
+            image_base64_green = self.prepare_generate_poster_html(11)
+            image_base64_red = self.prepare_generate_poster_html(10)
+            image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Need to see" />'
+            image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Need to see" />'
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -397,8 +403,8 @@ class UIGenerator:
                 is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
                 self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status:{is_need_to_see}")
                 if is_need_to_see:
-                    return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_watched}" alt="Need to see" /></a>'
-                return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_blank}" alt="Need to see" /></a>'
+                    return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_green}</a>'
+                return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_red}</a>'
         except Exception as e:
             error_message = f"Error in generate_nee_to_see_html: {str(e)}"
             self.logger.error(error_message)
@@ -408,6 +414,8 @@ class UIGenerator:
         try:
             image_base64_watched = self.prepare_generate_poster_html(6)
             image_base64_blank = self.prepare_generate_poster_html(5)
+            image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" />'
+            image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" />'
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -415,8 +423,8 @@ class UIGenerator:
                 is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
                 self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
                 if is_watched:
-                    return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" /></a>'
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" /></a>'
+                    return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_green}</a>'
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_red}</a>'
         except Exception as e:
             error_message = f"Error in generate_watch_history_html: {str(e)}"
             self.logger.error(error_message)
@@ -462,7 +470,8 @@ class UIGenerator:
                 torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
                 torrent_link = torrent.url if torrent.url else "#"
                 download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
-                torrents_html += f'<li><a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a>{blank_spase * 4}{download_html}</li>'
+                torrent_link_html = f'<a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a>'
+                torrents_html += f'<li>{torrent_link_html}{blank_spase * 4}{download_html}</li>'
                 self.app.torrent_data = torrent.title_id, title.code, torrent.torrent_id
             torrents_html += "</ul>"
 
@@ -474,32 +483,26 @@ class UIGenerator:
     def prepare_generate_poster_html(self, title_id):
         try:
             poster_data = self.get_poster_or_placeholder(title_id)
-
-            try:
-                pixmap = QPixmap()
-                if not pixmap.loadFromData(poster_data):
-                    self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
-
-                    return None
-
-                # Используем QBuffer для сохранения в байтовый массив
-                byte_array = QByteArray()
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.WriteOnly)
-                if not pixmap.save(buffer, 'PNG'):
-                    self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
-                    return None
-
-                # Преобразуем данные в Base64
-                poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-                return poster_base64
-
-            except Exception as e:
-                self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
+            pixmap = QPixmap()
+            if not pixmap.loadFromData(poster_data):
+                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
                 return None
+
+            # Используем QBuffer для сохранения в байтовый массив
+            byte_array = QByteArray()
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.WriteOnly)
+            if not pixmap.save(buffer, 'PNG'):
+                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
+                return None
+
+            # Преобразуем данные в Base64
+            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
+            return poster_base64
+
         except Exception as e:
-            error_message = f"Error in prepare_generate_poster_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
+            return None
 
     def generate_poster_html(self, title, need_image=False, need_background=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
@@ -631,7 +634,7 @@ class UIGenerator:
                 episodes_html += f'<li>Нет доступных ссылок для выбранного качества: {selected_quality}</li>'
             episodes_html += "</ul>"
             # Добавляем имя эпизода в sanitized_titles
-            sanitized_name = self.sanitize_filename(title.code)
+            sanitized_name = self.app.sanitize_filename(title.code)
             self.app.sanitized_titles.append(sanitized_name)
             # Обновляем плейлисты, если есть обнаруженные ссылки
             if self.app.discovered_links:
@@ -650,10 +653,10 @@ class UIGenerator:
         try:
             self.logger.debug(f"Processing poster link: {poster_link}")
             poster_url = self.app.pre + self.app.base_url + poster_link
-            standardized_url = self.standardize_url(poster_url)
+            standardized_url = self.app.standardize_url(poster_url)
             self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
             # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.standardize_url, self.app.poster_manager.poster_links):
+            if standardized_url in map(self.app.standardize_url, self.app.poster_manager.poster_links):
                 self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
                 return None
             return standardized_url
@@ -662,17 +665,3 @@ class UIGenerator:
             self.logger.error(error_message)
             return None
 
-    @staticmethod
-    def sanitize_filename(name):
-        """
-        Sanitize the filename by removing special characters that are not allowed in filenames.
-        """
-        return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-    def standardize_url(self, url):
-        """
-        Standardizes the URL for consistent comparison.
-        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
-        """
-        # Basic URL standardization example: stripping spaces and removing query parameters
-        return url.strip().split('?')[0]

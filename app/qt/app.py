@@ -891,7 +891,7 @@ class AnimePlayerAppVer3(QWidget):
         # TODO: fix blank spase
         blank_spase = self.blank_spase
 
-        reload_link = f'<a href="reload_info/{title_id}"><img src="data:image/png;base64,{image_base64}" /></a>{blank_spase*16}'
+        reload_link = f'<a href="reload_info/{title_id}" title="Reload title"><img src="data:image/png;base64,{image_base64}" /></a>{blank_spase*16}'
         return reload_link
 
     def generate_show_more_html(self, title_id):
@@ -924,7 +924,8 @@ class AnimePlayerAppVer3(QWidget):
         blank_spase = self.blank_spase
         rating_value = ''.join(rating_star_images)
         watch_html = self.generate_watch_history_html(title.title_id)
-        return f'{watch_html}{blank_spase}{title.title_id}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
+        need_to_see_html = self.generate_nee_to_see_html((title.title_id))
+        return f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase*4}{rating_name}:{blank_spase}{rating_value}'
 
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
@@ -938,8 +939,8 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.debug(
                 f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
             if is_download:
-                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_green}" /></a>'
-            return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}"><img src="data:image/png;base64,{image_base64_red}" /></a>'
+                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_green}" alt="Set download status" /></a>'
+            return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status"><img src="data:image/png;base64,{image_base64_red}" alt="Set download status" /></a>'
 
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
@@ -951,8 +952,22 @@ class AnimePlayerAppVer3(QWidget):
         all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
         self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{episode_ids} Status:{all_watched}")
         if all_watched:
-            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_watched}" /></a>'
-        return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}"><img src="data:image/png;base64,{image_base64_blank}" /></a>'
+            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" /></a>'
+        return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" /></a>'
+
+    def generate_nee_to_see_html(self, title_id):
+        """Generates HTML to display watch history"""
+        image_base64_watched = self.prepare_generate_poster_html(11)
+        image_base64_blank = self.prepare_generate_poster_html(10)
+        # TODO: fix it later
+        user_id = self.user_id
+
+        if title_id:
+            is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
+            self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status:{is_need_to_see}")
+            if is_need_to_see:
+                return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_watched}" alt="Need to see" /></a>'
+            return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see"><img src="data:image/png;base64,{image_base64_blank}" alt="Need to see" /></a>'
 
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
@@ -965,8 +980,8 @@ class AnimePlayerAppVer3(QWidget):
             is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
             self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
             if is_watched:
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_watched}" /></a>'
-            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}"><img src="data:image/png;base64,{image_base64_blank}" /></a>'
+                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" /></a>'
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status"><img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" /></a>'
 
     def generate_play_all_html(self, title):
         """Generates M3U Playlist link"""
@@ -1318,6 +1333,23 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_download_status/ link structure: {link}")
+
+            # TODO: add link capture for "need_to_see"
+            elif link.startswith('set_need_to_see/'):
+                parts = link.split('/')
+                if len(parts) >= 3:
+                    user_id = int(parts[1])
+                    title_id = int(parts[2])
+                    self.logger.debug(f"Setting user:{user_id} need to see status for title_id: {title_id}")
+                    current_status = self.db_manager.get_need_to_see(user_id=user_id, title_id=title_id)
+                    current_watched_status = current_status
+                    new_watch_status = not current_watched_status
+                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, status: {new_watch_status}")
+                    self.db_manager.save_need_to_see(user_id=user_id, title_id=title_id, need_to_see=new_watch_status)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid set_need_to_see/ link structure: {link}")
+
             elif link.startswith('set_watch_all_episodes_status/'):
                 parts = link.split('/')
                 if len(parts) >= 4:
@@ -1327,8 +1359,6 @@ class AnimePlayerAppVer3(QWidget):
                     if not isinstance(episode_ids, list):
                         raise ValueError("Invalid episode_ids, expected a list.")
                     self.logger.debug(f"Setting user:{user_id} watch status for title_id, all_episodes: {title_id}")
-
-
                     current_watched_status = self.db_manager.get_all_episodes_watched_status(user_id=user_id, title_id=title_id)
                     new_watch_status = not current_watched_status
                     self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id} all_episodes status: {new_watch_status}")

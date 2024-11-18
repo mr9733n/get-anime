@@ -34,7 +34,9 @@ class DatabaseManager:
             {'title_id': 6, 'file_name': 'watched.png'},
             {'title_id': 7, 'file_name': 'reload.png'},
             {'title_id': 8, 'file_name': 'download_red.png'},
-            {'title_id': 9, 'file_name': 'download_green.png'}
+            {'title_id': 9, 'file_name': 'download_green.png'},
+            {'title_id': 10, 'file_name': 'need_to_see_red.png'},
+            {'title_id': 11, 'file_name': 'need_to_see_green.png'}
         ]
 
         with self.Session as session:
@@ -528,6 +530,29 @@ class DatabaseManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
 
+    def save_need_to_see(self, user_id, title_id, need_to_see=True):
+        with self.Session as session:
+            try:
+                # Получение всех существующих записей для данного title_id
+                existing_statuses = session.query(History).filter(
+                    History.user_id == user_id,
+                    History.title_id == title_id
+                ).all()
+
+                # Обновление флага need_to_see для всех записей
+                for existing_status in existing_statuses:
+                    existing_status.need_to_see = need_to_see
+                    self.logger.debug(
+                        f"Updated need_to_see for title_id: {title_id}, episode_id: {existing_status.episode_id} to {need_to_see}")
+
+                # Фиксация изменений в базе данных
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                self.logger.error(
+                    f"Error saving need_to_see for title_id {title_id}: {e}")
+                raise
+
     def save_watch_all_episodes(self, user_id, title_id, is_watched=False, episode_ids=None):
         with self.Session as session:
             try:
@@ -693,6 +718,24 @@ class DatabaseManager:
                 return False, False
             except Exception as e:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
+                raise
+
+    def get_need_to_see(self, user_id, title_id):
+        with self.Session as session:
+            try:
+                # Получение записей для данного title_id, где need_to_see=True
+                need_to_see_statuses = session.query(History).filter(
+                    History.user_id == user_id,
+                    History.title_id == title_id,
+                    History.need_to_see == True
+                ).all()
+
+                # Возвращаем список найденных эпизодов с флагом need_to_see
+                self.logger.debug(
+                    f"Fetched need_to_see statuses for title_id: {title_id}, count: {len(need_to_see_statuses)}")
+                return need_to_see_statuses
+            except Exception as e:
+                self.logger.error(f"Error fetching need_to_see for title_id {title_id}: {e}")
                 raise
 
     def get_all_episodes_watched_status(self, user_id, title_id):
@@ -865,12 +908,13 @@ class DatabaseManager:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
-                    if title_id in [3, 4, 5, 6, 7, 8, 9]:
+                    if title_id in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
                         # TODO: No need log message for rating stars images
                         # 3, 4 : rating images
                         # 5, 6 : watch images
                         # 7 : reload image
                         # 8, 9 : download image
+                        # 10, 11 : need to see image
 
                         return poster.poster_blob, False
                     else:
@@ -1075,6 +1119,7 @@ class History(Base):
     last_download_at = Column(DateTime, default=datetime.utcnow)
     previous_download_at = Column(DateTime, nullable=True)
     download_change_count = Column(Integer, default=0)
+    need_to_see = Column(Boolean, default=False)
 
     title = relationship("Title", back_populates="history")
     episode = relationship("Episode", back_populates="history")

@@ -1,0 +1,19 @@
+<html>
+<head>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        {{ styles_css|safe }}
+    </style>
+</head>
+<body>
+	<p class="header_p">{{ title.title_id }} | {{ year_html|safe }}</p>
+	<div class="header">
+		{{ show_more_html|safe }}
+	</div>
+</body>
+</html>

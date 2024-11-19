@@ -30,6 +30,10 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 
+APP_WIDTH = 1000
+APP_HEIGHT = 800
+APP_X_POS = 100
+APP_Y_POS = 100
 
 class CreateTitleBrowserTask(QRunnable):
     def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
@@ -155,7 +159,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle(f'Anime Player App {self.app_version}')
-        self.setGeometry(100, 100, 1000, 820)
+        self.setGeometry(APP_X_POS, APP_Y_POS, APP_WIDTH, APP_HEIGHT)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -210,7 +214,7 @@ class AnimePlayerAppVer3(QWidget):
         self.logger.debug(f"Обновлены ссылки для тайтла {title.title_id}: {title.current_links}")
         return title
 
-    def update_quality_and_refresh(self, event=None):
+    def update_quality_and_refresh(self):
         selected_quality = self.quality_dropdown.currentText()
         data = self.current_data
 
@@ -261,8 +265,7 @@ class AnimePlayerAppVer3(QWidget):
         day = self.day_of_week
         titles = self.current_titles
         if not day:
-            # Если day невозможно преобразовать в целое число, установим его в 0
-            day = 0
+            day = 0 # Monday
         status, title_ids = self.check_and_update_schedule_after_display(day, titles)
         if status:
             self.display_titles(title_ids)
@@ -526,32 +529,12 @@ class AnimePlayerAppVer3(QWidget):
                 elif item.layout() is not None:
                     self.clear_layout(item.layout())
 
-    def get_poster_or_placeholder(self, title_id):
-        try:
-            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
-            if is_placeholder:
-                self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
-                poster_link = self.db_manager.get_poster_link(title_id)
-                processed_link = self.perform_poster_link(poster_link)
-                link_to_download = []
-                if processed_link:
-                    link_to_download.append((title_id, processed_link))
-                if link_to_download:
-                    self.poster_manager.write_poster_links(link_to_download)
-            return poster_data
-
-        except Exception as e:
-            self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
-            return None
-
     def create_system_browser(self, statistics):
         """
         Прокси-метод, который делегирует создание system_browser в UISGenerator.
         """
         self.logger.debug(f"Пытаемся создать system_browser с параметрами: {[statistics]}")
         return self.ui_s_generator.create_system_browser(statistics)
-
-
 
     def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
         """
@@ -764,6 +747,10 @@ class AnimePlayerAppVer3(QWidget):
             if link.startswith('display_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
+            elif link.startswith('reload_template/'):
+                template = link.split('/')[1]
+                self.db_manager.save_template(template)
+                QTimer.singleShot(100, lambda: self.display_titles(start=True))
             elif link.startswith('reload_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
@@ -875,6 +862,40 @@ class AnimePlayerAppVer3(QWidget):
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.logger.error(error_message)
 
+    def get_poster_or_placeholder(self, title_id):
+        try:
+            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
+            if is_placeholder:
+                self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
+                poster_link = self.db_manager.get_poster_link(title_id)
+                processed_link = self.perform_poster_link(poster_link)
+                link_to_download = []
+                if processed_link:
+                    link_to_download.append((title_id, processed_link))
+                if link_to_download:
+                    self.poster_manager.write_poster_links(link_to_download)
+            return poster_data
+
+        except Exception as e:
+            self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
+            return None
+
+    def perform_poster_link(self, poster_link):
+        try:
+            self.logger.debug(f"Processing poster link: {poster_link}")
+            poster_url = self.pre + self.base_url + poster_link
+            standardized_url = self.standardize_url(poster_url)
+            self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
+            # Check if the standardized URL is already in the cached poster links
+            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
+                self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
+                return None
+            return standardized_url
+        except Exception as e:
+            error_message = f"An error occurred while getting the poster: {str(e)}"
+            self.logger.error(error_message)
+            return None
+
     @staticmethod
     def sanitize_filename(name):
         """
@@ -882,7 +903,6 @@ class AnimePlayerAppVer3(QWidget):
         """
         return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-    @staticmethod
     def standardize_url(self, url):
         """
         Standardizes the URL for consistent comparison.

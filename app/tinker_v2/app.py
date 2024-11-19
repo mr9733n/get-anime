@@ -185,24 +185,4 @@ class AnimePlayerAppVer2:
 
     pass
 
-# TODO: this run not work cuz not right base folder
-if __name__ == "__main__":
-    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
 
-    # Construct the path to the base directory two levels up
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    db_dir = os.path.join(base_dir, 'db')
-
-    # Ensure the database directory exists
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
-
-    db_path = os.path.join(db_dir, 'anime_player.db')
-
-    # Создаем и инициализируем таблицы базы данных
-    db_manager = DatabaseManager(db_path)
-    db_manager.initialize_tables()
-    window = tk.Tk()
-    app = AnimePlayerAppVer2(window, db_manager)
-    window.mainloop()

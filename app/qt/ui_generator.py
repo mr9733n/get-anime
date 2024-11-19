@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
 from app.qt.ui_manger import UIManager
 import base64
 import logging
-
+from jinja2 import Template
 
 class UIGenerator:
     def __init__(self, app, db_manager):
@@ -18,24 +18,6 @@ class UIGenerator:
         # TODO: fix this rating system
         self.rating_name = 'CMERS'
         self.max_rating = 6
-
-    def get_poster_or_placeholder(self, title_id):
-        try:
-            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
-            if is_placeholder:
-                self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
-                poster_link = self.db_manager.get_poster_link(title_id)
-                processed_link = self.perform_poster_link(poster_link)
-                link_to_download = []
-                if processed_link:
-                    link_to_download.append((title_id, processed_link))
-                if link_to_download:
-                    self.app.poster_manager.write_poster_links(link_to_download)
-            return poster_data
-
-        except Exception as e:
-            self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
-            return None
 
     def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False,
                              show_franchise=False):
@@ -61,7 +43,7 @@ class UIGenerator:
                 self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
                 # Постер слева
                 poster_label = QLabel(self.app)
-                poster_data = self.get_poster_or_placeholder(title.title_id)
+                poster_data = self.app.get_poster_or_placeholder(title.title_id)
                 if poster_data:
                     pixmap = QPixmap()
                     if pixmap.loadFromData(poster_data):
@@ -111,185 +93,92 @@ class UIGenerator:
     def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
         """Генерирует HTML для отображения информации о тайтле."""
         try:
-            poster_html = self.generate_poster_html(title,
-                                                    need_background=True) if show_more_link else f"background-image: url('static/background.png');"
-            if show_text_list:
-                year_html = self.generate_year_html(title, show_text_list=True)
-                body_html = f'''
-            <p class="header_p">{title.title_id} | {year_html}</p>
-            <div class="header">
-                <a href="display_info/{title.title_id}">{title.name_en} ({title.name_ru})</a>
-            </div>
-            '''
-            else:
-                reload_html = self.generate_reload_button_html(title.title_id)
-                rating_html = self.generate_rating_html(title)
-                show_more_html = self.generate_show_more_html(title.title_id) if show_more_link else ""
-                announce_html = self.generate_announce_html(title)
-                status_html = self.generate_status_html(title)
-                description_html = self.generate_description_html(title) if show_description else ""
-                genres_html = self.generate_genres_html(title)
-                year_html = self.generate_year_html(title)
-                type_html = self.generate_type_html(title)
-                episodes_html = self.generate_episodes_html(title)
-                torrents_html = self.generate_torrents_html(title)
-                new_line = f'<br />'
-                body_html = f'''
-                    <div class="reload">{reload_html}
-                        <span class="header_span">{rating_html}</span>
-                    </div>
-                    <div>
-                        <p class="header">{title.name_en}</p>
-                        <p class="header">{title.name_ru}</p>
-                        <p class="header">{show_more_html}</p>
-                        <div>
-                            {announce_html}
-                            {status_html}
-                            {description_html}
-                            {genres_html}
-                            {year_html}
-                            {type_html}
-                        </div>
-                        <div>
-                            {episodes_html}
-                        </div>
-                        <div>
-                            <p class="header_p">Torrents:</p>
-                            {torrents_html}
-                        </div>
-                    </div>
-                    <div>
-                        {new_line * 6}
-                    </div>
-                '''
+            # Общие компоненты, которые всегда требуются
+            reload_html = self.generate_reload_button_html(title.title_id)
+            rating_html = self.generate_rating_html(title)
+            announce_html = self.generate_announce_html(title)
+            status_html = self.generate_status_html(title)
+            description_html = self.generate_description_html(title) if show_description else ""
+            genres_html = self.generate_genres_html(title)
+            year_html = self.generate_year_html(title)
+            type_html = self.generate_type_html(title)
+            episodes_html = self.generate_episodes_html(title)
+            torrents_html = self.generate_torrents_html(title)
 
-            # Генерируем полный HTML
-            html_content = f"""
-            <html>
-                <head>
-                    <style>
-                        html, body {{
-                            width: 100%;
-                            height: 100%;
-                            margin: 0;
-                            padding: 0;
-                        }}
-    
-                        body {{
-                            {poster_html}
-                            background-color: rgb(240, 240, 240);
-                            font-size: 12pt;
-                            text-align: right;
-                            color: #000;
-                            font-weight: bold;
-                            padding: 20px;
-                            border: 1px solid #444;
-                            margin: 10px;
-                            width: 100%;
-                            height: 100%;
-                            position: relative;
-                        }}
-    
-                        h3, p, ul, li {{
-                            margin: 5px 0;
-                            text-shadow: 1px 1px 2px #FFF;
-                            background: rgba(255, 255, 0, 0.5);
-                            padding: 3px 6px;
-                            border-radius: 3px;
-                            display: inline-block;  
-                            -webkit-user-select: none;
-                            user-select: none;
-                            text-align: right;
-                            line-height: 0.9;
-                            margin-left: 100px;
-                        }}
-    
-                        .reload {{
-                            text-align: left;
-                            margin-left: -50px;
-    
-                        }}
-    
-                        .header_episodes {{
-                            text-align: left;
-                            background: rgba(255, 255, 0, 0.5);
-                        }}
-    
-                        .episodes {{
-                            text-align: left;
-                            background: rgba(255, 255, 0, 0.5);
-                        }}
-    
-                        .header_span {{
-                            text-align: right;
-                            background: rgba(255, 255, 0, 0.5);
-                        }}
-    
-                        .header {{
-                            font-size: 29pt;
-                            text-shadow: 1px 1px 2px #FFF;
-                            display: inline-block;
-                            margin-bottom: 15px;
-                            line-height: 0.9;
-                            padding: 5px 8px;
-                            background: rgba(255, 255, 0, 0.4)
-                        }}
-    
-                        a {{
-                            text-decoration: none;
-                            padding: 2px 4px;
-                            border-radius: 3px;
-                            -webkit-user-select: none;
-                            user-select: none;
-                        }}
-    
-                        a:link, a:visited {{
-                            color: #000;
-                            text-shadow: 1px 1px 2px #FFF;
-    
-                        }}
-    
-                        a:active {{
-                            color: #FFF7D6;
-                            background: rgba(0, 0, 0, 0.7);
-                            text-decoration: underline;
-                        }}
-    
-                        ul {{
-                            padding-left: 20px;
-                            list-style-position: inherit;
-                            margin-right: 15px;
-                        }}
-    
-                        li {{
-                            margin-bottom: 8px;
-                            text-align: left;
-                            line-height: 0.8;
-                            margin-left: 50px;
-                        }}
-    
-                        div {{
-                            padding-top: 10px;
-                            padding-bottom: 10px;
-                        }}
-    
-                        h3:active, p:active, li:active {{
-                            background: rgba(255, 255, 255, 0.2);
-                        }}
-    
-                        .header:active {{
-                            background: rgba(0, 0, 0, 0.8);
-                            color: #FFE55C;
-                        }}
-                    </style>
-                </head>
-                <body>{body_html}</body> 
-            </html>
-            """
-            return html_content
+            # Получаем шаблоны из базы данных
+            titles_html, one_title_html, show_text_list_html, styles_css = self.db_manager.get_template()
+
+            if show_more_link and titles_html:
+                poster_html = self.generate_poster_html(title, need_background=True)
+                show_more_html = self.generate_show_more_html(title.title_id)
+
+                # Создаем объект шаблона из строки
+                template = Template(titles_html)
+
+                # Рендерим HTML
+                html_content = template.render(
+                    title=title,
+                    styles_css=styles_css,
+                    poster_html=poster_html,
+                    reload_html=reload_html,
+                    rating_html=rating_html,
+                    show_more_html=show_more_html,
+                    announce_html=announce_html,
+                    status_html=status_html,
+                    description_html=description_html,
+                    genres_html=genres_html,
+                    year_html=year_html,
+                    type_html=type_html,
+                    episodes_html=episodes_html,
+                    torrents_html=torrents_html,
+                    new_line='<br /><br /><br /><br />'
+                )
+                return html_content
+
+            if show_text_list and show_text_list_html:
+                year_html = self.generate_year_html(title, show_text_list=True)
+                show_more_html = self.generate_show_more_html(title.title_id) if show_more_link else ""
+
+                # Создаем объект шаблона из строки
+                template = Template(show_text_list_html)
+
+                # Рендерим HTML
+                html_content = template.render(
+                    title=title,
+                    styles_css=styles_css,
+                    show_more_html=show_more_html,
+                    year_html=year_html,
+                )
+                return html_content
+
+            elif one_title_html:
+                poster_html = self.generate_poster_html(title, need_placeholder=True)
+
+                # Создаем объект шаблона из строки
+                template = Template(one_title_html)
+
+                # Рендерим HTML
+                html_content = template.render(
+                    title=title,
+                    styles_css=styles_css,
+                    poster_html=poster_html,
+                    reload_html=reload_html,
+                    rating_html=rating_html,
+                    announce_html=announce_html,
+                    status_html=status_html,
+                    description_html=description_html,
+                    genres_html=genres_html,
+                    year_html=year_html,
+                    type_html=type_html,
+                    episodes_html=episodes_html,
+                    torrents_html=torrents_html,
+                )
+                return html_content
+
         except Exception as e:
-            error_message = f"Error in get_title_browser: {str(e)}"
+            error_message = f"Error in get_title_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_reload_button_html(self, title_id):
         """Generates HTML to display reload button"""
@@ -482,7 +371,7 @@ class UIGenerator:
 
     def prepare_generate_poster_html(self, title_id):
         try:
-            poster_data = self.get_poster_or_placeholder(title_id)
+            poster_data = self.app.get_poster_or_placeholder(title_id)
             pixmap = QPixmap()
             if not pixmap.loadFromData(poster_data):
                 self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
@@ -504,11 +393,14 @@ class UIGenerator:
             self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
             return None
 
-    def generate_poster_html(self, title, need_image=False, need_background=False):
+    def generate_poster_html(self, title, need_image=False, need_background=False, need_placeholder=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
         try:
             # Попытка получить постер из базы данных
-            poster_base64 = self.prepare_generate_poster_html(title.title_id)
+            if need_placeholder:
+                poster_base64 = self.prepare_generate_poster_html(2)
+            else:
+                poster_base64 = self.prepare_generate_poster_html(title.title_id)
             if need_image:
                 return f'<img src="data:image/png;base64,{poster_base64}" alt="{title.title_id}.{title.code}" style=\"float: left; margin-right: 20px;\"" />'
             elif need_background:
@@ -649,19 +541,5 @@ class UIGenerator:
             error_message = f"Error in generate_episodes_html: {str(e)}"
             self.logger.error(error_message)
 
-    def perform_poster_link(self, poster_link):
-        try:
-            self.logger.debug(f"Processing poster link: {poster_link}")
-            poster_url = self.app.pre + self.app.base_url + poster_link
-            standardized_url = self.app.standardize_url(poster_url)
-            self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
-            # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.app.standardize_url, self.app.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
-                return None
-            return standardized_url
-        except Exception as e:
-            error_message = f"An error occurred while getting the poster: {str(e)}"
-            self.logger.error(error_message)
-            return None
+
 

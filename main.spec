@@ -12,7 +12,8 @@ compileall.compile_dir('core', force=True)
 # Compile the files in the 'utils' directory
 compileall.compile_dir('utils', force=True)
 
-
+# Compile the files in the 'templates' directory
+compileall.compile_dir('templates', force=True)
 
 # Импортируем необходимый модуль Analysis, EXE, COLLECT
 from PyInstaller.utils.hooks import collect_data_files
@@ -26,6 +27,7 @@ project_dir = os.getcwd()
 # Сбор данных для ресурсы, например из папок `static` и `db`
 datas = [
     (os.path.join(project_dir, 'static/*'), 'static'),
+    (os.path.join(project_dir, 'templates/*'), 'templates'),
     (os.path.join(project_dir, 'config/*'), 'config'),
     (os.path.join(project_dir, 'db/*'), 'db'),
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),
@@ -60,6 +62,7 @@ a = Analysis(
 		'sqlalchemy.dialects.sqlite',
 		'urllib3.contrib.socks',
         'uuid',
+        'jinja2'
 		'sqlalchemy',
 		'sqlalchemy.orm',
 		'sqlalchemy.ext.declarative',

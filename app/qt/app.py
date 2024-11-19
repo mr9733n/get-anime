@@ -154,7 +154,7 @@ class AnimePlayerAppVer3(QWidget):
         return video_player_path, torrent_client_path
 
     def init_ui(self):
-        self.setWindowTitle('Anime Player v3')
+        self.setWindowTitle(f'Anime Player App {self.app_version}')
         self.setGeometry(100, 100, 1000, 820)
 
         # Основной вертикальный layout

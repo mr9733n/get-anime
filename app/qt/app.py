@@ -155,7 +155,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle('Anime Player v3')
-        self.setGeometry(100, 100, 1000, 800)
+        self.setGeometry(100, 100, 1000, 820)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()

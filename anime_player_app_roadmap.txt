@@ -1,4 +1,4 @@
-Anime Player App 3.8.3
+Anime Player App 0.3.8.3
 [x] 4. add reload button in title_browser
 	[x] static\reload.png
 	[x] will be triggered self.refresh_display() 
@@ -11,7 +11,7 @@ Anime Player App 3.8.3
 	[-] select many >_< 
 	[x] add flag "need to see"+
 	[x] fix statistics
-[_]7. REFACTORING '-' 3.8.6
+[_]7. REFACTORING '-' 0.3.6.7
 	[x] ui_generator for title_browser
 	[x] ui_system_generator for system_browser
 	[_] Refactor ui_generator

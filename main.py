@@ -12,21 +12,23 @@ from PyQt5.uic.Compiler.qobjectcreator import logger
 from core.database_manager import DatabaseManager  # База данных
 from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 
+APP_MINOR_VERSION = '0.3.8.x'
+APP_MAJOR_VERSION = '0.3.x.x'
 
 def fetch_version():
     global version
     try:
         commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B'], text=True).strip()
-        version_pattern = r"^\d+\.\d+\.\d+$"
+        version_pattern = r"^\d+\.\d+\.\d+\.\d+$"
         match = re.match(version_pattern, commit_message)
 
         if match:
             version = match.group()
         else:
-            version = '3.6.x'
+            version = APP_MINOR_VERSION
     except subprocess.CalledProcessError as e:
         logger.error(f"Error occurred while getting commit message: {e}")
-        version = '3.6.x'
+        version = APP_MAJOR_VERSION
 
 if __name__ == "__main__":
     logger = logging.getLogger(__name__)

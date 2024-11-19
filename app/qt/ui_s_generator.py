@@ -1,5 +1,6 @@
 # ui_s_generator.py
 import logging
+from tempfile import template
 
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget
 
@@ -35,6 +36,9 @@ class UISGenerator:
             history_total_download_changes = statistics.get('history_total_download_changes', 0)
             need_to_see_count = statistics.get('need_to_see_count', 0)
             blocked_titles_list = ""
+            # TODO: fix this
+            template_name = 'default'
+
             if blocked_titles:
                 # Разделяем строку на элементы
                 blocked_titles_entries = blocked_titles.split(',')
@@ -89,6 +93,7 @@ class UISGenerator:
                     <p>Заблокированные тайтлы (no more updates):</p>
                     <ul>{blocked_titles_list}</ul>
                 </div>
+                <p><a href="reload_template/{template_name}">Reload template</a></p>
             </div>
             '''
             system_browser.setHtml(html_content)

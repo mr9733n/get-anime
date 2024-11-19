@@ -186,7 +186,8 @@ class UIManager:
             self.parent.quality_dropdown
         ])
 
-    def apply_shadow_effects(self, widgets):
+    @staticmethod
+    def apply_shadow_effects(widgets):
         shadow_effect = QGraphicsDropShadowEffect()
         shadow_effect.setBlurRadius(8)
         shadow_effect.setOffset(2, 2)

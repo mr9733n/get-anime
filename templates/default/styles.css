@@ -1,0 +1,90 @@
+body {
+	background-color: rgb(240, 240, 240);
+	font-size: 12pt;
+	text-align: right;
+	color: #000;
+	font-weight: bold;
+	padding: 20px;
+	border: 1px solid #444;
+	margin: 10px;
+	width: 100%;
+	height: 100%;
+	position: relative;
+}
+h3, p, ul, li {
+	margin: 5px 0;
+	text-shadow: 1px 1px 2px #FFF;
+	background: rgba(255, 255, 0, 0.5);
+	padding: 3px 6px;
+	border-radius: 3px;
+	display: inline-block;
+	-webkit-user-select: none;
+	user-select: none;
+	text-align: right;
+	line-height: 0.9;
+	margin-left: 100px;
+}
+.reload {
+	text-align: left;
+	margin-left: -50px;
+
+}
+.header_episodes {
+	text-align: left;
+	background: rgba(255, 255, 0, 0.5);
+}
+.episodes {
+	text-align: left;
+	background: rgba(255, 255, 0, 0.5);
+}
+.header_span {
+	text-align: right;
+	background: rgba(255, 255, 0, 0.5);
+}
+.header {
+	font-size: 29pt;
+	text-shadow: 1px 1px 2px #FFF;
+	display: inline-block;
+	margin-bottom: 15px;
+	line-height: 0.9;
+	padding: 5px 8px;
+	background: rgba(255, 255, 0, 0.4)
+}
+a {
+	text-decoration: none;
+	padding: 2px 4px;
+	border-radius: 3px;
+	-webkit-user-select: none;
+	user-select: none;
+}
+a:link, a:visited {
+	color: #000;
+	text-shadow: 1px 1px 2px #FFF;
+}
+a:active {
+	color: #FFF7D6;
+	background: rgba(0, 0, 0, 0.7);
+	text-decoration: underline;
+}
+ul {
+	padding-left: 20px;
+	list-style-position: inherit;
+	margin-right: 15px;
+}
+li {
+	margin-bottom: 8px;
+	text-align: left;
+	line-height: 0.8;
+	margin-left: 50px;
+}
+div
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+h3:active, p:active, li:active {
+	background: rgba(255, 255, 255, 0.2);
+}
+.header:active {
+	background: rgba(0, 0, 0, 0.8);
+	color: #FFE55C;
+}

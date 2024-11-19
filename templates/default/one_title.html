@@ -1,0 +1,43 @@
+<html>
+<head>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            {{ poster_html|safe }}
+        }
+        {{ styles_css|safe }}
+    </style>
+</head>
+<body>
+    <div class="reload">{{ reload_html|safe }}
+        <span class="header_span">{{ rating_html|safe }}</span>
+    </div>
+    <div>
+        <p class="header">{{ title.name_en }}</p>
+        <p class="header">{{ title.name_ru }}</p>
+        <div>
+            {{ announce_html|safe }}
+            {{ status_html|safe }}
+            {{ description_html|safe }}
+            {{ genres_html|safe }}
+            {{ year_html|safe }}
+            {{ type_html|safe }}
+        </div>
+        <div>
+            {{ episodes_html|safe }}
+        </div>
+        <div>
+            <p class="header_p">Torrents:</p>
+            {{ torrents_html|safe }}
+        </div>
+    </div>
+    <div>
+        {{ new_line|safe }}
+    </div>
+</body>
+</html>

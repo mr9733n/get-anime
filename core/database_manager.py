@@ -2,7 +2,6 @@ import ast
 import json
 import logging
 import os
-
 import sqlalchemy
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
@@ -57,6 +56,79 @@ class DatabaseManager:
                 except Exception as e:
                     session.rollback()
                     self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
+
+    def save_template(self, template_name):
+        """
+        Saves templates, overwriting existing ones if files have changed.
+        :type template_name: str
+        :return:
+        """
+        template_files = {
+            'one_title_html': 'one_title.html',
+            'titles_html': 'titles.html',
+            'text_list_html': 'text_list.html',
+            'styles_css': 'styles.css'
+        }
+
+        with self.Session as session:
+            try:
+                # Проверяем, существует ли шаблон
+                existing_template = session.query(Template).filter_by(name=template_name).first()
+
+                # Чтение файлов шаблона
+                one_title_html_content = self.read_static_file(template_name, template_files["one_title_html"])
+                titles_html_content = self.read_static_file(template_name, template_files["titles_html"])
+                text_list_html_content = self.read_static_file(template_name, template_files["text_list_html"])
+                styles_content = self.read_static_file(template_name, template_files["styles_css"])
+
+                if existing_template:
+                    # Проверяем, изменилось ли содержимое файлов
+                    if (existing_template.one_title_html != one_title_html_content or
+                            existing_template.titles_html != titles_html_content or
+                            existing_template.text_list_html != text_list_html_content or
+                            existing_template.styles_css != styles_content):
+                        # Обновляем существующий шаблон
+                        existing_template.one_title_html = one_title_html_content
+                        existing_template.titles_html = titles_html_content
+                        existing_template.text_list_html = text_list_html_content
+                        existing_template.styles_css = styles_content
+                        session.commit()
+                        self.logger.info(f"Template '{template_name}' updated successfully.")
+                    else:
+                        self.logger.info(f"Template '{template_name}' is already up-to-date.")
+                else:
+                    # Сохранение нового шаблона в базе данных
+                    save_template = Template(
+                        name=template_name,
+                        one_title_html=one_title_html_content,
+                        titles_html=titles_html_content,
+                        text_list_html=text_list_html_content,
+                        styles_css=styles_content
+                    )
+                    session.add(save_template)
+                    session.commit()
+                    self.logger.info(f"Template '{template_name}' saved successfully.")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error saving template: {e}")
+
+    def read_static_file(self, template_name, file_name):
+        """
+        Used by save_template
+        :param template_name:
+        :param file_name:
+        :return:
+        """
+        try:
+            template_path = os.path.join('templates', template_name)
+            with open(f'{template_path}/{file_name}', 'r', encoding='utf-8') as file:
+                return file.read()
+        except FileNotFoundError:
+            self.logger.warning(f"Static file '{file_name}' not found.")
+            return ""
+        except Exception as e:
+            self.logger.error(f"Error reading file '{file_name}': {e}")
+            return ""
 
     def save_title(self, title_data):
         with self.Session as session:
@@ -1003,6 +1075,25 @@ class DatabaseManager:
                 self.logger.error(f"Error during title search: {e}")
                 return []
 
+    def get_template(self, name=None):
+        """
+        Загружает темплейт из базы данных по имени.
+        """
+        if name is None:
+            name = 'default'
+        with self.Session as session:
+            try:
+                template = session.query(Template).filter_by(name=name).first()
+                if template:
+                    self.logger.info(f"Template '{name}' loaded successfully.")
+                    return template.titles_html, template.one_title_html, template.text_list_html, template.styles_css
+                else:
+                    self.logger.warning(f"Template '{name}' not found.")
+                    return None, None, None, None
+            except Exception as e:
+                self.logger.error(f"Error loading template '{name}': {e}")
+                return None, None, None, None
+
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
@@ -1262,3 +1353,13 @@ class Poster(Base):
     last_updated = Column(DateTime, default=datetime.utcnow)
 
     title = relationship("Title", back_populates="posters")
+
+class Template(Base):
+    __tablename__ = 'templates'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, nullable=False)
+    one_title_html = Column(Text, nullable=False)
+    titles_html = Column(Text, nullable=False)
+    text_list_html = Column(Text, nullable=False)
+    styles_css = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

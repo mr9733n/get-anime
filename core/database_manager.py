@@ -48,7 +48,7 @@ class DatabaseManager:
                     session.close()
                 except Exception as e:
                     session.rollback()
-                    self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
+                    self.logger.error(f"Error initializing '{days}' image in posters table: {e}")
 
     def save_placeholders(self):
         # Добавляем заглушки изображений, если они не добавлены
@@ -63,7 +63,10 @@ class DatabaseManager:
         return self.template_manager.save_template(template_name)
 
     def remove_schedule_day(self, title_ids, day_of_week, new_day_of_week):
-        return self.save_manager.remove_schedule_day(title_ids, day_of_week, new_day_of_week)
+        return self.save_manager.remove_schedule_day(title_ids, day_of_week)
+
+    def save_studio_to_db(self, title_id, studio_name):
+        return self.save_manager.save_studio_to_db(title_id, studio_name)
 
     def save_title(self, title_data):
         return self.save_manager.save_title(title_data)

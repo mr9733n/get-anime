@@ -11,8 +11,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, TitleGenreRelation, \
-    Template, Genre, TeamMember, TitleTeamRelation, Episode
+from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
+    TitleGenreRelation, \
+    Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio
 
 
 class SaveManager:
@@ -492,17 +493,55 @@ class SaveManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
 
-    def remove_schedule_day(self, title_ids, day_of_week, new_day_of_week):
-        try:
-            with self.Session as session:
+    def remove_schedule_day(self, title_ids, day_of_week):
+        with self.Session as session:
+            try:
                 schedules_to_update = (
-                    session.query(Schedule)
-                    .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
-                )
-                schedules_to_update.delete()
+                        session.query(Schedule)
+                        .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
+                    )
+
+                schedules_to_update.delete(synchronize_session=False)
                 session.commit()
                 self.logger.debug(
-                    f"Updated {day_of_week} for all specified titles to {title_ids} to new {new_day_of_week}")
-        except Exception as e:
-            session.rollback()
-            self.logger.error(f"Ошибка при обновлении дня для title_id {title_ids}: {e}")
+                    f"Removed schedules for day {day_of_week} and titles {title_ids}")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при удалении расписания для title_ids {title_ids}: {e}")
+
+    def save_studio_to_db(self, title_ids, studio_name):
+        """Функция для добавления новой студии в базу данных для нескольких тайтлов."""
+        with self.Session as session:  # Исправлено: создание новой сессии
+            try:
+                # Проверка, что массив title_ids не пуст
+                if not title_ids:
+                    self.logger.error("Ошибка: Массив title_ids пуст.")
+                    return
+
+                # Проход по массиву title_ids
+                for title_id in title_ids:
+                    # Проверяем, существует ли title_id в таблице Title
+                    existing_title = session.query(Title).filter_by(title_id=title_id).first()
+                    if not existing_title:
+                        self.logger.error(f"Ошибка: title_id '{title_id}' не найден в таблице Title.")
+                        continue
+
+                    # Проверяем, существует ли уже запись студии для этого title_id
+                    existing_studio = session.query(ProductionStudio).filter_by(title_id=title_id).first()
+                    if existing_studio:
+                        self.logger.error(f"Ошибка: Студия для title_id '{title_id}' уже существует.")
+                        continue
+
+                    # Создаем новую студию и сохраняем в базу данных
+                    new_studio = ProductionStudio(title_id=title_id, name=studio_name)
+                    session.add(new_studio)
+                    self.logger.debug(f"Новая студия добавлена: {studio_name} для title_id: {title_id}")
+
+                # Коммитим все изменения
+                session.commit()
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при добавлении студии в базу данных: {e}")
+
+

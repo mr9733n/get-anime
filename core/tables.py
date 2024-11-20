@@ -55,24 +55,20 @@ class Title(Base):
     schedules = relationship("Schedule", back_populates="title")
     ratings = relationship("Rating", back_populates="title")
     history = relationship("History", back_populates="title")
+    production_studio = relationship("ProductionStudio", uselist=False, back_populates="title")
 
+class ProductionStudio(Base):
+    __tablename__ = 'production_studios'
+    title_id = Column(Integer, ForeignKey('titles.title_id'), primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+    title = relationship("Title", back_populates="production_studio")
 
 class DaysOfWeek(Base):
     __tablename__ = 'days_of_week'
     day_of_week = Column(Integer, primary_key=True)
     day_name = Column(String, unique=True)
-
-# Данные для заполнения
-days = [
-    {"day_of_week": 0, "day_name": "Monday"},
-    {"day_of_week": 1, "day_name": "Tuesday"},
-    {"day_of_week": 2, "day_name": "Wednesday"},
-    {"day_of_week": 3, "day_name": "Thursday"},
-    {"day_of_week": 4, "day_name": "Friday"},
-    {"day_of_week": 5, "day_name": "Saturday"},
-    {"day_of_week": 6, "day_name": "Sunday"},
-]
-
 
 class Schedule(Base):
     __tablename__ = 'schedule'
@@ -85,7 +81,6 @@ class Schedule(Base):
 
     title = relationship("Title", back_populates="schedules")
     day = relationship("DaysOfWeek")
-
 
 class History(Base):
     __tablename__ = 'history'
@@ -186,7 +181,6 @@ class Episode(Base):
     name = Column(String)
     uuid = Column(String, unique=True)
     created_timestamp = Column(DateTime, default=datetime.utcnow)
-    # last_updated = Column(DateTime, default=datetime.utcnow)
     hls_fhd = Column(String)
     hls_hd = Column(String)
     hls_sd = Column(String)
@@ -221,7 +215,7 @@ class Torrent(Base):
     magnet_link = Column(String)
     uploaded_timestamp = Column(Integer)
     hash = Column(String)
-    torrent_metadata = Column(Text, nullable=True)  # Переименовано с `metadata` на `torrent_metadata`
+    torrent_metadata = Column(Text, nullable=True)
     raw_base64_file = Column(Text, nullable=True)
 
     title = relationship("Title", back_populates="torrents")

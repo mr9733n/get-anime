@@ -42,7 +42,7 @@ class PlaceholderManager:
                             session.add(placeholder_poster)
                             session.commit()
                             self.logger.info(f"Placeholder image '{placeholder['file_name']}' was added to posters table.")
-                    return True
+
                 except Exception as e:
                     session.rollback()
                     self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
@@ -104,7 +104,6 @@ class TemplateManager:
                     session.add(save_template)
                     session.commit()
                     self.logger.info(f"Template '{template_name}' saved successfully.")
-                return True
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error saving template: {e}")

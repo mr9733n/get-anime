@@ -490,10 +490,7 @@ class AnimePlayerAppVer3(QWidget):
                     titles_to_remove = current_title_ids - new_title_ids
                     if titles_to_remove:
                         self.logger.debug(f"find titles for remove: {titles_to_remove}")
-                        # TODO: fix ths
-                        # 10 -
-                        new_day_of_week = 10
-                        self.db_manager.remove_schedule_day(titles_to_remove, day_of_week, new_day_of_week)
+                        self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
                     self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
                 return True, new_title_ids
         except Exception as e:

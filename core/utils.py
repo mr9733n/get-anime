@@ -47,7 +47,6 @@ class PlaceholderManager:
                     session.rollback()
                     self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
 
-
 class TemplateManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)

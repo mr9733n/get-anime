@@ -4,13 +4,13 @@ import logging
 import os
 import sqlalchemy
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_, SmallInteger, PrimaryKeyConstraint
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
-from datetime import datetime, timezone
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from sqlalchemy import create_engine
+from core.save import SaveManager
+from core.process import ProcessManager
+from core.get import GetManager
+from core.utils import PlaceholderManager, TemplateManager
+from core.tables import Base
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -19,43 +19,20 @@ class DatabaseManager:
         self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
 
+        # Инициализация менеджеров
+        self.template_manager = TemplateManager(self.engine)
+        self.placeholder_manager = PlaceholderManager(self.engine)
+        self.save_manager = SaveManager(self.engine)
+        self.process_manager = ProcessManager(self.save_manager)
+        self.get_manager = GetManager(self.engine)
+
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
 
+    def save_placeholders(self):
         # Добавляем заглушки изображений, если они не добавлены
-        placeholders = [
-            {'title_id': 1, 'file_name': 'background.png'},
-            {'title_id': 2, 'file_name': 'no_image.png'},
-            {'title_id': 3, 'file_name': 'rating_star_blank.png'},
-            {'title_id': 4, 'file_name': 'rating_star.png'},
-            {'title_id': 5, 'file_name': 'watch_me.png'},
-            {'title_id': 6, 'file_name': 'watched.png'},
-            {'title_id': 7, 'file_name': 'reload.png'},
-            {'title_id': 8, 'file_name': 'download_red.png'},
-            {'title_id': 9, 'file_name': 'download_green.png'},
-            {'title_id': 10, 'file_name': 'need_to_see_red.png'},
-            {'title_id': 11, 'file_name': 'need_to_see_green.png'}
-        ]
-
-        with self.Session as session:
-            for placeholder in placeholders:
-                try:
-                    placeholder_poster = session.query(Poster).filter_by(title_id=placeholder['title_id']).first()
-                    if not placeholder_poster:
-                        with open(f'static/{placeholder["file_name"]}', 'rb') as image_file:
-                            poster_blob = image_file.read()
-                            placeholder_poster = Poster(
-                                title_id=placeholder['title_id'],
-                                poster_blob=poster_blob,
-                                last_updated=datetime.utcnow()
-                            )
-                            session.add(placeholder_poster)
-                            session.commit()
-                            self.logger.info(f"Placeholder image '{placeholder['file_name']}' was added to posters table.")
-                except Exception as e:
-                    session.rollback()
-                    self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
+        return self.placeholder_manager.save_placeholders()
 
     def save_template(self, template_name):
         """
@@ -63,688 +40,55 @@ class DatabaseManager:
         :type template_name: str
         :return:
         """
-        template_files = {
-            'one_title_html': 'one_title.html',
-            'titles_html': 'titles.html',
-            'text_list_html': 'text_list.html',
-            'styles_css': 'styles.css'
-        }
-
-        with self.Session as session:
-            try:
-                # Проверяем, существует ли шаблон
-                existing_template = session.query(Template).filter_by(name=template_name).first()
-
-                # Чтение файлов шаблона
-                one_title_html_content = self.read_static_file(template_name, template_files["one_title_html"])
-                titles_html_content = self.read_static_file(template_name, template_files["titles_html"])
-                text_list_html_content = self.read_static_file(template_name, template_files["text_list_html"])
-                styles_content = self.read_static_file(template_name, template_files["styles_css"])
-
-                if existing_template:
-                    # Проверяем, изменилось ли содержимое файлов
-                    if (existing_template.one_title_html != one_title_html_content or
-                            existing_template.titles_html != titles_html_content or
-                            existing_template.text_list_html != text_list_html_content or
-                            existing_template.styles_css != styles_content):
-                        # Обновляем существующий шаблон
-                        existing_template.one_title_html = one_title_html_content
-                        existing_template.titles_html = titles_html_content
-                        existing_template.text_list_html = text_list_html_content
-                        existing_template.styles_css = styles_content
-                        session.commit()
-                        self.logger.info(f"Template '{template_name}' updated successfully.")
-                    else:
-                        self.logger.info(f"Template '{template_name}' is already up-to-date.")
-                else:
-                    # Сохранение нового шаблона в базе данных
-                    save_template = Template(
-                        name=template_name,
-                        one_title_html=one_title_html_content,
-                        titles_html=titles_html_content,
-                        text_list_html=text_list_html_content,
-                        styles_css=styles_content
-                    )
-                    session.add(save_template)
-                    session.commit()
-                    self.logger.info(f"Template '{template_name}' saved successfully.")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error saving template: {e}")
-
-    def read_static_file(self, template_name, file_name):
-        """
-        Used by save_template
-        :param template_name:
-        :param file_name:
-        :return:
-        """
-        try:
-            template_path = os.path.join('templates', template_name)
-            with open(f'{template_path}/{file_name}', 'r', encoding='utf-8') as file:
-                return file.read()
-        except FileNotFoundError:
-            self.logger.warning(f"Static file '{file_name}' not found.")
-            return ""
-        except Exception as e:
-            self.logger.error(f"Error reading file '{file_name}': {e}")
-            return ""
-
-    def save_title(self, title_data):
-        with self.Session as session:
-            title_id = title_data['title_id']
-            self.logger.info(f"save_title started for {title_id}")
-            try:
-                # Проверка на наличие и корректность данных
-                if not isinstance(title_data, dict):
-                    raise ValueError("Переданные данные для сохранения тайтла должны быть словарем")
-
-                # Проверка типов ключевых полей
-                if not isinstance(title_data.get('title_id'), int):
-                    raise ValueError("Неверный тип для 'title_id'. Ожидался тип int.")
-
-                # Преобразование списков и словарей в строки в формате JSON для хранения в базе данных
-
-                existing_title = session.query(Title).filter_by(title_id=title_data['title_id']).first()
-
-
-                # Преобразуем timestamps если они есть в данных
-                if 'updated' in title_data:
-                    title_data['updated'] = datetime.utcfromtimestamp(title_data['updated'])
-                if 'last_change' in title_data:
-                    title_data['last_change'] = datetime.utcfromtimestamp(title_data['last_change'])
-
-                if existing_title:
-                    # Update existing title if data has changed
-                    is_updated = False
-
-                    for key, value in title_data.items():
-                        if getattr(existing_title, key, None) != value:
-                            setattr(existing_title, key, value)
-                            is_updated = True
-
-                    # Если было установлено, что данные обновились, фиксируем изменения в базе данных
-                    if is_updated:
-                        session.commit()
-                        self.logger.debug(f"Updated title_id: {title_id}")
-                else:
-                    # Add new title
-                    new_title = Title(**title_data)
-                    session.add(new_title)
-                    session.commit()
-                    self.logger.debug(f"Successfully saved title_id: {title_id}")
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
-
-    def save_franchise(self, franchise_data):
-        with self.Session as session:
-            try:
-                title_id = franchise_data['title_id']
-                franchise_id = franchise_data['franchise_id']
-                franchise_name = franchise_data['franchise_name']
-                self.logger.debug(f"Saving franchise_id: {franchise_id} for {title_id}, {franchise_name}")
-
-                # Проверка существования франшизы в базе данных
-                existing_franchise = session.query(Franchise).filter_by(title_id=title_id).first()
-
-                if existing_franchise:
-                    self.logger.debug(f"Franchise for title_id {title_id} already exists. Updating...")
-                    # Обновление существующей франшизы
-                    existing_franchise.franchise_id = franchise_id
-                    existing_franchise.franchise_name = franchise_name
-                    franchise = existing_franchise
-                else:
-                    # Создание новой франшизы
-                    new_franchise = Franchise(
-                        title_id=title_id,
-                        franchise_id=franchise_id,
-                        franchise_name=franchise_name
-                    )
-                    session.add(new_franchise)
-                    session.flush()  # Получаем ID новой франшизы для использования в релизах
-                    franchise = new_franchise
-
-                # Обработка информации о релизах франшизы
-                for release in franchise_data.get('releases', []):
-                    release_title_id = release.get('id')
-                    release_code = release.get('code')
-                    release_ordinal = release.get('ordinal')
-                    release_names = release.get('names', {})
-
-                    # Проверка существования релиза франшизы в базе данных
-                    existing_release = session.query(FranchiseRelease).filter_by(franchise_id=franchise.id,
-                                                                                 title_id=release_title_id).first()
-                    if existing_release:
-                        self.logger.debug(
-                            f"Franchise release for title_id {release_title_id} already exists. Updating...")
-                        # Обновление существующего релиза
-                        existing_release.code = release_code
-                        existing_release.ordinal = release_ordinal
-                        existing_release.name_ru = release_names.get('ru')
-                        existing_release.name_en = release_names.get('en')
-                        existing_release.name_alternative = release_names.get('alternative')
-                    else:
-                        # Создание нового релиза франшизы
-                        new_release = FranchiseRelease(
-                            franchise_id=franchise.id,
-                            title_id=release_title_id,
-                            code=release_code,
-                            ordinal=release_ordinal,
-                            name_ru=release_names.get('ru'),
-                            name_en=release_names.get('en'),
-                            name_alternative=release_names.get('alternative')
-                        )
-                        session.add(new_release)
-
-                session.commit()
-                self.logger.debug(f"Successfully saved franchise for title_id: {title_id}")
-
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении франшизы в базе данных: {e}")
-                return False
-
-    def save_genre(self, title_id, genres):
-        with self.Session as session:
-            try:
-                for genre in genres:
-                    # Проверяем, существует ли жанр в таблице Genre
-                    existing_genre = session.query(Genre).filter_by(name=genre).first()
-
-                    # Если жанр не существует, добавляем его
-                    if not existing_genre:
-                        new_genre = Genre(name=genre)
-                        session.add(new_genre)
-                        session.commit()  # Коммитим, чтобы получить genre_id для следующего этапа
-                        genre_id = new_genre.genre_id
-                    else:
-                        genre_id = existing_genre.genre_id
-
-                    # Добавляем связь в таблицу TitleGenreRelation
-                    existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
-                                                                                    genre_id=genre_id).first()
-                    if not existing_relation:
-                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id)
-                        session.add(new_relation)
-
-                session.commit()
-                self.logger.debug(f"Successfully saved genres for title_id: {title_id}")
-
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении жанров для title_id {title_id}: {e}")
-
-    def save_team_members(self, title_id, team_data):
-        with self.Session as session:
-            try:
-                for role, members_str in team_data.items():
-                    try:
-                        # Convert the string representation of list into an actual list
-                        members = ast.literal_eval(members_str)
-                    except (SyntaxError, ValueError) as e:
-                        self.logger.error(f"Failed to decode team data for role '{role}' in title_id {title_id}: {e}")
-                        continue
-
-                    for member_name in members:
-                        # Проверяем, существует ли уже участник с таким именем и ролью
-                        existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
-                        if not existing_member:
-                            # Создаем нового участника команды
-                            new_member = TeamMember(name=member_name, role=role)
-                            session.add(new_member)
-                            session.flush()  # Получаем ID нового участника
-                            team_member = new_member
-                        else:
-                            team_member = existing_member
-
-                        # Добавляем связь с тайтлом
-                        title_team_relation = TitleTeamRelation(title_id=title_id, team_member_id=team_member.id)
-                        session.add(title_team_relation)
-
-                session.commit()
-                self.logger.debug(f"Successfully saved team members for title_id: {title_id}")
-
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
-                return False
-
-    def save_episode(self, episode_data):
-        with self.Session as session:
-            title_id = episode_data['title_id']
-            episode_uuid = episode_data['uuid']
-            try:
-                if not isinstance(episode_data, dict):
-                    self.logger.error(f"Invalid episode data: {episode_data}")
-                    return
-
-                # Создаем копию данных
-                processed_data = episode_data.copy()
-
-                # Преобразуем timestamps если они есть в данных
-                if 'created_timestamp' in processed_data:
-                    processed_data['created_timestamp'] = datetime.utcfromtimestamp(processed_data['created_timestamp'])
-
-                existing_episode = session.query(Episode).filter_by(
-                    uuid=processed_data['uuid'],
-                    title_id=processed_data['title_id']
-                ).first()
-                self.logger.debug(f"Successfully saved episode: {episode_uuid}  for title_id: {title_id}")
-
-                if existing_episode:
-                    is_updated = False
-                    protected_fields = {'episode_id', 'title_id', 'created_timestamp'}
-
-                    for key, value in episode_data.items():
-                        if key not in protected_fields and getattr(existing_episode, key) != value:
-                            setattr(existing_episode, key, value)
-                            self.logger.debug(f"Existing episode: {protected_fields}")
-                            is_updated = True
-                    if is_updated:
-                        existing_episode.last_updated = datetime.utcnow()
-                        session.commit()
-                        self.logger.debug(f"Successfully updated episode: {episode_uuid} for title_id: {title_id}")
-                else:
-                        if 'created_timestamp' not in episode_data:
-                            episode_data['created_timestamp'] = datetime.utcnow()
-                        new_episode = Episode(**episode_data)
-                        session.add(new_episode)
-                        session.commit()
-                        self.logger.debug(f"Added episode: {episode_uuid}  for title_id: {title_id}")
-
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
-
-    def save_schedule(self, day_of_week, title_id, last_updated=None):
-        with self.Session as session:
-            try:
-                # Check if the entry already exists
-                existing_schedule = session.query(Schedule).filter_by(day_of_week=day_of_week,
-                                                                      title_id=title_id).first()
-                if existing_schedule:
-                    # If it exists, update the last_updated field
-                    existing_schedule.last_updated = last_updated or datetime.utcnow()
-                    self.logger.debug(
-                        f"Schedule entry for day {day_of_week} and title_id {title_id} already exists. Updating last_updated.")
-                else:
-                    # If it doesn't exist, create a new schedule entry
-                    schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id, last_updated=last_updated)
-                    session.add(schedule_entry)
-                    self.logger.debug(f"Adding new schedule entry for day {day_of_week} and title_id {title_id}.")
-
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении расписания: {e}")
+        return self.template_manager.save_template(template_name)
 
     def remove_schedule_day(self, title_ids, day_of_week, new_day_of_week):
-        try:
-            with self.Session as session:
-                schedules_to_update = (
-                    session.query(Schedule)
-                    .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
-                )
-                schedules_to_update.update(
-                    {"day_of_week": new_day_of_week},
-                    synchronize_session=False  # Используйте True для синхронизации состояния
-                )
-                session.commit()
-                self.logger.debug(f"Updated {day_of_week} for all specified titles to {title_ids} to new {new_day_of_week}")
-        except Exception as e:
-            session.rollback()
-            self.logger.error(f"Ошибка при обновлении дня для title_id {title_ids}: {e}")
+        return self.save_manager.remove_schedule_day(title_ids, day_of_week, new_day_of_week)
+
+    def save_title(self, title_data):
+        return self.save_manager.save_title(title_data)
+
+    def save_franchise(self, franchise_data):
+        return self.save_manager.save_franchise(franchise_data)
+
+    def save_genre(self, title_id, genres):
+        return self.save_manager.save_genre(title_id, genres)
+
+    def save_team_members(self, title_id, team_data):
+        return self.save_manager.save_team_members(title_id, team_data)
+
+    def save_episode(self, episode_data):
+        return self.save_manager.save_episode(episode_data)
+
+    def save_schedule(self, day_of_week, title_id, last_updated=None):
+        return self.save_manager.save_schedule(day_of_week, title_id, last_updated)
 
     def save_torrent(self, torrent_data):
-        with self.Session as session:
-            title_id = torrent_data['title_id']
-            torrent_id = torrent_data['torrent_id']
-            self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
-            try:
-                # Проверяем, существует ли уже торрент с данным `torrent_id`
-                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_id).first()
-
-                if existing_torrent:
-                    is_updated = False
-
-                    # Проверка на изменение данных
-                    is_updated = any(
-                        getattr(existing_torrent, key) != value
-                        for key, value in torrent_data.items()
-                    )
-
-                    if is_updated:
-                        # Обновляем данные, если они изменились
-                        session.merge(Torrent(**torrent_data))
-                        self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
-                else:
-                    # Добавляем новый торрент, если его еще нет в базе
-                    session.add(Torrent(**torrent_data))
-                    self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
-
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
+        return self.save_manager.save_torrent(torrent_data)
 
     def process_franchises(self, title_data):
-        franchises_str = title_data['title_franchises']
-
-        try:
-            self.logger.debug(f"franchises_str: {franchises_str}")
-
-            # Use json.loads to parse the JSON string
-            franchises = json.loads(franchises_str)
-        except json.JSONDecodeError as e:
-            self.logger.error(
-                f"Failed to parse franchises data for title_id: {title_data.get('title_id', 'unknown')}: {e}"
-            )
-            return
-
-        if franchises:
-            for franchise in franchises:
-                franchise_data = {
-                    'title_id': title_data['title_id'],
-                    'franchise_id': franchise.get('franchise', {}).get('id'),
-                    'franchise_name': franchise.get('franchise', {}).get('name'),
-                    'releases': franchise.get('releases', [])
-                }
-                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {franchise_data}")
-                self.save_franchise(franchise_data)
+        return self.process_manager.process_franchises(title_data)
 
     def process_titles(self, title_data):
-        try:
-            title_data = {
-                'title_id': title_data.get('id', None),
-                'code': title_data.get('code', ''),
-                'name_ru': title_data.get('names', {}).get('ru', ''),
-                'name_en': title_data.get('names', {}).get('en', ''),
-                'alternative_name': title_data.get('names', {}).get('alternative', ''),
-                'title_franchises': json.dumps(title_data.get('franchises', [])),
-                'announce': title_data.get('announce', ''),
-                'status_string': title_data.get('status', {}).get('string', ''),
-                'status_code': title_data.get('status', {}).get('code', None),
-                'poster_path_small': title_data.get('posters', {}).get('small', {}).get('url', ''),
-                'poster_path_medium': title_data.get('posters', {}).get('medium', {}).get('url', ''),
-                'poster_path_original': title_data.get('posters', {}).get('original', {}).get('url', ''),
-                'updated': title_data.get('updated', 0) if title_data.get('updated') is not None else 0,
-                'last_change': title_data.get('last_change', 0) if title_data.get('last_change') is not None else 0,
-                'type_full_string': title_data.get('type', {}).get('full_string', ''),
-                'type_code': title_data.get('type', {}).get('code', None),
-                'type_string': title_data.get('type', {}).get('string', ''),
-                'type_episodes': title_data.get('type', {}).get('episodes', None),
-                'type_length': title_data.get('type', {}).get('length', ''),
-                'title_genres': json.dumps(title_data.get('genres', [])),
-                'team_voice': json.dumps(title_data.get('team', {}).get('voice', [])),
-                'team_translator': json.dumps(title_data.get('team', {}).get('translator', [])),
-                'team_timing': json.dumps(title_data.get('team', {}).get('timing', [])),
-                'season_string': title_data.get('season', {}).get('string', ''),
-                'season_code': title_data.get('season', {}).get('code', None),
-                'season_year': title_data.get('season', {}).get('year', None),
-                'season_week_day': title_data.get('season', {}).get('week_day', None),
-                'description': title_data.get('description', ''),
-                'in_favorites': title_data.get('in_favorites', 0),
-                'blocked_copyrights': title_data.get('blocked', {}).get('copyrights', False),
-                'blocked_geoip': title_data.get('blocked', {}).get('geoip', False),
-                'blocked_geoip_list': json.dumps(title_data.get('blocked', {}).get('geoip_list', [])),
-                'host_for_player': title_data.get('player', {}).get('host', ''),
-                'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
-                'last_updated': datetime.utcnow(),
-            }
-            self.save_title(title_data)
-
-            title_id = title_data['title_id']
-
-            # Сохранение данных в связанные таблицы
-            self.process_franchises(title_data)
-
-            genres = title_data['title_genres']
-            decoded_genres = ast.literal_eval(genres)  # Decode each genre
-            self.logger.debug(f"GENRES: {title_id}:{decoded_genres}")
-            self.save_genre(title_id, decoded_genres)
-
-            # Извлечение данных команды напрямую
-
-
-            team_data = {
-                'voice': title_data['team_voice'],
-                'translator': title_data['team_translator'],
-                'timing': title_data['team_timing'],
-            }
-            self.logger.debug(f"TEAM DATA: {title_id}:{team_data}")
-
-            # Проверяем, что данные команды существуют и сохраняем их
-            if team_data:
-                self.save_team_members(title_id, team_data)
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to save title to database: {e}")
+        return self.process_manager.process_titles(title_data)
 
     def process_episodes(self, title_data):
-        for episode in title_data.get("player", {}).get("list", {}).values():
-            if not isinstance(episode, dict):
-                self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
-                continue
-
-            if "hls" in episode:
-                try:
-                    self.logger.debug(f"episode: {episode}")
-                    episode_data = {
-                        'title_id': title_data.get('id', None),
-                        'episode_number': episode.get('episode'),
-                        'name': episode.get('name', f'Серия {episode.get("episode")}'),
-                        'uuid': episode.get('uuid'),
-                        'created_timestamp': episode.get('created_timestamp'),
-                        'hls_fhd': episode.get('hls', {}).get('fhd'),
-                        'hls_hd': episode.get('hls', {}).get('hd'),
-                        'hls_sd': episode.get('hls', {}).get('sd'),
-                        'preview_path': episode.get('preview'),
-                        'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
-                        'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
-                    }
-
-                    self.save_episode(episode_data)
-
-                except Exception as e:
-                    self.logger.error(f"Failed to save episode to database: {e}")
-        return True
+        return self.process_manager.process_episodes(title_data)
 
     def process_torrents(self, title_data):
-        if "torrents" in title_data and "list" in title_data["torrents"]:
-            for torrent in title_data["torrents"]["list"]:
-                url = torrent.get("url")
-                if url:
-                    try:
-                        torrent_data = {
-                            'torrent_id': torrent.get('torrent_id'),
-                            'title_id': title_data.get('id'),
-                            'episodes_range': torrent.get('episodes', {}).get('string', 'Неизвестный диапазон'),
-                            'quality': torrent.get('quality', {}).get('string', 'Качество не указано'),
-                            'quality_type': torrent.get('quality', {}).get('type'),
-                            'resolution': torrent.get('quality', {}).get('resolution'),
-                            'encoder': torrent.get('quality', {}).get('encoder'),
-                            'leechers': torrent.get('leechers'),
-                            'seeders': torrent.get('seeders'),
-                            'downloads': torrent.get('downloads'),
-                            'total_size': torrent.get('total_size'),
-                            'size_string': torrent.get('size_string'),
-                            'url': torrent.get('url'),
-                            'magnet_link': torrent.get('magnet'),
-                            'uploaded_timestamp': torrent.get('uploaded_timestamp'),
-                            'hash': torrent.get('hash'),
-                            'torrent_metadata': torrent.get('metadata'),
-                            'raw_base64_file': torrent.get('raw_base64_file')
-                        }
-
-                        self.save_torrent(torrent_data)
-                    except Exception as e:
-                        self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
-        return True
+        return self.process_manager.process_torrents(title_data)
 
     def save_poster(self, title_id, poster_blob):
-        with self.Session as session:
-            try:
-                # Проверяем, существует ли уже постер для данного title_id
-                existing_poster = session.query(Poster).filter_by(title_id=title_id).first()
-                if not existing_poster:
-                    # Создаем новый объект Poster и добавляем в базу
-                    new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
-                    session.add(new_poster)
-                    self.logger.debug(f"Poster image was saved to database. title_id: {title_id}")
-                else:
-                    # Обновляем существующий постер
-                    existing_poster.poster_blob = poster_blob
-                    existing_poster.last_updated = datetime.utcnow()
-                    self.logger.debug(f"Poster image was existed in database. title_id: {title_id}")
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+        return self.save_manager.save_poster(title_id, poster_blob)
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
-        with self.Session as session:
-            try:
-                # Получение всех существующих записей для данного title_id
-                existing_statuses = session.query(History).filter(
-                    History.user_id == user_id,
-                    History.title_id == title_id
-                ).all()
-                if existing_statuses:
-                    # Обновление флага need_to_see для всех записей
-                    for existing_status in existing_statuses:
-                        existing_status.need_to_see = need_to_see
-                        self.logger.debug(
-                            f"Updated need_to_see for title_id: {title_id}, episode_id: {existing_status.episode_id} to {need_to_see}")
-                else:
-                    new_add = History(
-                        user_id=user_id,
-                        title_id=title_id,
-                        need_to_see=1
-                    )
-                    session.add(new_add)
-                # Фиксация изменений в базе данных
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(
-                    f"Error saving need_to_see for title_id {title_id}: {e}")
-                raise
+        return self.save_manager.save_need_to_see(user_id, title_id, need_to_see)
 
     def save_watch_all_episodes(self, user_id, title_id, is_watched=False, episode_ids=None):
-        with self.Session as session:
-            try:
-                if episode_ids is None or not isinstance(episode_ids, list) or len(episode_ids) == 0:
-                    self.logger.error("Invalid episode_ids provided for bulk update.")
-                    raise ValueError("Episode IDs must be a non-empty list.")
-
-                # Получение всех существующих записей для данных episode_ids
-                existing_statuses = session.query(History).filter(
-                    History.user_id == user_id,
-                    History.title_id == title_id,
-                    History.episode_id.in_(episode_ids)
-                ).all()
-
-                # Обновление существующих записей
-                existing_episode_ids = set()
-                for existing_status in existing_statuses:
-                    existing_status.previous_watched_at = existing_status.last_watched_at
-                    existing_status.is_watched = is_watched
-                    existing_status.last_watched_at = datetime.utcnow()
-                    existing_status.watch_change_count += 1
-                    existing_episode_ids.add(existing_status.episode_id)
-
-                    self.logger.debug(f"BULK Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {existing_status.episode_id} STATUS: {is_watched}")
-
-                # Добавление новых записей для эпизодов, которых нет в базе данных
-                new_episode_ids = set(episode_ids) - existing_episode_ids
-                new_adds = []
-                for episode_id in new_episode_ids:
-                    new_add = History(
-                        user_id=user_id,
-                        title_id=title_id,
-                        episode_id=episode_id,
-                        is_watched=is_watched,
-                        last_watched_at=datetime.utcnow() if is_watched else None,
-                        watch_change_count=1 if is_watched else 0
-                    )
-                    new_adds.append(new_add)
-
-                    self.logger.debug(f"BULK Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, STATUS: {is_watched}")
-
-                # Добавляем новые записи в сессию
-                session.bulk_save_objects(new_adds)
-
-                # Фиксация изменений в базе данных
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"BULK Error saving watch status for user_id {user_id}, title_id {title_id}, episode_ids {episode_ids}: {e}")
-                raise
+        return self.save_manager.save_watch_all_episodes(user_id, title_id, is_watched, episode_ids)
 
     def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False, torrent_id=None, is_download=False):
-        with self.Session as session:
-            try:
-                # Single update for episode or torrent
-                filters = {'user_id': user_id, 'title_id': title_id}
-                if episode_id is not None:
-                    filters['episode_id'] = episode_id
-                elif torrent_id is not None:
-                    filters['torrent_id'] = torrent_id
-                else:
-                    filters['episode_id'] = None
-                    filters['torrent_id'] = None
-
-                existing_status = session.query(History).filter_by(**filters).one_or_none()
-
-                if existing_status:
-                    # Update existing status
-                    if episode_id is not None:
-                        existing_status.previous_watched_at = existing_status.last_watched_at
-                        existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
-                        existing_status.watch_change_count += 1
-                        self.logger.debug(
-                            f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id} STATUS: {is_watched}")
-                    elif torrent_id is not None:
-                        existing_status.previous_download_at = existing_status.last_download_at
-                        existing_status.is_download = is_download
-                        existing_status.last_download_at = datetime.utcnow()
-                        existing_status.download_change_count += 1
-                        self.logger.debug(
-                            f"Updated download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id} STATUS: {is_download}")
-                    else:
-                        existing_status.previous_watched_at = existing_status.last_watched_at
-                        existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
-                        existing_status.watch_change_count += 1
-                        self.logger.debug(
-                            f"Updated watch status for user_id: {user_id}, title_id: {title_id} STATUS: {is_watched}")
-                else:
-                    # Add a new status if none exists
-                    new_add = History(
-                        user_id=user_id,
-                        title_id=title_id,
-                        torrent_id=torrent_id if torrent_id is not None else None,
-                        episode_id=episode_id if episode_id is not None else None,
-                        is_download=is_download if torrent_id is not None else False,
-                        is_watched=is_watched if episode_id is not None else False,
-                        last_download_at=datetime.utcnow() if torrent_id is not None else None,
-                        last_watched_at=datetime.utcnow() if episode_id is not None else None,
-                        download_change_count=1 if torrent_id is not None else 0,
-                        watch_change_count=1 if episode_id is not None else 0
-                    )
-
-                    session.add(new_add)
-                    self.logger.debug(
-                        f"Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
-
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(
-                    f"Error saving watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
-                raise
+        return self.save_manager.save_watch_status(user_id,title_id, episode_id, is_watched, torrent_id, is_download)
 
     def save_ratings(self, title_id, rating_value, rating_name='CMERS'):
         """
@@ -759,340 +103,55 @@ class DatabaseManager:
             :param rating_value:
             :type rating_name: object
         """
-        with self.Session as session:
-            try:
-                existing_rating = session.query(Rating).filter_by(title_id=title_id).one_or_none()
-                if existing_rating:
-                    existing_rating.rating_value = rating_value
-                    existing_rating.rating_name = rating_name
-                    self.logger.debug(f"Updated rating for title_id: {title_id}")
-                else:
-                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name)
-                    session.add(new_rating)
-                    self.logger.debug(f"Added new rating for title_id: {title_id}")
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error saving rating for title_id {title_id}: {e}")
-                raise
+        return self.save_manager.save_ratings(title_id, rating_value, rating_name)
 
     def get_titles_for_day(self, day_of_week):
         """Загружает тайтлы для указанного дня недели из базы данных."""
-        with self.Session as session:
-            try:
-                return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
+        return self.get_manager.get_titles_for_day(day_of_week)
 
     def get_history_status(self, user_id, title_id, episode_id=None, torrent_id=None):
-        with self.Session as session:
-            try:
-                history_status = session.query(History).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id, torrent_id=torrent_id).one_or_none()
-                if history_status:
-                    self.logger.debug(f"user_id: {user_id} Watch status: {history_status.is_watched} for title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
-                    # days_ago = (datetime.utcnow() - history_status.last_watched_at).days if history_status.last_watched_at else 0
-                    return history_status.is_watched, history_status.is_download
-                return False, False
-            except Exception as e:
-                self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
-                raise
+        return self.get_manager.get_history_status(user_id, title_id, episode_id, torrent_id)
 
     def get_need_to_see(self, user_id, title_id):
-        with self.Session as session:
-            try:
-                # Получение записей для данного title_id, где need_to_see=True
-                need_to_see_statuses = session.query(History).filter(
-                    History.user_id == user_id,
-                    History.title_id == title_id,
-                    History.need_to_see == True
-                ).all()
-
-                # Возвращаем список найденных эпизодов с флагом need_to_see
-                self.logger.debug(
-                    f"Fetched need_to_see statuses for title_id: {title_id}, count: {len(need_to_see_statuses)}")
-                return need_to_see_statuses
-            except Exception as e:
-                self.logger.error(f"Error fetching need_to_see for title_id {title_id}: {e}")
-                raise
+        return self.get_manager.get_need_to_see(user_id, title_id)
 
     def get_all_episodes_watched_status(self, user_id, title_id):
-        with self.Session as session:
-            try:
-                # Запрос записей для указанного пользователя и тайтла
-                query = session.query(History).filter(
-                    History.user_id == user_id,
-                    History.title_id == title_id
-                )
-
-
-                    # Если флаг select_all не установлен, выбираем записи, где episode_id не является None
-                query = query.filter(History.episode_id != None)
-
-                history_statuses = query.all()
-
-                # Если записей нет, возвращаем False, так как нет подтверждения, что все эпизоды просмотрены
-                if not history_statuses:
-                    return False
-
-                # Проверяем, что все записи имеют статус is_watched=True
-                all_watched = all(status.is_watched for status in history_statuses)
-
-                return all_watched
-            except Exception as e:
-                self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}: {e}")
-                raise
+        return self.get_manager.get_all_episodes_watched_status(user_id, title_id)
 
     def get_rating_from_db(self, title_id):
-        with self.Session as session:
-            try:
-                ratings = session.query(Rating).filter_by(title_id=title_id).one_or_none()
-                if ratings:
-                    self.logger.debug(f"Rating '{ratings.rating_value}' for title_id: {ratings.title_id}")
-                    return ratings
-            except Exception as e:
-                self.logger.error(f"Error fetching rating for title_id {title_id}: {e}")
-                raise
+        return self.get_manager.get_rating_from_db(title_id)
 
     def get_statistics_from_db(self):
-        """Получает статистику из базы данных."""
-        with self.Session as session:
-            try:
-                # Список запросов для разных статистик
-                queries = {
-                    'titles_count': "SELECT COUNT(DISTINCT title_id) FROM titles",
-                    'franchises_count': """
-                        SELECT COUNT(DISTINCT f.id)
-                        FROM titles t
-                        LEFT JOIN franchise_releases fr ON t.title_id = fr.title_id
-                        LEFT JOIN franchises f ON fr.franchise_id = f.id
-                    """,
-                    'episodes_count': "SELECT COUNT(DISTINCT episode_id) FROM episodes",
-                    'posters_count': "SELECT COUNT(DISTINCT poster_id) FROM posters",
-                    'unique_translators_count': """
-                        SELECT COUNT(DISTINCT tm.id)
-                        FROM team_members tm
-                        LEFT JOIN title_team_relation ttr ON tm.id = ttr.team_member_id
-                        WHERE tm.role = 'translator'
-                    """,
-                    'unique_teams_count': """
-                        SELECT COUNT(DISTINCT tm.id)
-                        FROM team_members tm
-                        LEFT JOIN title_team_relation ttr ON tm.id = ttr.team_member_id
-                        WHERE tm.role = 'voice'
-                    """,
-                    'blocked_titles_count': """
-                        SELECT COUNT(DISTINCT title_id)
-                        FROM titles
-                        WHERE blocked_geoip = 1 OR blocked_copyrights = 1
-                    """,
-                    'blocked_titles': """
-                        SELECT GROUP_CONCAT(DISTINCT title_id || ' (' || name_en || ')')
-                        FROM titles
-                        WHERE blocked_geoip = 1 OR blocked_copyrights = 1;
-                    """,
-                    'schedules_count': "SELECT COUNT(DISTINCT title_id) FROM schedule",
-                    'history_count': "SELECT COUNT(DISTINCT id) FROM history",
-                    'history_total_count': "SELECT COUNT(*) AS total_count FROM history",
-                    'history_total_watch_changes': "SELECT SUM(watch_change_count) AS total_watch_changes FROM history",
-                    'history_total_download_changes': "SELECT SUM(download_change_count) AS total_download_changes FROM history",
-                    'need_to_see_count': "SELECT COUNT(*) AS need_to_see_count FROM history WHERE need_to_see = TRUE",
-                    'torrents_count': "SELECT COUNT(DISTINCT torrent_id) FROM torrents",
-                    'genres_count': """
-                        SELECT COUNT(DISTINCT g.genre_id)
-                        FROM genres g
-                        LEFT JOIN title_genre_relation tgr ON g.genre_id = tgr.genre_id
-                    """
-                }
-
-                # Выполняем каждый запрос и сохраняем результаты
-                statistics = {}
-                for key, query in queries.items():
-                    result = session.execute(sqlalchemy.text(query)).scalar()
-                    statistics[key] = result
-
-                return statistics
-
-            except Exception as e:
-                self.logger.error(f"Ошибка при получении статистики из базы данных: {e}")
-                return {}
+        return self.get_manager.get_statistics_from_db()
 
     def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
-        """Получает все тайтлы вместе с информацией о франшизах."""
-        with self.Session as session:
-            try:
-                # Начинаем формирование базового запроса
-                if title_id:
-                    # Если указан title_id, находим все связанные тайтлы
-                    franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
-                        FranchiseRelease.title_id == title_id
-                    ).scalar_subquery()
-
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id == franchise_subquery,
-                        FranchiseRelease.franchise_id.isnot(None)
-                    )
-                else:
-                    # Если show_all=True, получить все тайтлы, у которых есть франшизы
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id.isnot(None)
-                    )
-                # Если указан batch_size, применяем лимит и смещение
-                if show_all:
-                    if batch_size:
-                        query = query.offset(offset).limit(batch_size)
-
-                # Получаем результат запроса
-                titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
-
-                return titles
-
-            except Exception as e:
-                self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")
-                return []
+        return self.get_manager.get_franchises_from_db(show_all, batch_size, offset, title_id)
 
     def get_poster_link(self, title_id):
-        with self.Session as session:
-            try:
-                self.logger.debug(f"Processing poster link for title_id: {title_id}")
-
-                # Запрос для получения poster_path_small для конкретного title_id
-                poster_link = session.query(Title.poster_path_small).filter(Title.title_id == title_id).scalar()
-
-                if poster_link:
-                    self.logger.debug(f"Poster link found for title_id: {title_id}, link: {poster_link}")
-                    return poster_link
-
-                self.logger.warning(f"No poster link found for title_id: {title_id}")
-                return None
-
-            except Exception as e:
-                self.logger.error(f"Error fetching poster from database: {e}")
-                return None
-
-    def check_poster_exists(self, title_id):
-        """
-        Checks if a poster exists in the database for a given title_id.
-        """
-        with self.Session as session:
-            try:
-                return session.query(Poster.title_id).filter_by(title_id=title_id).scalar() is not None
-            except Exception as e:
-                self.logger.error(f"Error checking poster existence in database: {e}")
-                return False
+        return self.get_manager.get_poster_link(title_id)
 
     def get_poster_blob(self, title_id):
         """
         Retrieves the poster blob for a given title_id.
         If check_exists_only is True, returns a boolean indicating whether the poster exists.
         """
-        with self.Session as session:
-            try:
-                poster = session.query(Poster).filter_by(title_id=title_id).first()
-                if poster:
-                    if title_id in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
-                        # TODO: No need log message for rating stars images
-                        # 3, 4 : rating images
-                        # 5, 6 : watch images
-                        # 7 : reload image
-                        # 8, 9 : download image
-                        # 10, 11 : need to see image
-
-                        return poster.poster_blob, False
-                    else:
-                        self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
-                        return poster.poster_blob, False
-
-                # Используем placeholder, если постер не найден
-                placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
-                if placeholder_poster:
-                    self.logger.debug(
-                    f"Poster image was not found in database for title_id: {title_id}. Using placeholder.")
-                    return placeholder_poster.poster_blob, True
-                self.logger.warning(f"No poster found for title_id: {title_id} and no placeholder available.")
-                return None, False
-            except Exception as e:
-                self.logger.error(f"Error fetching poster from database: {e}")
-                return None, False
+        return self.get_manager.get_poster_blob(title_id)
 
     def get_torrents_from_db(self, title_id):
-        with self.Session as session:
-            try:
-                torrents = session.query(Torrent).filter_by(title_id=title_id).all()
-                if torrents:
-                    self.logger.debug(f"Torrent data was found in database.")
-                    return torrents
-                return None
-            except Exception as e:
-                self.logger.error(f"Error fetching torrent data from database: {e}")
+        return self.get_manager.get_torrents_from_db(title_id)
 
     def get_genres_from_db(self, title_id):
-        with self.Session as session:
-            try:
-                # Получаем все жанры, связанные с данным title_id через таблицу TitleGenreRelation
-                relations = session.query(TitleGenreRelation).filter_by(title_id=title_id).all()
-                genres = [relation.genre.name for relation in relations]
-                if genres:
-                    self.logger.debug(f"Genres were found in database for title_id: {title_id}")
-                    return genres
-            except Exception as e:
-                self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
-                return None
+        return self.get_manager.get_genres_from_db(title_id)
 
     def get_titles_by_keywords(self, search_string):
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
-        keywords = search_string.split(',')
-        keywords = [kw.strip() for kw in keywords]
-        if not keywords:
-            return []
-        self.logger.debug(f"keyword for processing: {keywords}")
-        with self.Session as session:
-            try:
-                # Check if the keywords contain only title_ids
-                if all(kw.isdigit() for kw in keywords):
-                    title_ids = [int(kw) for kw in keywords]
-                    query = session.query(Title).filter(Title.title_id.in_(title_ids))
-                    titles = query.all()
-                else:
-                    # Build dynamic filter using SQLAlchemy's 'or_' to match any keyword in any column
-                    filters = [
-                        and_(
-                            Title.code.ilike(f"%{keyword}%"),
-                            Title.name_ru.ilike(f"%{keyword}%"),
-                            Title.name_en.ilike(f"%{keyword}%"),
-                            Title.alternative_name.ilike(f"%{keyword}%")
-                        )
-                        for keyword in keywords
-                    ]
-                    # Combine filters using 'and_' so that all keywords must match (across any field)
-                    query = session.query(Title).filter(*filters)
-                    titles = query.all()
-
-                # Extract and return only the title_ids from the matched titles
-                title_ids = [title.title_id for title in titles]
-                return title_ids
-            except Exception as e:
-                self.logger.error(f"Error during title search: {e}")
-                return []
+        return self.get_manager.get_titles_by_keywords(search_string)
 
     def get_template(self, name=None):
         """
         Загружает темплейт из базы данных по имени.
         """
-        if name is None:
-            name = 'default'
-        with self.Session as session:
-            try:
-                template = session.query(Template).filter_by(name=name).first()
-                if template:
-                    self.logger.info(f"Template '{name}' loaded successfully.")
-                    return template.titles_html, template.one_title_html, template.text_list_html, template.styles_css
-                else:
-                    self.logger.warning(f"Template '{name}' not found.")
-                    return None, None, None, None
-            except Exception as e:
-                self.logger.error(f"Error loading template '{name}': {e}")
-                return None, None, None, None
+        return self.get_manager.get_template(name)
 
     def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
         """Получает список тайтлов из базы данных через DatabaseManager."""
@@ -1103,263 +162,4 @@ class DatabaseManager:
         :param title_id: If specified, returns a title with the given title_id.
         :return: SQLAlchemy Query object
         """
-        with self.Session as session:
-            try:
-                # Используем `joinedload` для предварительной загрузки жанров и эпизодов
-                query = session.query(Title).options(
-                    joinedload(Title.genres).joinedload(TitleGenreRelation.genre),
-                    joinedload(Title.episodes)
-                )
-
-                if title_id:
-                    query = query.filter(Title.title_id == title_id)
-                elif title_ids:
-                    query = query.filter(Title.title_id.in_(title_ids))
-                elif system:
-                    query = session.query(Title) \
-                        .outerjoin(FranchiseRelease) \
-                        .outerjoin(Franchise) \
-                        .options(
-                        joinedload(Title.franchises).joinedload(FranchiseRelease.franchise),
-                        joinedload(Title.episodes),  # Загрузить связанные эпизоды
-                        joinedload(Title.poster)  # Загрузить связанные постеры, если есть связь poster
-                    )
-                elif not show_all:
-                    query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
-                if batch_size:
-                    query = query.offset(offset).limit(batch_size)
-
-                titles = query.all()
-
-                # Создаем список жанров в виде строк для каждого тайтла и добавляем их в новое поле `genre_names`
-                for title in titles:
-                    title.genre_names = [relation.genre.name for relation in title.genres if relation.genre]
-
-                # self.logger.debug(f"Titles were found in database. QUERY: {str(query)}")
-                # self.logger.debug(f"Titles were found in database. titles: {titles}")
-                return titles
-            except Exception as e:
-                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
-                return []
-
-
-# Модели для таблиц
-class Title(Base):
-    __tablename__ = 'titles'
-    title_id = Column(Integer, primary_key=True)
-    code = Column(String, unique=True)
-    name_ru = Column(String, nullable=False)
-    name_en = Column(String)
-    alternative_name = Column(String)
-    title_franchises = Column(String)
-    announce = Column(String)
-    status_string = Column(String)
-    status_code = Column(Integer)
-    poster_path_small = Column(String)
-    poster_path_medium = Column(String)
-    poster_path_original = Column(String)
-    updated = Column(Integer)
-    last_change = Column(Integer)
-    type_full_string = Column(String)
-    type_code = Column(Integer)
-    type_string = Column(String)
-    type_episodes = Column(Integer)
-    type_length = Column(String)
-    title_genres = Column(String)
-    team_voice = Column(String)  # Сохраняется как строка в формате JSON
-    team_translator = Column(String)  # Сохраняется как строка в формате JSON
-    team_timing = Column(String)  # Сохраняется как строка в формате JSON
-    season_string = Column(String)
-    season_code = Column(Integer)
-    season_year = Column(Integer)
-    season_week_day = Column(Integer)
-    description = Column(String)
-    in_favorites = Column(Integer)
-    blocked_copyrights = Column(Boolean)
-    blocked_geoip = Column(Boolean)
-    blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
-    host_for_player = Column(String)
-    alternative_player = Column(String)
-    last_updated = Column(DateTime, default=datetime.utcnow)
-
-    franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
-    #releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
-    genres = relationship("TitleGenreRelation", back_populates="title")
-    team_members = relationship("TitleTeamRelation", back_populates="title")
-    episodes = relationship("Episode", back_populates="title")
-    torrents = relationship("Torrent", back_populates="title")
-    posters = relationship("Poster", back_populates="title")
-    schedules = relationship("Schedule", back_populates="title")
-    ratings = relationship("Rating", back_populates="title")
-    history = relationship("History", back_populates="title")
-
-class Schedule(Base):
-    __tablename__ = 'schedule'
-    # schedule_id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
-    day_of_week = Column(Integer, nullable=False)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
-    __table_args__ = (
-        PrimaryKeyConstraint('day_of_week', 'title_id'),
-    )
-
-    title = relationship("Title", back_populates="schedules")
-
-class History(Base):
-    __tablename__ = 'history'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)  # Предполагается, что `user_id` будет использоваться для идентификации пользователя
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    episode_id = Column(Integer, ForeignKey('episodes.episode_id'), nullable=True)
-    torrent_id = Column(Integer, ForeignKey('torrents.torrent_id'), nullable=True)
-    is_watched = Column(Boolean, default=False)
-    last_watched_at = Column(DateTime, default=datetime.utcnow, nullable=True)
-    previous_watched_at = Column(DateTime, nullable=True)
-    watch_change_count = Column(Integer, default=0)
-    is_download = Column(Boolean, default=False)
-    last_download_at = Column(DateTime, default=datetime.utcnow, nullable=True)
-    previous_download_at = Column(DateTime, nullable=True)
-    download_change_count = Column(Integer, default=0)
-    need_to_see = Column(Boolean, default=False)
-
-    title = relationship("Title", back_populates="history")
-    episode = relationship("Episode", back_populates="history")
-    torrent = relationship("Torrent", back_populates="history")
-
-class Rating(Base):
-    __tablename__ = 'ratings'
-
-    rating_id = Column(Integer, primary_key=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    rating_name = Column(String, default='CMERS', nullable=False)
-    rating_value = Column(SmallInteger, nullable=False)
-
-    title = relationship("Title", back_populates="ratings")
-
-# Таблица связей между Title и Franchise
-class FranchiseRelease(Base):
-    __tablename__ = 'franchise_releases'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    franchise_id = Column(Integer, ForeignKey('franchises.id'), nullable=False)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    code = Column(String, nullable=False)
-    ordinal = Column(Integer, nullable=True)
-    name_ru = Column(String, nullable=True)
-    name_en = Column(String, nullable=True)
-    name_alternative = Column(String, nullable=True)
-
-    franchise = relationship("Franchise", back_populates="releases")
-    title = relationship("Title", back_populates="franchises")
-
-class Franchise(Base):
-    __tablename__ = 'franchises'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
-    franchise_name = Column(String, nullable=False)  # Название франшизы
-
-    releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
-
-class Genre(Base):
-    __tablename__ = 'genres'
-    genre_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False, unique=True)
-
-    titles = relationship("TitleGenreRelation", back_populates="genre")
-
-# Таблица связей между Title и Genre
-class TitleGenreRelation(Base):
-    __tablename__ = 'title_genre_relation'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    genre_id = Column(Integer, ForeignKey('genres.genre_id'), nullable=False)
-
-    title = relationship("Title", back_populates="genres")
-    genre = relationship("Genre", back_populates="titles")
-
-class TeamMember(Base):
-    __tablename__ = 'team_members'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)  # Имя участника команды
-    role = Column(String, nullable=False)  # Роль участника: voice, translator, timing
-
-    titles = relationship("TitleTeamRelation", back_populates="team_member")
-
-# Таблица связей между Title и TeamMember
-class TitleTeamRelation(Base):
-    __tablename__ = 'title_team_relation'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    team_member_id = Column(Integer, ForeignKey('team_members.id'), nullable=False)
-
-    title = relationship("Title", back_populates="team_members")
-    team_member = relationship("TeamMember", back_populates="titles")
-
-class Episode(Base):
-    __tablename__ = 'episodes'
-    episode_id = Column(Integer, primary_key=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'))
-    episode_number = Column(Integer, nullable=False)
-    name = Column(String)
-    uuid = Column(String, unique=True)
-    created_timestamp = Column(DateTime, default=datetime.utcnow)
-    # last_updated = Column(DateTime, default=datetime.utcnow)
-    hls_fhd = Column(String)
-    hls_hd = Column(String)
-    hls_sd = Column(String)
-    preview_path = Column(String)
-    skips_opening = Column(String)
-    skips_ending = Column(String)
-
-    title = relationship("Title", back_populates="episodes")
-    history = relationship("History", back_populates="episode")
-
-    @validates('created_timestamp', 'last_updated')
-    def validate_timestamp(self, key, value):
-        if isinstance(value, (int, float)):
-            return datetime.utcfromtimestamp(value)
-        return value
-
-class Torrent(Base):
-    __tablename__ = 'torrents'
-    torrent_id = Column(Integer, primary_key=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'))
-    episodes_range = Column(String)
-    quality = Column(String)
-    quality_type = Column(String)
-    resolution = Column(String)
-    encoder = Column(String)
-    leechers = Column(Integer)
-    seeders = Column(Integer)
-    downloads = Column(Integer)
-    total_size = Column(Integer)
-    size_string = Column(String)
-    url = Column(String)
-    magnet_link = Column(String)
-    uploaded_timestamp = Column(Integer)
-    hash = Column(String)
-    torrent_metadata = Column(Text, nullable=True)  # Переименовано с `metadata` на `torrent_metadata`
-    raw_base64_file = Column(Text, nullable=True)
-
-    title = relationship("Title", back_populates="torrents")
-    history = relationship("History", back_populates="torrent")
-
-class Poster(Base):
-    __tablename__ = 'posters'
-    poster_id = Column(Integer, primary_key=True, autoincrement=True)
-    title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    poster_blob = Column(LargeBinary, nullable=False)  # Поле для хранения бинарных данных изображения
-    last_updated = Column(DateTime, default=datetime.utcnow)
-
-    title = relationship("Title", back_populates="posters")
-
-class Template(Base):
-    __tablename__ = 'templates'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, unique=True, nullable=False)
-    one_title_html = Column(Text, nullable=False)
-    titles_html = Column(Text, nullable=False)
-    text_list_html = Column(Text, nullable=False)
-    styles_css = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+        return self.get_manager.get_titles_from_db(day_of_week, show_all, batch_size, offset, title_id, title_ids, system)

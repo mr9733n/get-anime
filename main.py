@@ -52,6 +52,7 @@ if __name__ == "__main__":
     db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
     db_manager.save_template(template_name='default')
+    db_manager.save_placeholders()
 
     # Запускаем поток для получения версии
     version_thread = threading.Thread(target=fetch_version)

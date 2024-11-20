@@ -96,14 +96,13 @@ class AnimePlayerAppVer3(QWidget):
         self.total_titles = []
         self.playlists = {}
         self.app_version = version
-        self.logger.debug(f"Initializing AnimePlayerApp Version {self.app_version}")
+        self.logger.debug(f"Starting AnimePlayerApp Version {self.app_version}..")
         # TODO: fix blank spase
         self.blank_spase = '&nbsp;'
         self.row_start = 0
         self.col_start = 0
         self.pre = "https://"
         self.days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
-        self.cache_file_path = "temp/poster_cache.txt"
         self.config_manager = ConfigManager('config/config.ini')
 
         """Loads the configuration settings needed by the application."""
@@ -269,7 +268,7 @@ class AnimePlayerAppVer3(QWidget):
         status, title_ids = self.check_and_update_schedule_after_display(day, titles)
         if status:
             self.display_titles(title_ids)
-        return True
+
 
     def display_titles_text_list(self):
         """Загружает и отображает тайтлы DISPLAY TITLES."""
@@ -408,8 +407,8 @@ class AnimePlayerAppVer3(QWidget):
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
-
         titles = self.db_manager.get_titles_from_db(day_of_week)
+        self.day_of_week = day_of_week
 
         if titles:
             # Сохраняем текущие тайтлы для последующего использования
@@ -417,7 +416,8 @@ class AnimePlayerAppVer3(QWidget):
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
             # Проверяем и обновляем расписание после отображения every 10 min
-            QTimer.singleShot(600000, lambda: self.check_and_update_schedule_after_display(day_of_week, titles))
+            QTimer.singleShot(600000, lambda: self.reload_schedule())
+
         else:
             try:
                 # Если тайтлы отсутствуют, получаем данные с сервера
@@ -472,48 +472,41 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(f"parsed_data: {parsed_data}")
                 self._save_parsed_data(parsed_data)
 
-                for titles_list in data:
-                    titles_list = titles_list.get("list", [])
+                for item in data:
+                    titles = item.get("list", [])
+                    titles_list.extend(titles)
                 self.logger.debug(f"title_list: {len(titles_list)}")
                 # Сохраняем данные в базе данных
                 self._save_titles_list(titles_list)
 
-                # self.logger.debug(f"Title list from db {titles_list}")
-                # self.logger.debug(f"parsed data frpm API for saving schedulw {parsed_data}")
-                # self.logger.debug(f"DATA from API {data}")
+                self.logger.debug(f"Title list from db {len(titles_list)}")
+                self.logger.debug(f"parsed data from API for saving schedule {len(parsed_data)}")
+                self.logger.debug(f"DATA from API {len(data)}")
 
                 new_title_ids = {title_data.get('id') for title_data in titles_list}
                 if current_titles:
-                    # self.logger.debug(f"Attributes of current title: {vars(current_titles[0])}")
-
-                    # Сравнение данных из базы с данными, полученными из API
+                    self.logger.debug(f"Attributes of current title: {len(vars(current_titles[0]))}")
                     current_title_ids = {title_data.title_id for title_data in current_titles}
-
-
-                    # Находим тайтлы, которые отсутствуют в новых данных из API
                     titles_to_remove = current_title_ids - new_title_ids
                     if titles_to_remove:
                         self.logger.debug(f"find titles for remove: {titles_to_remove}")
-
                         # TODO: fix ths
                         # 10 -
                         new_day_of_week = 10
-
                         self.db_manager.remove_schedule_day(titles_to_remove, day_of_week, new_day_of_week)
                     self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
                 return True, new_title_ids
         except Exception as e:
             self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
+            return False, None
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие виджеты из сетки постеров."""
         while self.posters_layout.count():
             item = self.posters_layout.takeAt(0)
             widget_to_remove = item.widget()
-
             if widget_to_remove is not None:
                 widget_to_remove.deleteLater()  # Полностью удаляет виджет из памяти
-
             # Также проверяем, если в сетке может быть элемент, а не виджет (например, пустое место)
             if item.layout() is not None:
                 self.clear_layout(item.layout())
@@ -613,7 +606,6 @@ class AnimePlayerAppVer3(QWidget):
                 if isinstance(title, dict):
                     title_id = title.get('id')
                     if title_id:
-                        # Добавляем данные о дне и title_id в parsed_data
                         parsed_data.append({"day": day, "title_id": title_id})
         return parsed_data
 
@@ -748,8 +740,8 @@ class AnimePlayerAppVer3(QWidget):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif link.startswith('reload_template/'):
-                template = link.split('/')[1]
-                self.db_manager.save_template(template)
+                template_name = link.split('/')[1]
+                self.db_manager.save_template(template_name)
                 QTimer.singleShot(100, lambda: self.display_titles(start=True))
             elif link.startswith('reload_info/'):
                 title_id = int(link.split('/')[1])
@@ -768,8 +760,6 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_download_status/ link structure: {link}")
-
-            # TODO: add link capture for "need_to_see"
             elif link.startswith('set_need_to_see/'):
                 parts = link.split('/')
                 if len(parts) >= 3:
@@ -783,7 +773,6 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_need_to_see/ link structure: {link}")
-
             elif link.startswith('set_watch_all_episodes_status/'):
                 parts = link.split('/')
                 if len(parts) >= 4:
@@ -827,7 +816,6 @@ class AnimePlayerAppVer3(QWidget):
                 else:
                     self.logger.error(f"Invalid set_rating/ link structure: {link}")
             elif link.startswith('play_all/'):
-                # Получаем title_id и filename из ссылки и вызываем play_playlist_wrapper
                 parts = link.split('/')
                 if len(parts) >= 3:
                     title_id = int(parts[1])

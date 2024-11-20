@@ -73,7 +73,6 @@ class UIGenerator:
                     width: 100%;
                     height: 100%;
                     position: relative;
-                    text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
                     background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                     """
                 )
@@ -255,7 +254,7 @@ class UIGenerator:
             user_id = self.app.user_id
 
             all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{episode_ids} Status:{all_watched}")
+            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status:{all_watched}")
             if all_watched:
                 return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_green}</a>'
             return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_red}</a>'

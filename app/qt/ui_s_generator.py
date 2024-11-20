@@ -19,7 +19,6 @@ class UISGenerator:
         try:
             self.logger.debug("Начинаем создание system_browser...")
             # Создаем главный вертикальный layout для системного экрана
-            # Создаем главный вертикальный layout для системного экрана
             system_layout = QVBoxLayout()
 
             # Создаем контейнерный виджет и layout для него
@@ -40,7 +39,6 @@ class UISGenerator:
                 font-size: 14pt;
                 font-weight: bold;
                 position: relative;
-                text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
                 background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                 """
             )
@@ -57,8 +55,7 @@ class UISGenerator:
             # Установка стилей для полей ввода
             line_edit_style = """
                     QLineEdit {
-                text-shadow: 1px 1px 2px #FFF;  /* Тень для выделения текста */
-                background: rgba(255, 255, 255);  /* Полупрозрачный желтый фон */
+                        background: rgba(255, 255, 255, 1.0);
                         border: 1px solid #dcdcdc;
                         border-radius: 6px;
                         padding: 6px;
@@ -88,7 +85,7 @@ class UISGenerator:
                     border-radius: 8px;
                     font-size: 14px;
                     font-weight: bold;
-                    background: rgba(74, 74 , 74);
+                    background: rgba(74, 74 , 74, 1.0);
 
                     width = 100px;
                 }
@@ -157,7 +154,6 @@ class UISGenerator:
             self.db_manager.save_studio_to_db(title_ids, studio_name)
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
-
 
     def _generate_statistics_html(self, statistics):
         """Создает HTML-контент для отображения статистики."""

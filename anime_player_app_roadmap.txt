@@ -34,6 +34,7 @@ Anime Player App 0.3.8.3
 	[x] with relationship Titles
 	[x] saves title_ids, studio_name
 	[x] add new studios on System screen
+	[x] bug fixes and improvements 
 [_]10. redesign system browser
 	[x] need to add new layout window
 	[x] view statics

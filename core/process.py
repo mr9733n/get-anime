@@ -13,7 +13,7 @@ class ProcessManager:
         franchises_str = title_data['title_franchises']
 
         try:
-            self.logger.debug(f"franchises_str: {franchises_str}")
+            self.logger.debug(f"franchises_str: {len(franchises_str)}")
 
             # Use json.loads to parse the JSON string
             franchises = json.loads(franchises_str)
@@ -31,7 +31,7 @@ class ProcessManager:
                     'franchise_name': franchise.get('franchise', {}).get('name'),
                     'releases': franchise.get('releases', [])
                 }
-                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {franchise_data}")
+                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {len(franchise_data)}")
                 self.save_manager.save_franchise(franchise_data)
 
     def process_titles(self, title_data):
@@ -110,7 +110,7 @@ class ProcessManager:
 
             if "hls" in episode:
                 try:
-                    self.logger.debug(f"episode: {episode}")
+                    self.logger.debug(f"episode: {len(episode)}")
                     episode_data = {
                         'title_id': title_data.get('id', None),
                         'episode_number': episode.get('episode'),

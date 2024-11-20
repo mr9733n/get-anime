@@ -311,41 +311,40 @@ class AnimePlayerAppVer3(QWidget):
                 self.current_offset += self.titles_batch_size
                 self.logger.debug(
                     f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
-
             if show_previous:
                 self.current_offset = max(0, self.current_offset - self.titles_batch_size)  # Ограничиваем offset снизу
                 self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
-            match (bool(title_ids), titles_text_list, franchises):
-                case (True, _, _):
+            match (system, bool(title_ids), titles_text_list, franchises):
+                case(True, _, _, _):
+                    show_mode = ' system'
+                    titles = self.db_manager.get_statistics_from_db()
+                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
+                case (_, True, _, _):
                     show_mode = 'title_ids'
                     titles = self.db_manager.get_titles_from_db(show_all=False,
                                                                 offset=self.current_offset, title_ids=title_ids)
                     self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-                case (False, True, False):
+                case (_, False, True, False):
                     titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                     show_mode = 'titles_text_list'
                     self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
-                case (False, False, False):
+                case (_, False, False, False):
                     titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
                                                                 offset=self.current_offset)
                     show_mode = 'default'
                     self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-                case (False, False, True):
+                case (_, False, False, True):
                     titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
                     show_mode = 'franchise_list'
                     self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-            # self.logger.debug(f"{titles}")
+            # TODO: fix this. need to count as dict
+            self.logger.debug(f"{len(titles)}")
 
-            if system:
-                titles = self.db_manager.get_statistics_from_db()
-                self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
-            # Сохраняем загруженные тайтлы в список для доступа позже
-            else:
-                self.total_titles = titles
-                len_total_titles = len(self.total_titles)
-                self.logger.debug(f"self.total_titles:{len_total_titles}")
+            self.total_titles = titles
+            len_total_titles = len(self.total_titles)
+            self.logger.debug(f"self.total_titles:{len_total_titles}")
         except Exception as e:
             self.logger.error(f"Ошибка display_titles_in_ui: {e}")
 
@@ -384,6 +383,7 @@ class AnimePlayerAppVer3(QWidget):
                     else:
                         show_mode = 'default'
                         title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
+                        # TODO: fix this. need to count as dict
                     self.logger.debug(f"Displayed {show_mode} {len(titles)} titles.")
                     self.posters_layout.addWidget(title_browser, row, column)
         except Exception as e:
@@ -431,6 +431,7 @@ class AnimePlayerAppVer3(QWidget):
 
                     for titles_list in data:
                         titles_list = titles_list.get("list", [])
+                    # TODO: fix this. need to count as dict
                     self.logger.debug(f"title_list: {len(titles_list)}")
                     # Сохраняем данные в базе данных
                     self._save_titles_list(titles_list)
@@ -445,6 +446,7 @@ class AnimePlayerAppVer3(QWidget):
     def _save_parsed_data(self, parsed_data):
         for i, item in enumerate(parsed_data):
             self.db_manager.save_schedule(item["day"], item["title_id"], last_updated=datetime.utcnow())
+            # TODO: fix this. need to count as dict
             self.logger.debug(
                 f"[{i + 1}/{len(parsed_data)}] Saved title_id from API: {item['title_id']} on day {item['day']}")
         return True
@@ -475,16 +477,18 @@ class AnimePlayerAppVer3(QWidget):
                 for item in data:
                     titles = item.get("list", [])
                     titles_list.extend(titles)
+                # TODO: fix this. need to count as dict
                 self.logger.debug(f"title_list: {len(titles_list)}")
                 # Сохраняем данные в базе данных
                 self._save_titles_list(titles_list)
-
+                # TODO: fix this. need to count as dict
                 self.logger.debug(f"Title list from db {len(titles_list)}")
                 self.logger.debug(f"parsed data from API for saving schedule {len(parsed_data)}")
                 self.logger.debug(f"DATA from API {len(data)}")
 
                 new_title_ids = {title_data.get('id') for title_data in titles_list}
                 if current_titles:
+                    # TODO: fix this. need to count as dict
                     self.logger.debug(f"Attributes of current title: {len(vars(current_titles[0]))}")
                     current_title_ids = {title_data.title_id for title_data in current_titles}
                     titles_to_remove = current_title_ids - new_title_ids
@@ -533,7 +537,8 @@ class AnimePlayerAppVer3(QWidget):
         return self.ui_generator.create_title_browser(title, show_description, show_one_title, show_list, show_franchise)
 
     def invoke_database_save(self, title_list):
-        self.logger.debug(f"Processing title data: {title_list}")
+        # TODO: fix this. need to count as dict
+        self.logger.debug(f"Processing title data: {len(title_list)}")
         processes = {
             self.db_manager.process_episodes: "episodes",
             self.db_manager.process_torrents: "torrents",
@@ -552,6 +557,7 @@ class AnimePlayerAppVer3(QWidget):
         if 'error' in data:
             self.logger.error(data['error'])
             return
+        # TODO: fix this. need to count as dict
         self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
         # Получаем список тайтлов из ответа
         title_list = data.get('list', [])

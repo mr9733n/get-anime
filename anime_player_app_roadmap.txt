@@ -29,20 +29,21 @@ Anime Player App 0.3.8.3
 		├── tables.py
 		├── utils.py
 		└── database_manager.py
-[_]9. something for db
+[x]9. Add ProductionStudio table
+	[x] with fields: title_id, studio_name, last_update
+	[x] with relationship Titles
+	[x] saves title_ids, studio_name
+	[x] add new studios on System screen
+[_]10. redesign system browser
+	[x] need to add new layout window
+	[x] view statics
+	[_] add/update table data
+[_]11. change one title view
+	[_] need to change width of title browser if window is changed
+	[_] idea: you can change window horizontal size and stretch title browser with window
+[_]12. need to implement own player window uses vlc_lib
+[_]13. something for db
 	[_] remove schedule view logic from get_titles
 	[-] Try to do migration for old big db
 	[_] create job to inspect db tables for condition
-[_]10. change one title view
-	[_] need to change width of title browser if window is changed 
-	[_] idea: you can change window horizontal size and stretch title browser with window
-[_]11. redesign system browser
-	[_] need to add new layout window
-	[_] view statics
-	[_] add/update table data
-[_]12. добавить к тайтлам отображение студии производства
-	[_] нужно добавить новую таблицу со связью с тайтлами
-	[_] функционально я бы хотел иметь таблицу со списком студий производства
-	[_] я пока не решил как я буду заполнять эту таблицу 
-[_]13. need to think how to merge data from other devices
-[_]14. need to implement own player window uses vlc_lib
+[_]14. need to think how to merge data from other devices

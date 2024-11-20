@@ -29,7 +29,9 @@ Anime Player App 0.3.8.3
 		├── tables.py
 		├── utils.py
 		└── database_manager.py
-[_]9. Try to do migration for old big db
+[_]9. something for db
+	[_] remove schedule view logic from get_titles
+	[-] Try to do migration for old big db
 	[_] create job to inspect db tables for condition
 [_]10. change one title view
 	[_] need to change width of title browser if window is changed 

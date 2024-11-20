@@ -499,10 +499,7 @@ class SaveManager:
                     session.query(Schedule)
                     .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
                 )
-                schedules_to_update.update(
-                    {"day_of_week": new_day_of_week},
-                    synchronize_session=False  # Используйте True для синхронизации состояния
-                )
+                schedules_to_update.delete()
                 session.commit()
                 self.logger.debug(
                     f"Updated {day_of_week} for all specified titles to {title_ids} to new {new_day_of_week}")

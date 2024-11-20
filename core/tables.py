@@ -47,7 +47,6 @@ class Title(Base):
     last_updated = Column(DateTime, default=datetime.utcnow)
 
     franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
-    #releases = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
     genres = relationship("TitleGenreRelation", back_populates="title")
     team_members = relationship("TitleTeamRelation", back_populates="title")
     episodes = relationship("Episode", back_populates="title")
@@ -57,10 +56,27 @@ class Title(Base):
     ratings = relationship("Rating", back_populates="title")
     history = relationship("History", back_populates="title")
 
+
+class DaysOfWeek(Base):
+    __tablename__ = 'days_of_week'
+    day_of_week = Column(Integer, primary_key=True)
+    day_name = Column(String, unique=True)
+
+# Данные для заполнения
+days = [
+    {"day_of_week": 0, "day_name": "Monday"},
+    {"day_of_week": 1, "day_name": "Tuesday"},
+    {"day_of_week": 2, "day_name": "Wednesday"},
+    {"day_of_week": 3, "day_name": "Thursday"},
+    {"day_of_week": 4, "day_name": "Friday"},
+    {"day_of_week": 5, "day_name": "Saturday"},
+    {"day_of_week": 6, "day_name": "Sunday"},
+]
+
+
 class Schedule(Base):
     __tablename__ = 'schedule'
-    # schedule_id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key уже есть
-    day_of_week = Column(Integer, nullable=False)
+    day_of_week = Column(Integer, ForeignKey('days_of_week.day_of_week'), nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     last_updated = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (
@@ -68,6 +84,8 @@ class Schedule(Base):
     )
 
     title = relationship("Title", back_populates="schedules")
+    day = relationship("DaysOfWeek")
+
 
 class History(Base):
     __tablename__ = 'history'

@@ -10,7 +10,8 @@ from core.save import SaveManager
 from core.process import ProcessManager
 from core.get import GetManager
 from core.utils import PlaceholderManager, TemplateManager
-from core.tables import Base
+from core.tables import Base, DaysOfWeek
+
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -29,6 +30,25 @@ class DatabaseManager:
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
+        days = [
+            {"day_of_week": 0, "day_name": "Monday"},
+            {"day_of_week": 1, "day_name": "Tuesday"},
+            {"day_of_week": 2, "day_name": "Wednesday"},
+            {"day_of_week": 3, "day_name": "Thursday"},
+            {"day_of_week": 4, "day_name": "Friday"},
+            {"day_of_week": 5, "day_name": "Saturday"},
+            {"day_of_week": 6, "day_name": "Sunday"},
+        ]
+        with self.Session as session:
+                try:
+                    if session.query(DaysOfWeek).count() == 0:
+                        for day in days:
+                            session.add(DaysOfWeek(day_of_week=day["day_of_week"], day_name=day["day_name"]))
+                        session.commit()
+                    session.close()
+                except Exception as e:
+                    session.rollback()
+                    self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
 
     def save_placeholders(self):
         # Добавляем заглушки изображений, если они не добавлены

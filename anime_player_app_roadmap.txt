@@ -20,7 +20,15 @@ Anime Player App 0.3.8.3
 		[x] save/get html templates from db
 		[x] titles_browser
 		[x] one_title_browser
-[_]8. DB REFACTORING ^-^
+[x]8. DB REFACTORING ^-^
+	[x] move logic to new files and create proxy methods
+		core/
+		├── save.py
+		├── process.py
+		├── get.py
+		├── tables.py
+		├── utils.py
+		└── database_manager.py
 [_]9. Try to do migration for old big db
 	[_] create job to inspect db tables for condition
 [_]10. change one title view

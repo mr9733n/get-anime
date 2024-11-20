@@ -105,17 +105,12 @@ class UIGenerator:
             episodes_html = self.generate_episodes_html(title)
             torrents_html = self.generate_torrents_html(title)
 
-            # Получаем шаблоны из базы данных
             titles_html, one_title_html, show_text_list_html, styles_css = self.db_manager.get_template()
 
             if show_more_link and titles_html:
                 poster_html = self.generate_poster_html(title, need_background=True)
                 show_more_html = self.generate_show_more_html(title.title_id)
-
-                # Создаем объект шаблона из строки
                 template = Template(titles_html)
-
-                # Рендерим HTML
                 html_content = template.render(
                     title=title,
                     styles_css=styles_css,
@@ -137,27 +132,17 @@ class UIGenerator:
 
             if show_text_list and show_text_list_html:
                 year_html = self.generate_year_html(title, show_text_list=True)
-                show_more_html = self.generate_show_more_html(title.title_id) if show_more_link else ""
-
-                # Создаем объект шаблона из строки
                 template = Template(show_text_list_html)
-
-                # Рендерим HTML
                 html_content = template.render(
                     title=title,
                     styles_css=styles_css,
-                    show_more_html=show_more_html,
                     year_html=year_html,
                 )
                 return html_content
 
             elif one_title_html:
                 poster_html = self.generate_poster_html(title, need_placeholder=True)
-
-                # Создаем объект шаблона из строки
                 template = Template(one_title_html)
-
-                # Рендерим HTML
                 html_content = template.render(
                     title=title,
                     styles_css=styles_css,

@@ -5,6 +5,8 @@ import subprocess
 import sys
 import argparse
 import threading
+
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from PyQt5.uic.Compiler.qobjectcreator import logger
 
@@ -12,8 +14,8 @@ from PyQt5.uic.Compiler.qobjectcreator import logger
 from core.database_manager import DatabaseManager  # База данных
 from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 
-APP_MINOR_VERSION = '0.3.8.x'
-APP_MAJOR_VERSION = '0.3.x.x'
+APP_MINOR_VERSION = '0.3.8'
+APP_MAJOR_VERSION = '0.3'
 
 def fetch_version():
     global version
@@ -41,7 +43,7 @@ if __name__ == "__main__":
     # Construct the path to the database in the main directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
     db_dir = os.path.join(base_dir, 'db')
-
+    icon_dir = os.path.join(base_dir, 'static')
     # Ensure the database directory exists
     if not os.path.exists(db_dir):
         os.makedirs(db_dir)
@@ -61,6 +63,9 @@ if __name__ == "__main__":
     version_thread.join()
     # Пока версия загружается, можем начать работу интерфейса
     app_pyqt = QApplication(sys.argv)
+
+    icon_path = os.path.join(icon_dir, 'icon.png')  # Путь к файлу с иконкой
+    app_pyqt.setWindowIcon(QIcon(icon_path))
     window_pyqt = AnimePlayerAppVer3(db_manager, version)
     window_pyqt.show()
     sys.exit(app_pyqt.exec_())

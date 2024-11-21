@@ -27,7 +27,7 @@ project_dir = os.getcwd()
 # Сбор данных для ресурсы, например из папок `static` и `db`
 datas = [
     (os.path.join(project_dir, 'static/*'), 'static'),
-    (os.path.join(project_dir, 'templates/*'), 'templates'),
+    (os.path.join(project_dir, 'templates/default/*'), 'templates/default'),
     (os.path.join(project_dir, 'config/*'), 'config'),
     (os.path.join(project_dir, 'db/*'), 'db'),
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),
@@ -36,12 +36,10 @@ datas = [
     (os.path.join(project_dir, 'app/qt/__pycache__'), 'app/qt/__pycache__'),  # Add compiled .pyc files
     (os.path.join(project_dir, 'core/__pycache__'), 'core/__pycache__'),      # Add compiled .pyc files
     (os.path.join(project_dir, 'utils/__pycache__'), 'utils/__pycache__'),    # Add compiled .pyc files
-
+	(os.path.join(project_dir, 'favicon.ico'), '.')
 ]
 
 packages = 'c:\\users\\cicada\\appdata\\local\\programs\\python\\python312\\lib\\site-packages'
-
-
 
 a = Analysis(
     ['main.py'],
@@ -70,7 +68,14 @@ a = Analysis(
 		'sqlalchemy.sql',
         'app.qt.app',
         'app.qt.ui_manager',
+        'app.qt.ui_generator',
+        'app.qt.ui_s_generator',
         'core.database_manager',
+        'core.get',
+        'core.save',
+        'core.process',
+        'core.tables',
+        'core.utils',
         'utils.api_client',
         'utils.config_manager',
         'utils.logging_handlers',
@@ -91,26 +96,30 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data,
     cipher=block_cipher)
 
-exe = EXE(pyz,
-          a.scripts,
-          [],
-          exclude_binaries=True,
-          name='AnimePlayer',
-          debug=False,
-          bootloader_ignore_signals=False,
-          strip=False,
-          upx=True,
-          upx_exclude=[],
-          runtime_tmpdir=None,
-          console=True,
-          onefile=False  # Set to False to keep everything in the same folder
-)
+exe = EXE(
+	pyz,
+	a.scripts,
+	[],
+	exclude_binaries=True,
+	name='AnimePlayer',
+	icon='favicon.ico',
+	debug=False,
+	bootloader_ignore_signals=False,
+	strip=False,
+	upx=True,
+	upx_exclude=[],
+	runtime_tmpdir=None,
+	console=True,
+	onefile=False,  # Important for imports to set to False to keep everything in the same folder
+	)
 
-coll = COLLECT(exe,
-               a.binaries,
-               a.zipfiles,
-               a.datas,
-               strip=False,
-               upx=True,
-               upx_exclude=[],
-               name='AnimePlayer')
+coll = COLLECT(
+	exe,
+	a.binaries,
+	a.zipfiles,
+	a.datas,
+	strip=False,
+	upx=True,
+	upx_exclude=[],
+	name='AnimePlayer'
+	)

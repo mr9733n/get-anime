@@ -35,11 +35,15 @@ Anime Player App 0.3.8.3
 	[x] saves title_ids, studio_name
 	[x] add new studios on System screen
 	[x] bug fixes and improvements
-	[x] fix builder 
+	[x] fix builder
+	[_] add icon to app
 [_]10. redesign system browser
 	[x] need to add new layout window
 	[x] view statics
 	[_] add/update table data
+		[_] template name add
+		[_]
+	[_] add night theme
 [_]11. change one title view
 	[_] need to change width of title browser if window is changed
 	[_] idea: you can change window horizontal size and stretch title browser with window

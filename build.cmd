@@ -51,6 +51,11 @@ if %ERRORLEVEL% geq 1 echo Error copying sqlalchemy >> %TARGET_DIR%\build_log.tx
 set /a CURRENT_STEP+=1
 call :show_progress
 
+if exist jaraco (robocopy jaraco %TARGET_DIR%\jaraco /E) >> %TARGET_DIR%\build_log.txt 2>&1
+if %ERRORLEVEL% geq 1 echo Error copying sqlalchemy >> %TARGET_DIR%\build_log.txt
+set /a CURRENT_STEP+=1
+call :show_progress
+
 if exist config (robocopy config %TARGET_DIR%\config /E) >> %TARGET_DIR%\build_log.txt 2>&1
 if %ERRORLEVEL% geq 1 echo Error copying config >> %TARGET_DIR%\build_log.txt
 set /a CURRENT_STEP+=1
@@ -67,6 +72,11 @@ set /a CURRENT_STEP+=1
 call :show_progress
 
 if exist static (robocopy static %TARGET_DIR%\static /E) >> %TARGET_DIR%\build_log.txt 2>&1
+if %ERRORLEVEL% geq 1 echo Error copying static >> %TARGET_DIR%\build_log.txt
+set /a CURRENT_STEP+=1
+call :show_progress
+
+if exist templates (robocopy templates %TARGET_DIR%\templates\default /E) >> %TARGET_DIR%\build_log.txt 2>&1
 if %ERRORLEVEL% geq 1 echo Error copying static >> %TARGET_DIR%\build_log.txt
 set /a CURRENT_STEP+=1
 call :show_progress

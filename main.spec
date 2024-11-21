@@ -62,7 +62,7 @@ a = Analysis(
 		'sqlalchemy.dialects.sqlite',
 		'urllib3.contrib.socks',
         'uuid',
-        'jinja2'
+        'jinja2',
 		'sqlalchemy',
 		'sqlalchemy.orm',
 		'sqlalchemy.ext.declarative',

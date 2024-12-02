@@ -50,12 +50,13 @@ Anime Player App 0.3.8.3
 		[-] get titles list without episodes
 		[+] get franchises list without episodes
 		[+] get need to see without episodes
+	[x] fixed empty screen by reset offset when offset is high and titles was not found
 [_]11. redesign system browser
 	[x] need to add new layout window
 	[x] view statics
 	[_] add/update table data
 		[_] template name add
-		[_] reset offset link
+	[x] reset offset link for extra issues
 [_]12. fixes
 	[_] add night theme
 	[_] deprecate more than one run

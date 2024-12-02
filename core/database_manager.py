@@ -180,7 +180,7 @@ class DatabaseManager:
         """
         return self.get_manager.get_template(name)
 
-    def get_titles_from_db(self, show_all=False, need_to_see=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
+    def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
         Returns a SQLAlchemy query for fetching titles based on given conditions.
@@ -189,7 +189,7 @@ class DatabaseManager:
         :param title_id: If specified, returns a title with the given title_id.
         :return: SQLAlchemy Query object
         """
-        return self.get_manager.get_titles_from_db(show_all, need_to_see, day_of_week, batch_size, title_id, title_ids, offset)
+        return self.get_manager.get_titles_from_db(show_all, day_of_week, batch_size, title_id, title_ids, offset)
 
     def get_titles_list_from_db(self, title_ids=None, batch_size=None, offset=0):
         """Titles without episodes"""

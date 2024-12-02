@@ -147,8 +147,12 @@ class DatabaseManager:
     def get_statistics_from_db(self):
         return self.get_manager.get_statistics_from_db()
 
-    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
-        return self.get_manager.get_franchises_from_db(show_all, batch_size, offset, title_id)
+    def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
+        return self.get_manager.get_franchises_from_db(batch_size, offset, title_id)
+
+    def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None, ):
+        """Need to see Titles without episodes"""
+        return self.get_manager.get_need_to_see_from_db(batch_size, offset, title_id)
 
     def get_poster_link(self, title_id):
         return self.get_manager.get_poster_link(title_id)
@@ -176,7 +180,7 @@ class DatabaseManager:
         """
         return self.get_manager.get_template(name)
 
-    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
+    def get_titles_from_db(self, show_all=False, need_to_see=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
         Returns a SQLAlchemy query for fetching titles based on given conditions.
@@ -185,4 +189,8 @@ class DatabaseManager:
         :param title_id: If specified, returns a title with the given title_id.
         :return: SQLAlchemy Query object
         """
-        return self.get_manager.get_titles_from_db(day_of_week, show_all, batch_size, offset, title_id, title_ids, system)
+        return self.get_manager.get_titles_from_db(show_all, need_to_see, day_of_week, batch_size, title_id, title_ids, offset)
+
+    def get_titles_list_from_db(self, title_ids=None, batch_size=None, offset=0):
+        """Titles without episodes"""
+        return self.get_manager.get_titles_list_from_db(title_ids, batch_size, offset)

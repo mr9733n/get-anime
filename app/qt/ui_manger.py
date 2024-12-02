@@ -66,6 +66,7 @@ class UIManager:
             button.clicked.connect(callbacks[callback_key])
 
         layout.addWidget(button)
+        self.apply_shadow_effects([button])
 
     def _create_input_field(self, metadata, layout):
         placeholder = metadata.get("placeholder", "")
@@ -96,6 +97,7 @@ class UIManager:
         widget_key = metadata.get("widget_key", "input_field")
         self.parent_widgets[widget_key] = input_field
         layout.addWidget(input_field)
+        self.apply_shadow_effects([input_field])
 
     def _create_dropdown(self, metadata, layout, callbacks):
         items = metadata.get("items", [])
@@ -132,6 +134,7 @@ class UIManager:
         widget_key = metadata.get("widget_key", "dropdown")
         self.parent_widgets[widget_key] = dropdown
         layout.addWidget(dropdown)
+        self.apply_shadow_effects([dropdown])
 
     def setup_main_layout(self, main_layout, all_layout_metadata, callbacks):
         # Создаем два лейаута: верхний и нижний

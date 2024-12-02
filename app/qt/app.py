@@ -296,16 +296,25 @@ class AnimePlayerAppVer3(QWidget):
 
         return simple_callback
 
-    def display_titles(self, title_ids=None,  batch_size=None, show_mode='default', show_previous=False, show_next=False, start=False):
+    def display_titles(self, title_ids=None, batch_size=None, show_mode='default', show_previous=False, show_next=False,
+                       start=False):
         try:
             # Логика определения offset
             if start:
                 self.logger.debug(
                     f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
             if show_next:
-                self.current_offset += self.titles_batch_size
-                self.logger.debug(
-                    f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+                # Проверяем, достаточно ли данных для загрузки
+
+                statistics = self.db_manager.get_statistics_from_db()  # Метод подсчета общего количества тайтлов
+                total_available_titles = statistics.get('titles_count', 0)
+                if self.current_offset + self.titles_batch_size >= total_available_titles:
+                    self.logger.info("Достигнут конец списка тайтлов, сбрасываем оффсет.")
+                    self.current_offset = 0  # Сбрасываем оффсет, если достигли конца данных
+                else:
+                    self.current_offset += self.titles_batch_size
+                    self.logger.debug(
+                        f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
             if show_previous:
                 self.current_offset = max(0, self.current_offset - self.titles_batch_size)
                 self.logger.debug(
@@ -319,6 +328,13 @@ class AnimePlayerAppVer3(QWidget):
                 current_offset=self.current_offset,
                 batch_size=batch_size
             )
+
+            # Если данных нет, сбрасываем оффсет
+            if not titles:
+                self.logger.info("Нет доступных данных для отображения, сбрасываем оффсет.")
+                self.current_offset = 0
+                self.total_titles = 0
+                return
 
             # Передача данных в метод отображения
             self.display_titles_in_ui(titles, show_mode)

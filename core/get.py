@@ -370,7 +370,7 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
-    def get_titles_from_db(self, show_all=False, need_to_see=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
+    def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
         Returns a SQLAlchemy query for fetching titles based on given conditions.
@@ -391,8 +391,6 @@ class GetManager:
                     query = query.filter(Title.title_id == title_id)
                 elif title_ids:
                     query = query.filter(Title.title_id.in_(title_ids))
-                elif need_to_see:
-                    query = query.join(History).filter(History.need_to_see == 1)
                 elif not show_all:
                     query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
                 if batch_size:

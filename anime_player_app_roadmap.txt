@@ -51,6 +51,9 @@ Anime Player App 0.3.8.3
 		[+] get franchises list without episodes
 		[+] get need to see without episodes
 	[x] fixed empty screen by reset offset when offset is high and titles was not found
+	[x] fixed play button
+	[x] added shadow for UI elements 
+
 [_]11. redesign system browser
 	[x] need to add new layout window
 	[x] view statics

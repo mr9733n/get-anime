@@ -699,7 +699,7 @@ class AnimePlayerAppVer3(QWidget):
         if not self.sanitized_titles:
             self.logger.error("Playlist not found, please save playlist first.")
             return
-        if file_name is None:
+        if not file_name:
             file_name = self.playlist_filename
         video_player_path = self.video_player_path
         self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")

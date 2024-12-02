@@ -22,6 +22,7 @@ from PyQt5.QtGui import QPixmap
 from core import database_manager
 from core.database_manager import DatabaseManager
 from app.qt.ui_manger import UIManager
+from app.qt.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 from utils.config_manager import ConfigManager
@@ -29,34 +30,13 @@ from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
+from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
+
 
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
 APP_Y_POS = 100
-
-class CreateTitleBrowserTask(QRunnable):
-    def __init__(self, app, title, row, column, show_description=False, show_one_title=False):
-        super().__init__()
-        self.logger = logging.getLogger(__name__)
-        self.app = app
-        self.title = title
-        self.row = row
-        self.column = column
-        self.show_description = show_description
-        self.show_one_title = show_one_title
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            # Создаем виджет для отображения информации о тайтле
-            title_browser = self.app.create_title_browser(self.title, self.show_description, self.show_one_title)
-            self.app.logger.debug(f"Created title browser for title_id: {self.title.title_id}")
-
-            # Emit signal to add the widget to the layout in the main thread
-            self.app.add_title_browser_to_layout.emit(title_browser, self.row, self.column)
-        except Exception as e:
-            self.app.logger.error(f"Error in CreateTitleBrowserTask for title_id {self.title.title_id}: {e}")
 
 
 class AnimePlayerAppVer3(QWidget):
@@ -64,32 +44,23 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version):
         super().__init__()
+        self.day_of_week = None
+        self.quality_dropdown = None
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
         self.playlist_filename = None
-        self.play_playlist_button = None
-        self.save_playlist_button = None
         self.current_data = None
-        self.display_button = None
         self.current_link = None
         self.poster_container = None
         self.scroll_area = None
         self.posters_layout = None
-        self.day_buttons = None
-        self.days_of_week = None
-        self.day_of_week = None
-        self.refresh_button = None
-        self.quality_dropdown = None
-        self.quality_label = None
-        self.random_button = None
-        self.display_button = None
         self.title_search_entry = None
         self.current_titles = None
         self.selected_quality = None
         self.torrent_data = None
-        self.load_more_button = None
+
         self.discovered_links = []
         self.sanitized_titles = []
         self.title_names = []
@@ -97,12 +68,9 @@ class AnimePlayerAppVer3(QWidget):
         self.playlists = {}
         self.app_version = version
         self.logger.debug(f"Starting AnimePlayerApp Version {self.app_version}..")
-        # TODO: fix blank spase
-        self.blank_spase = '&nbsp;'
         self.row_start = 0
         self.col_start = 0
         self.pre = "https://"
-        self.days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
         self.config_manager = ConfigManager('config/config.ini')
 
         """Loads the configuration settings needed by the application."""
@@ -112,6 +80,7 @@ class AnimePlayerAppVer3(QWidget):
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
 
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
+        self.titles_list_batch_size = int(self.config_manager.get_setting('Settings', 'titles_list_batch_size'))
         self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
         self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
@@ -141,6 +110,13 @@ class AnimePlayerAppVer3(QWidget):
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.ui_manager = UIManager(self)
+
+        self.callbacks = self.generate_callbacks()
+        days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+        for i, day in enumerate(days_of_week):
+            self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i)
+
+
         self.init_ui()
 
     @pyqtSlot(QTextBrowser, int, int)
@@ -162,8 +138,13 @@ class AnimePlayerAppVer3(QWidget):
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
-        self.ui_manager.setup_main_layout(main_layout)
+
+        self.ui_manager.setup_main_layout(main_layout, all_layout_metadata, self.callbacks)
         self.setLayout(main_layout)
+
+        # Сохранение ссылок на виджеты после их создания
+        self.title_search_entry = self.ui_manager.parent_widgets.get("title_input")
+        self.quality_dropdown = self.ui_manager.parent_widgets.get("quality_dropdown")
 
         # Load 4 titles on start from DB
         self.display_titles(start=True)
@@ -193,7 +174,7 @@ class AnimePlayerAppVer3(QWidget):
             self.total_titles = updated_titles
 
             # Отображаем обновленные тайтлы в UI
-            self.display_titles_in_ui(self.total_titles, self.row_start, self.col_start, self.num_columns)
+            self.display_titles_in_ui(updated_titles)
 
         except Exception as e:
             self.logger.error(f"Ошибка при обновлении экрана при нажатии REFRESH: {e}")
@@ -269,123 +250,113 @@ class AnimePlayerAppVer3(QWidget):
         if status:
             self.display_titles(title_ids)
 
+    def generate_callbacks(self):
+        # Существующие статические колбеки
+        callbacks = {
+            "get_search_by_title": self.get_search_by_title,
+            "get_random_title": self.get_random_title,
+            "refresh_display": self.refresh_display,
+            "save_playlist_wrapper": self.save_playlist_wrapper,
+            "play_playlist_wrapper": self.play_playlist_wrapper,
+            "reload_schedule": self.reload_schedule,
+        }
 
-    def display_titles_text_list(self):
-        """Загружает и отображает тайтлы DISPLAY TITLES."""
-        self.display_titles(titles_text_list=True)
-        return True
+        # Динамически добавляем колбэки для простых функций
+        for metadata in all_layout_metadata:
+            callback_key = metadata.get("callback_key")
+            callback_type = metadata.get("callback_type", "complex")
 
-    def load_more_titles(self):
-        """Загружает и отображает тайтлы LOAD MORE."""
-        self.logger.debug(f"LOAD MORE BUTTON PRESSED")
-        self.display_titles(show_next=True)
-        return True
+            if callback_key and callback_type == "simple" and callback_key not in callbacks:
+                callbacks[callback_key] = self.generate_simple_callback(callback_key)
 
-    def load_previous_titles(self):
-        """Загружает и отображает тайтлы LOAD PREV."""
-        self.logger.debug(f"LOAD PREV BUTTON PRESSED")
-        self.display_titles(show_previous=True)
-        return True
+        return callbacks
 
-    def display_franchises(self):
-        self.display_titles(franchises=True)
+    def generate_simple_callback(self, callback_name):
+        """Создает простой колбек, который вызывает display_titles с соответствующими параметрами."""
 
-    def display_system(self):
-        self.display_titles(system=True)
+        def simple_callback(*args, **kwargs):
+            self.logger.info(f"Вызван простой колбек: {callback_name}")
+            if callback_name == "load_previous_titles":
+                self.display_titles(show_previous=True)
+            elif callback_name == "load_more_titles":
+                self.display_titles(show_next=True)
+            elif callback_name == "display_titles_text_list":
+                self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size)
+                self.current_offset += self.titles_list_batch_size
+            elif callback_name == "display_franchises":
+                self.display_titles(show_mode='franchise_list', batch_size=self.titles_list_batch_size)
+                self.current_offset += self.titles_list_batch_size
+            elif callback_name == "display_system":
+                self.display_titles(show_mode='system')
+            elif callback_name == "toggle_need_to_see":
+                self.display_titles(show_mode='need_to_see_list', batch_size=self.titles_list_batch_size)
+                self.current_offset += self.titles_list_batch_size
+            else:
+                self.logger.warning(f"Неизвестный колбек: {callback_name}")
 
-    def display_titles(self, title_ids=None, titles_text_list=False, franchises=False, system=False, show_previous=False, show_next=False, start=False):
-        """Отображение первых тайтлов при старте.
-        :param start:
-        :param show_next:
-        :param show_previous:
-        :param system:  Show system layout
-        :param franchises: Отображение нескольких тайтлов with relationship Franchise по title_id
-        :param title_ids: Отображение нескольких тайтлов по title_id
-        :param titles_text_list: Отображение списка тайтлов.
-        """
+        return simple_callback
+
+    def display_titles(self, title_ids=None,  batch_size=None, show_mode='default', show_previous=False, show_next=False, start=False):
         try:
+            # Логика определения offset
             if start:
-                self.logger.debug(f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+                self.logger.debug(
+                    f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
             if show_next:
-                # FIXME: would be increment offset at the end of title list
                 self.current_offset += self.titles_batch_size
                 self.logger.debug(
                     f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
             if show_previous:
-                self.current_offset = max(0, self.current_offset - self.titles_batch_size)  # Ограничиваем offset снизу
-                self.logger.debug(f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+                self.current_offset = max(0, self.current_offset - self.titles_batch_size)
+                self.logger.debug(
+                    f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
-            match (system, bool(title_ids), titles_text_list, franchises):
-                case(True, _, _, _):
-                    show_mode = ' system'
-                    titles = self.db_manager.get_statistics_from_db()
-                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, system=True)
-                case (_, True, _, _):
-                    show_mode = 'title_ids'
-                    titles = self.db_manager.get_titles_from_db(show_all=False,
-                                                                offset=self.current_offset, title_ids=title_ids)
-                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-                case (_, False, True, False):
-                    titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=12, offset=self.current_offset)
-                    show_mode = 'titles_text_list'
-                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, titles_text_list=True)
-                case (_, False, False, False):
-                    titles = self.db_manager.get_titles_from_db(show_all=True, batch_size=self.titles_batch_size,
-                                                                offset=self.current_offset)
-                    show_mode = 'default'
-                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
-                case (_, False, False, True):
-                    titles = self.db_manager.get_franchises_from_db(show_all=True, batch_size=12, offset=self.current_offset)
-                    show_mode = 'franchise_list'
-                    self.display_titles_in_ui(titles, row_start=0, col_start=0, num_columns=4, franchises_list=True)
+            # Используем фабрику для получения данных
+            data_factory = TitleDataFactory(self.db_manager, self.user_id)
+            titles = data_factory.get_titles(
+                show_mode=show_mode,
+                title_ids=title_ids,
+                current_offset=self.current_offset,
+                batch_size=batch_size
+            )
+
+            # Передача данных в метод отображения
+            self.display_titles_in_ui(titles, show_mode)
+
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-            # TODO: fix this. need to count as dict
-            self.logger.debug(f"{len(titles)}")
-
             self.total_titles = titles
-            len_total_titles = len(self.total_titles)
-            self.logger.debug(f"self.total_titles:{len_total_titles}")
+            self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
         except Exception as e:
-            self.logger.error(f"Ошибка display_titles_in_ui: {e}")
+            self.logger.error(f"Ошибка display_titles: {e}")
 
-    def display_titles_in_ui(self, titles, row_start=0, col_start=0, num_columns=2, titles_text_list=False, franchises_list=False, system=False):
-        """Создает виджет для тайтла и добавляет его в макет."""
+    def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:
             self.clear_previous_posters()
+
+            factory = TitleDisplayFactory(self)
+
             if len(titles) == 1:
                 # Если у нас один тайтл, отображаем его с полным описанием
-                title = titles[0]
-                self.logger.debug(f"One title ;)")
-                # show_description=False, show_one_title=False, show_list=False, show_franchise=False
-                title_layout = self.create_title_browser(title, show_description=True, show_one_title=True, show_list=False, show_franchise=False)
-                self.posters_layout.addLayout(title_layout, 0, 0, 1, 2)
-                self.logger.debug(f"Displayed one title.")
-            elif system:
-                # Создаем системный экран с количеством тайтлов и франшиз
-                show_mode = 'system'
-                system_widget = QWidget(self)
-                system_layout = self.create_system_browser(titles)
-                system_widget.setLayout(system_layout)
+                title_widget, _ = factory.create('one_title', titles[0])
+                self.posters_layout.addWidget(title_widget, 0, 0, 1, 2)
 
+                self.logger.debug(f"Displayed one title.")
+            elif show_mode == 'system':
+                # Системный виджет
+                system_widget, _ = factory.create('system', titles)
                 self.posters_layout.addWidget(system_widget, 0, 0, 1, 2)
                 self.logger.debug(f"Displayed {show_mode}")
             else:
+                # Проходим по каждому тайтлу и создаем соответствующий виджет
                 for index, title in enumerate(titles):
+                    title_widget, num_columns = factory.create(show_mode, title)
+                    # Размещение виджета в макете
                     row = (index + row_start) // num_columns
                     column = (index + col_start) % num_columns
 
-                    if titles_text_list:
-                        show_mode = 'titles_text_list'
-                        title_browser = self.create_title_browser(title, show_list=True)
-                    elif franchises_list:
-                        show_mode = 'franchise_list'
-                        title_browser = self.create_title_browser(title, show_franchise=True)
-                    else:
-                        show_mode = 'default'
-                        title_browser = self.create_title_browser(title, show_description=False, show_one_title=False)
-                        # TODO: fix this. need to count as dict
-                    self.logger.debug(f"Displayed {show_mode} {len(titles)} titles.")
-                    self.posters_layout.addWidget(title_browser, row, column)
+                    self.posters_layout.addWidget(title_widget, row, column)
+
+            self.logger.debug(f"Displayed {show_mode} with {len(titles)} titles.")
         except Exception as e:
             self.logger.error(f"Ошибка display_titles_in_ui: {e}")
 
@@ -402,19 +373,19 @@ class AnimePlayerAppVer3(QWidget):
 
         self.total_titles = titles
 
-        self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+        self.display_titles_in_ui(titles)
 
     def display_titles_for_day(self, day_of_week):
         # Очистка предыдущих постеров
         self.clear_previous_posters()
-        titles = self.db_manager.get_titles_from_db(day_of_week)
+        titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
         self.day_of_week = day_of_week
-
+        self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
         if titles:
             # Сохраняем текущие тайтлы для последующего использования
             self.total_titles = titles
             # Отображаем тайтлы в UI
-            self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+            self.display_titles_in_ui(titles)
             # Проверяем и обновляем расписание после отображения every 10 min
             QTimer.singleShot(600000, lambda: self.reload_schedule())
 
@@ -438,7 +409,7 @@ class AnimePlayerAppVer3(QWidget):
 
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
-                    self.display_titles_in_ui(titles, self.row_start, self.col_start, self.num_columns)
+                    self.display_titles_in_ui(titles)
                     self.day_of_week = day_of_week
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
@@ -449,7 +420,6 @@ class AnimePlayerAppVer3(QWidget):
             # TODO: fix this. need to count as dict
             self.logger.debug(
                 f"[{i + 1}/{len(parsed_data)}] Saved title_id from API: {item['title_id']} on day {item['day']}")
-        return True
 
     def _save_titles_list(self, titles_list):
         try:
@@ -459,7 +429,6 @@ class AnimePlayerAppVer3(QWidget):
                 f"[XXX] Saving title_id from API: {title_id}")
             self.invoke_database_save(titles_list)
             self.current_data = titles_list
-            return True
         except Exception as e:
             self.logger.error(f"Ошибка при save titles расписания: {e}")
 
@@ -527,14 +496,14 @@ class AnimePlayerAppVer3(QWidget):
         """
         Прокси-метод, который делегирует создание system_browser в UISGenerator.
         """
-        self.logger.debug(f"Пытаемся создать system_browser с параметрами: {[statistics]}")
+        self.logger.debug(f"Пытаемся создать system_browser с параметрами: {len(statistics)}")
         return self.ui_s_generator.create_system_browser(statistics)
 
-    def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False, show_franchise=False):
+    def create_title_browser(self, title, show_mode='default'):
         """
         Прокси-метод, который делегирует создание title_browser в UIGenerator.
         """
-        return self.ui_generator.create_title_browser(title, show_description, show_one_title, show_list, show_franchise)
+        return self.ui_generator.create_title_browser(title, show_mode=show_mode)
 
     def invoke_database_save(self, title_list):
         # TODO: fix this. need to count as dict
@@ -746,6 +715,11 @@ class AnimePlayerAppVer3(QWidget):
                 template_name = link.split('/')[1]
                 self.db_manager.save_template(template_name)
                 QTimer.singleShot(100, lambda: self.display_titles(start=True))
+            elif link.startswith('reset_offset/'):
+                reset_status = link.split('/')[1]
+                if reset_status:
+                    self.current_offset = 0
+                    QTimer.singleShot(100, lambda: self.display_titles(start=True))
             elif link.startswith('reload_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
@@ -776,6 +750,21 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_need_to_see/ link structure: {link}")
+            elif link.startswith('set_watch_status/'):
+                parts = link.split('/')
+                if len(parts) >= 4:
+                    user_id = int(parts[1])
+                    title_id = int(parts[2])
+                    episode_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
+                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
+                    current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,episode_id=episode_id)
+                    current_watched_status, _ = current_status
+                    new_watch_status = not current_watched_status
+                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_watch_status}")
+                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id, is_watched=new_watch_status)
+                    QTimer.singleShot(100, lambda: self.display_info(title_id))
+                else:
+                    self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
             elif link.startswith('set_watch_all_episodes_status/'):
                 parts = link.split('/')
                 if len(parts) >= 4:
@@ -792,21 +781,6 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid set_watch_all_episodes_status/ link structure: {link}")
-            elif link.startswith('set_watch_status/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    user_id = int(parts[1])
-                    title_id = int(parts[2])
-                    episode_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
-                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
-                    current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,episode_id=episode_id)
-                    current_watched_status, _ = current_status
-                    new_watch_status = not current_watched_status
-                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_watch_status}")
-                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id, is_watched=new_watch_status)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
             elif link.startswith('set_rating/'):
                 parts = link.split('/')
                 if len(parts) >= 4:

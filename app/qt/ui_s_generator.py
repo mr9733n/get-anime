@@ -42,6 +42,7 @@ class UISGenerator:
                 background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
                 """
             )
+
             system_browser.setHtml(self._generate_statistics_html(statistics))
             # Добавляем system_browser в layout контейнера
             container_layout.addWidget(system_browser)
@@ -175,6 +176,8 @@ class UISGenerator:
         blocked_titles_list = ""
         # TODO: fix this
         template_name = 'default'
+        # TODO:
+        reset_offset_status = True
 
         if blocked_titles:
             # Разделяем строку на элементы
@@ -199,6 +202,7 @@ class UISGenerator:
          </div>
          <div style="margin: 30px;">
              <p><a href="reload_template/{template_name}">Reload template</a></p>
+             <p><a href="reset_offset/{reset_offset_status}">Reset offset</a></p>
              <p>Количество тайтлов: {titles_count}</p>
              <p>Количество франшиз: {franchises_count}</p>
              <p>Количество эпизодов: {episodes_count}</p>

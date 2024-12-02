@@ -4,14 +4,15 @@ import subprocess
 from PyQt5.QtWidgets import QTextBrowser, QLabel, QHBoxLayout, QVBoxLayout, QWidget
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
-from app.qt.ui_manger import UIManager
+from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 import base64
 import logging
-from jinja2 import Template
 
 class UIGenerator:
     def __init__(self, app, db_manager):
         self.logger = logging.getLogger(__name__)
+        self.title_html_factory = TitleHtmlFactory(app)
+        self.title_browser_factory = TitleBrowserFactory(app)
         self.app = app
         self.db_manager = db_manager
         self.blank_spase = '&nbsp;'
@@ -19,150 +20,59 @@ class UIGenerator:
         self.rating_name = 'CMERS'
         self.max_rating = 6
 
-    def create_title_browser(self, title, show_description=False, show_one_title=False, show_list=False,
-                             show_franchise=False):
-        """Создает элемент интерфейса для отображения информации о тайтле.
-        :param title:
-        :param show_description:
-        :param show_one_title:
-        :param show_list:
-        :param show_franchise:
-        :return:
-        """
+    def create_title_browser(self, title, show_mode='default'):
+        """Создает элемент интерфейса для отображения информации о тайтле."""
         try:
             self.logger.debug("Начинаем создание title_browser...")
-            title_browser = QTextBrowser(self.app)
-            title_browser.setPlainText(f"Title: {title.name_en}")
-            title_browser.setOpenExternalLinks(True)
-            title_browser.setProperty('title_id', title.title_id)
-            title_browser.anchorClicked.connect(self.app.on_link_click)
-            # Общие настройки для различных режимов отображения
-            if show_one_title:
-                # Создаем горизонтальный layout для отображения деталей тайтла
+
+            if show_mode == 'one_title':
+                self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
                 title_layout = QHBoxLayout()
-                self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-                # Постер слева
-                poster_label = QLabel(self.app)
-                poster_data = self.app.get_poster_or_placeholder(title.title_id)
-                if poster_data:
-                    pixmap = QPixmap()
-                    if pixmap.loadFromData(poster_data):
-                        poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
-                    else:
-                        self.logger.error(f"Error: Failed to load pixmap from data for title_id: {title.title_id}")
-                        poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
-                else:
-                    poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+
+                # Используем фабрику для создания постера
+                poster_label = self.title_browser_factory.create_poster_widget(title.title_id)
                 title_layout.addWidget(poster_label)
-                # Информация о тайтле справа
-                title_browser.setFixedSize(455, 650)
-                html_content = self.get_title_html(title, show_description=True, show_more_link=False)
-                title_browser.setHtml(html_content)
-                # Добавляем title_browser в layout
+
+                # Создаем виджет title_browser
+                title_browser = self.title_browser_factory.create_title_browser_widget(title, 'one_title')
                 title_layout.addWidget(title_browser)
+
                 return title_layout
-            elif show_list or show_franchise:
-                self.logger.debug(
-                    f"Create title_browser {'show_list' if show_list else 'show_franchise'}, title_id: {title.title_id}")
-                title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-                title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-                title_browser.setStyleSheet(
-                    """
-                    text-align: right;
-                    border: 1px solid #444;
-                    width: 100%;
-                    height: 100%;
-                    position: relative;
-                    background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
-                    """
-                )
-                html_content = self.get_title_html(title, show_text_list=True)
-                title_browser.setHtml(html_content)
-                return title_browser
             else:
-                self.logger.debug(f"Создаем title_browser для title_id: {title.title_id}")
-                title_browser.setFixedSize(455, 650)  # Размер плитки
-                html_content = self.get_title_html(title, show_description, show_more_link=True)
-                title_browser.setHtml(html_content)
-                return title_browser
+                return self.title_browser_factory.create_title_browser_widget(title, show_mode)
+
         except Exception as e:
             error_message = f"Error in create_title_browser: {str(e)}"
             self.logger.error(error_message)
 
-    def get_title_html(self, title, show_description=False, show_more_link=False, show_text_list=False):
-        """Генерирует HTML для отображения информации о тайтле."""
+    def get_title_html(self, title, show_mode='default'):
+        """Генерирует HTML для отображения информации о тайтле, используя фабрику HTML.
+        """
+        return self.title_html_factory.generate_html(title, show_mode)
+
+    def prepare_generate_poster_html(self, title_id):
         try:
-            # Общие компоненты, которые всегда требуются
-            reload_html = self.generate_reload_button_html(title.title_id)
-            rating_html = self.generate_rating_html(title)
-            announce_html = self.generate_announce_html(title)
-            status_html = self.generate_status_html(title)
-            description_html = self.generate_description_html(title) if show_description else ""
-            genres_html = self.generate_genres_html(title)
-            year_html = self.generate_year_html(title)
-            type_html = self.generate_type_html(title)
-            episodes_html = self.generate_episodes_html(title)
-            torrents_html = self.generate_torrents_html(title)
+            poster_data = self.app.get_poster_or_placeholder(title_id)
+            pixmap = QPixmap()
+            if not pixmap.loadFromData(poster_data):
+                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
+                return None
 
-            titles_html, one_title_html, show_text_list_html, styles_css = self.db_manager.get_template()
+            # Используем QBuffer для сохранения в байтовый массив
+            byte_array = QByteArray()
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.WriteOnly)
+            if not pixmap.save(buffer, 'PNG'):
+                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
+                return None
 
-            if show_more_link and titles_html:
-                poster_html = self.generate_poster_html(title, need_background=True)
-                show_more_html = self.generate_show_more_html(title.title_id)
-                template = Template(titles_html)
-                html_content = template.render(
-                    title=title,
-                    styles_css=styles_css,
-                    poster_html=poster_html,
-                    reload_html=reload_html,
-                    rating_html=rating_html,
-                    show_more_html=show_more_html,
-                    announce_html=announce_html,
-                    status_html=status_html,
-                    description_html=description_html,
-                    genres_html=genres_html,
-                    year_html=year_html,
-                    type_html=type_html,
-                    episodes_html=episodes_html,
-                    torrents_html=torrents_html,
-                    new_line='<br /><br /><br /><br />'
-                )
-                return html_content
-
-            if show_text_list and show_text_list_html:
-                year_html = self.generate_year_html(title, show_text_list=True)
-                template = Template(show_text_list_html)
-                html_content = template.render(
-                    title=title,
-                    styles_css=styles_css,
-                    year_html=year_html,
-                )
-                return html_content
-
-            elif one_title_html:
-                poster_html = self.generate_poster_html(title, need_placeholder=True)
-                template = Template(one_title_html)
-                html_content = template.render(
-                    title=title,
-                    styles_css=styles_css,
-                    poster_html=poster_html,
-                    reload_html=reload_html,
-                    rating_html=rating_html,
-                    announce_html=announce_html,
-                    status_html=status_html,
-                    description_html=description_html,
-                    genres_html=genres_html,
-                    year_html=year_html,
-                    type_html=type_html,
-                    episodes_html=episodes_html,
-                    torrents_html=torrents_html,
-                )
-                return html_content
+            # Преобразуем данные в Base64
+            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
+            return poster_base64
 
         except Exception as e:
-            error_message = f"Error in get_title_html: {str(e)}"
-            self.logger.error(error_message)
-            return ""
+            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
+            return None
 
     def generate_reload_button_html(self, title_id):
         """Generates HTML to display reload button"""
@@ -353,30 +263,6 @@ class UIGenerator:
             error_message = f"Error in generate_torrents_html: {str(e)}"
             self.logger.error(error_message)
 
-    def prepare_generate_poster_html(self, title_id):
-        try:
-            poster_data = self.app.get_poster_or_placeholder(title_id)
-            pixmap = QPixmap()
-            if not pixmap.loadFromData(poster_data):
-                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
-                return None
-
-            # Используем QBuffer для сохранения в байтовый массив
-            byte_array = QByteArray()
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.WriteOnly)
-            if not pixmap.save(buffer, 'PNG'):
-                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
-                return None
-
-            # Преобразуем данные в Base64
-            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-            return poster_base64
-
-        except Exception as e:
-            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
-            return None
-
     def generate_poster_html(self, title, need_image=False, need_background=False, need_placeholder=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
         try:
@@ -524,6 +410,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_episodes_html: {str(e)}"
             self.logger.error(error_message)
+
 
 
 

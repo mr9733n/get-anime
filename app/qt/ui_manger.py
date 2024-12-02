@@ -2,10 +2,11 @@
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
     QLabel, QLineEdit, QPushButton
 
-
 class UIManager:
     def __init__(self, parent):
+
         self.parent = parent
+        self.parent_widgets = {}
         self.button_style_template = """
             QPushButton {{
                 background-color: {background_color};
@@ -37,7 +38,22 @@ class UIManager:
             ("#5a5a5a", "#6c6c6c", "#000")   # Dark for others : 8
         ]
 
-    def create_button(self, text, color_index, callback):
+    def create_widgets_from_metadata(self, metadata_list, layout, callbacks):
+        for metadata in metadata_list:
+            widget_type = metadata.get("type")
+
+            if widget_type == "button":
+                self._create_button(metadata, layout, callbacks)
+            elif widget_type == "input_field":
+                self._create_input_field(metadata, layout)
+            elif widget_type == "dropdown":
+                self._create_dropdown(metadata, layout, callbacks)
+
+    def _create_button(self, metadata, layout, callbacks):
+        text = metadata.get("text", "Button")
+        color_index = metadata.get("color_index", 0)
+        callback_key = metadata.get("callback_key", None)
+
         button = QPushButton(text, self.parent)
         button_style = self.button_style_template.format(
             background_color=self.button_colors[color_index][0],
@@ -45,16 +61,23 @@ class UIManager:
             pressed_color=self.button_colors[color_index][2]
         )
         button.setStyleSheet(button_style)
-        button.clicked.connect(callback)
-        return button
 
-    def setup_controls_layout(self, layout):
-        # Search Field
-        self.parent.title_search_entry = QLineEdit(self.parent)
-        self.parent.title_search_entry.setPlaceholderText('TITLE ID OR NAME')
-        self.parent.title_search_entry.setMinimumWidth(150)
-        self.parent.title_search_entry.setMaximumWidth(255)
-        self.parent.title_search_entry.setStyleSheet("""
+        if callback_key and callback_key in callbacks:
+            button.clicked.connect(callbacks[callback_key])
+
+        layout.addWidget(button)
+
+    def _create_input_field(self, metadata, layout):
+        placeholder = metadata.get("placeholder", "")
+        min_width = metadata.get("min_width", 100)
+        max_width = metadata.get("max_width", 200)
+
+        input_field = QLineEdit(self.parent)
+        input_field.setPlaceholderText(placeholder)
+        input_field.setMinimumWidth(min_width)
+        input_field.setMaximumWidth(max_width)
+
+        input_field.setStyleSheet("""
             QLineEdit {
                 background-color: #f7f7f7;
                 border: 1px solid #dcdcdc;
@@ -68,31 +91,19 @@ class UIManager:
                 background-color: #ffffff;
             }
         """)
-        layout.addWidget(self.parent.title_search_entry)
 
-        # Find Button
-        self.parent.display_button = self.create_button('FIND', 0, self.parent.get_search_by_title)
-        layout.addWidget(self.parent.display_button)
+        # Сохраняем ссылку на input в словарь с уникальным ключом
+        widget_key = metadata.get("widget_key", "input_field")
+        self.parent_widgets[widget_key] = input_field
+        layout.addWidget(input_field)
 
-        # Random Button
-        self.parent.random_button = self.create_button('RANDOM', 0, self.parent.get_random_title)
-        layout.addWidget(self.parent.random_button)
+    def _create_dropdown(self, metadata, layout, callbacks):
+        items = metadata.get("items", [])
+        callback_name = metadata.get("callback_key", None)
 
-        # Day Buttons
-        self.parent.day_buttons = []
-        for i, day in enumerate(self.parent.days_of_week):
-            button = self.create_button(day, 1, lambda checked, i=i: self.parent.display_titles_for_day(i))
-            layout.addWidget(button)
-            self.parent.day_buttons.append(button)
-
-        # Refresh Button
-        self.parent.refresh_button = self.create_button('RELOAD', 0, self.parent.reload_schedule)
-        layout.addWidget(self.parent.refresh_button)
-
-        # Quality Dropdown
-        self.parent.quality_dropdown = QComboBox(self.parent)
-        self.parent.quality_dropdown.addItems(['fhd', 'hd', 'sd'])
-        self.parent.quality_dropdown.setStyleSheet("""
+        dropdown = QComboBox(self.parent)
+        dropdown.addItems(items)
+        dropdown.setStyleSheet("""
             QComboBox {
                 background-color: #f7f7f7;
                 border: 1px solid #ccc;
@@ -112,16 +123,32 @@ class UIManager:
                 selection-color: #fff;
             }
         """)
-        layout.addWidget(self.parent.quality_dropdown)
-        self.parent.quality_dropdown.currentIndexChanged.connect(self.parent.refresh_display)
 
-    def setup_main_layout(self, main_layout):
-        # Adding control layout
-        controls_layout = QHBoxLayout()
-        self.setup_controls_layout(controls_layout)
-        main_layout.addLayout(controls_layout)
+        if callback_name and callback_name in callbacks:
+            callback = callbacks[callback_name]
+            dropdown.currentIndexChanged.connect(callback)
 
-        # Adding scroll area for posters
+        # Сохраняем ссылку на dropdown в словарь с уникальным ключом
+        widget_key = metadata.get("widget_key", "dropdown")
+        self.parent_widgets[widget_key] = dropdown
+        layout.addWidget(dropdown)
+
+    def setup_main_layout(self, main_layout, all_layout_metadata, callbacks):
+        # Создаем два лейаута: верхний и нижний
+        top_layout = QHBoxLayout()
+        bottom_layout = QHBoxLayout()
+
+        # Разделение метаданных и создание виджетов в соответствующих лейаутах
+        for metadata in all_layout_metadata:
+            if metadata["layout"] == "top":
+                self.create_widgets_from_metadata([metadata], top_layout, callbacks)
+            elif metadata["layout"] == "bottom":
+                self.create_widgets_from_metadata([metadata], bottom_layout, callbacks)
+
+        # Добавляем верхний лейаут (с кнопками поиска, выбора качества, кнопками дней недели)
+        main_layout.addLayout(top_layout)
+
+        # Основной лейаут для отображения контента (скролл-область)
         self.parent.scroll_area = QScrollArea()
         self.parent.scroll_area.setWidgetResizable(True)
         self.parent.poster_container = QWidget()
@@ -136,55 +163,12 @@ class UIManager:
             }
         """)
         self.parent.scroll_area.setWidget(self.parent.poster_container)
+
+        # Добавляем скролл-область (основной контент)
         main_layout.addWidget(self.parent.scroll_area)
 
-        # Создаем горизонтальный макет для кнопок
-        button_layout = QHBoxLayout()
-
-        # Load More Button
-        self.parent.load_more_button = self.create_button('LOAD PREV', 1, self.parent.load_previous_titles)
-        button_layout.addWidget(self.parent.load_more_button)
-        # Load More Button
-        self.parent.load_more_button = self.create_button('LOAD MORE', 4, self.parent.load_more_titles)
-        button_layout.addWidget(self.parent.load_more_button)
-
-        # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('TITLES LIST', 7,
-                                                               self.parent.display_titles_text_list)
-        button_layout.addWidget(self.parent.display_titles_button)
-
-        # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('FRANCHISES', 8,
-                                                               self.parent.display_franchises)
-        button_layout.addWidget(self.parent.display_titles_button)
-
-        # Добавление кнопки для отображения всех тайтлов
-        self.parent.display_titles_button = self.create_button('SYSTEM', 2,
-                                                               self.parent.display_system)
-        button_layout.addWidget(self.parent.display_titles_button)
-
-        # Save Playlist Button
-        self.parent.save_playlist_button = self.create_button('SAVE', 4, self.parent.save_playlist_wrapper)
-        button_layout.addWidget(self.parent.save_playlist_button)
-
-        # Play Playlist Button
-        self.parent.play_playlist_button = self.create_button('PLAY', 4, self.parent.play_playlist_wrapper)
-        button_layout.addWidget(self.parent.play_playlist_button)
-
-
-        # Добавляем горизонтальный макет в основной макет
-        main_layout.addLayout(button_layout)
-
-        # Apply shadow effects to buttons
-        self.apply_shadow_effects([
-            self.parent.display_button,
-            self.parent.random_button,
-            self.parent.load_more_button,
-            self.parent.save_playlist_button,
-            self.parent.play_playlist_button,
-            self.parent.refresh_button,
-            self.parent.quality_dropdown
-        ])
+        # Добавляем нижний лейаут (дополнительные кнопки управления)
+        main_layout.addLayout(bottom_layout)
 
     @staticmethod
     def apply_shadow_effects(widgets):

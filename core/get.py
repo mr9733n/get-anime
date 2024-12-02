@@ -160,40 +160,6 @@ class GetManager:
                 self.logger.error(f"Ошибка при получении статистики из базы данных: {e}")
                 return {}
 
-    def get_franchises_from_db(self, show_all=False, batch_size=None, offset=0, title_id=None):
-        """Получает все тайтлы вместе с информацией о франшизах."""
-        with self.Session as session:
-            try:
-                # Начинаем формирование базового запроса
-                if title_id:
-                    # Если указан title_id, находим все связанные тайтлы
-                    franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
-                        FranchiseRelease.title_id == title_id
-                    ).scalar_subquery()
-
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id == franchise_subquery,
-                        FranchiseRelease.franchise_id.isnot(None)
-                    )
-                else:
-                    # Если show_all=True, получить все тайтлы, у которых есть франшизы
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id.isnot(None)
-                    )
-                # Если указан batch_size, применяем лимит и смещение
-                if show_all:
-                    if batch_size:
-                        query = query.offset(offset).limit(batch_size)
-
-                # Получаем результат запроса
-                titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
-
-                return titles
-
-            except Exception as e:
-                self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")
-                return []
-
     def get_poster_link(self, title_id):
         with self.Session as session:
             try:
@@ -326,7 +292,85 @@ class GetManager:
                 self.logger.error(f"Error loading template '{name}': {e}")
                 return None, None, None, None
 
-    def get_titles_from_db(self, day_of_week=None, show_all=False, batch_size=None, offset=0, title_id=None, title_ids=None, system=False):
+    def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
+        """Получает все тайтлы вместе с информацией о франшизах."""
+        with self.Session as session:
+            try:
+                # Начинаем формирование базового запроса
+                if title_id:
+                    # Если указан title_id, находим все связанные тайтлы
+                    franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
+                        FranchiseRelease.title_id == title_id
+                    ).scalar_subquery()
+
+                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                        FranchiseRelease.franchise_id == franchise_subquery,
+                        FranchiseRelease.franchise_id.isnot(None)
+                    )
+                else:
+                    # Получить все тайтлы, у которых есть франшизы
+                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                        FranchiseRelease.franchise_id.isnot(None)
+                    )
+
+                # Применяем лимит и смещение, если указаны batch_size и offset
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+
+                # Получаем результат запроса
+                titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
+
+                return titles
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")
+                return []
+
+    def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None):
+        """Need to see Titles without episodes"""
+        with self.Session as session:
+            try:
+                # Начинаем формирование базового запроса
+                query = session.query(Title).join(History, Title.title_id == History.title_id)
+
+                # Применяем фильтр для need_to_see
+                if title_id:
+                    # Фильтруем конкретный тайтл
+                    query = query.filter(History.title_id == title_id, History.need_to_see == True)
+                else:
+                    # Фильтруем все тайтлы, которые необходимо посмотреть
+                    query = query.filter(History.need_to_see == True)
+
+                # Применяем лимит и смещение, если указаны batch_size и offset
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+
+                # Получаем результат запроса
+                titles = query.all()
+                return titles
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                return []
+
+    def get_titles_list_from_db(self, title_ids=None, batch_size=None, offset=0):
+        """Titles without episodes"""
+        with self.Session as session:
+            try:
+                query = session.query(Title)
+                if title_ids:
+                    query = query.filter(Title.title_id.in_(title_ids))
+                else:
+                    if batch_size:
+                        query = query.offset(offset).limit(batch_size)
+
+                titles = query.all()
+                return titles
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                return []
+
+    def get_titles_from_db(self, show_all=False, need_to_see=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
         Returns a SQLAlchemy query for fetching titles based on given conditions.
@@ -347,15 +391,8 @@ class GetManager:
                     query = query.filter(Title.title_id == title_id)
                 elif title_ids:
                     query = query.filter(Title.title_id.in_(title_ids))
-                elif system:
-                    query = session.query(Title) \
-                        .outerjoin(FranchiseRelease) \
-                        .outerjoin(Franchise) \
-                        .options(
-                        joinedload(Title.franchises).joinedload(FranchiseRelease.franchise),
-                        joinedload(Title.episodes),  # Загрузить связанные эпизоды
-                        joinedload(Title.poster)  # Загрузить связанные постеры, если есть связь poster
-                    )
+                elif need_to_see:
+                    query = query.join(History).filter(History.need_to_see == 1)
                 elif not show_all:
                     query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
                 if batch_size:

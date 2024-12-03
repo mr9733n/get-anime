@@ -1,15 +1,16 @@
 import asyncio
 import logging
 import time
-
+import shutil
 import aiohttp
 import requests
 import qrcode
 import os
 import argparse
-from qrcode.main import QRCode
-from qrcode.image.pil import PilImage
-import shutil
+
+from PIL import Image
+from io import BytesIO
+
 from tqdm import tqdm
 
 from sqlalchemy import create_engine
@@ -239,29 +240,25 @@ class DatabaseMergeUtility:
             logger.error(f"Ошибка при получении данных из модели {model.__tablename__}: {e}")
             return []
 
-    def send_email_with_postmarkapp(self, url, api_key, user_name, download_link):
+    def send_email_with_postmarkapp(self, url, api_key, user_name, download_link, qrcode_path):
         """
         Отправка письма с использованием Postmark API.
         """
         try:
+            logger.info(
+                f"url, api_key, email, download_link, qr_code_path: {url}, {api_key}, {user_name}, {download_link}, {qrcode_path}")
 
-            logger.info(f"url, api_key, email, download_link: {url}, {api_key}, {user_name}, {download_link}")
-            # Генерация QR-кода
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(link)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            qr_code_path = QRCODE_NAME
-            img.save(qr_code_path)
+            # Открытие QR-кода как изображения
+            with open(qrcode_path, 'rb') as image:
+                img_data = image.read()
 
             # Подготовка данных для отправки
             subject = "Ссылка для скачивания"
-            body = f"Скачайте базу данных по следующей ссылке: {download_link}"
+            body = f"""
+            <p>Скачайте базу данных по следующей ссылке: <a href="{download_link}">{download_link}</a></p>
+            <p>QR-код для скачивания:</p>
+            <img src="cid:qr_code">
+            """
 
             # Отправка письма
             headers = {
@@ -269,14 +266,22 @@ class DatabaseMergeUtility:
                 "Content-Type": "application/json",
                 "X-Postmark-Server-Token": api_key
             }
+
+            # Данные письма
             payload = {
                 "From": user_name,
                 "To": user_name,
                 "Subject": subject,
-                "TextBody": body
+                "HtmlBody": body  # Используем HTML для вставки QR-кода
             }
 
-            response = requests.post(url, json=payload, headers=headers)
+            # Отправка письма с вложением (QR-код)
+            files = {
+                "inline": ("qr_code.png", img_data, "image/png")  # Привязываем изображение через CID
+            }
+
+            # Сделаем запрос к API Postmark
+            response = requests.post(url, json=payload, headers=headers, files=files)
 
             if response.status_code == 200:
                 logger.info(f"Письмо отправлено: {response.json()}")
@@ -285,7 +290,6 @@ class DatabaseMergeUtility:
 
         except Exception as e:
             logger.error(f"Ошибка при отправке письма через Postmark: {e}")
-
 
 if __name__ == "__main__":
     global mail_api_url, mail_api_key, email, file_api_key
@@ -328,8 +332,8 @@ if __name__ == "__main__":
         # Скачивание базы данных по ссылке или QR-коду и мерж
         link = args.link
         if args.qrcode_path:
-            img = qrcode.Image.open(args.qrcode_path)
-            link = img.get_data()
+            with open(args.qrcode_path, 'rb') as image:
+                img_data = image.read()
 
         utility = DatabaseMergeUtility("", "")
 
@@ -352,7 +356,7 @@ if __name__ == "__main__":
                     link = utility.upload_to_fileio_with_retries(FILE_IO_API_KEY, final_db_path, retries=3, delay=5)
                     if link:
                         utility.generate_qr_code(link, qr_code_path)
-                        utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link)
+                        utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link, qr_code_path)
                         logger.info("Уведомление отправлено.")
             else:
                 logger.error("Ошибка: база данных не была загружена.")
@@ -382,7 +386,7 @@ if __name__ == "__main__":
             link = utility.upload_to_fileio_with_retries(FILE_IO_API_KEY, final_db_path, retries=3, delay=5)
             if link:
                 utility.generate_qr_code(link, qr_code_path)
-                utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link)
+                utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link, qr_code_path)
                 logger.info("Уведомление отправлено.")
         else:
             logger.warning("Недостаточно баз данных для выполнения мержа.")

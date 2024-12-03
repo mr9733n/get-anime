@@ -67,6 +67,8 @@ a = Analysis(
 		'sqlalchemy.engine',
 		'sqlalchemy.sql',
         'app.qt.app',
+        'app.qt.app_helpers',
+        'app.qt.layout_metadata',
         'app.qt.ui_manager',
         'app.qt.ui_generator',
         'app.qt.ui_s_generator',

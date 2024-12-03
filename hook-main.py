@@ -6,6 +6,8 @@ hiddenimports = (
     collect_submodules('app.qt.ui_manager') +
     collect_submodules('app.qt.ui_generator') +
     collect_submodules('app.qt.ui_s_generator') +
+    collect_submodules('app.qt.app_helpers') +
+    collect_submodules('app.qt.layout_metadata') +
     collect_submodules('core.database_manager') +
     collect_submodules('core.get') +
     collect_submodules('core.save') +

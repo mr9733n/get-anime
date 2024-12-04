@@ -11,3 +11,6 @@ pyinstaller~=5.13.2
 jinja2
 qrcode
 tqdm
+pyzbar
+requests_toolbelt
+python-dotenv

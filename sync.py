@@ -21,7 +21,6 @@ TEMP_FOLDER_NAME = "temp"
 DYLD_NAME = "DYLD_LIBRARY_PATH"
 DYLD_LIBRARY_MAC_PATH = "/opt/homebrew/lib"
 LIBRARY_MAC_PATH = "/opt/homebrew/lib/libzbar.dylib"
-
 DYLD_LIBRARY_LINUX_PATH = "/usr/lib"
 LIBRARY_LINUX_PATH = "/usr/lib/libzbar.so"
 
@@ -38,7 +37,7 @@ def configure_platform():
     """Настраивает окружение в зависимости от операционной системы."""
     platform_name = platform.system()
     paths = {
-        "Windows": None,  # Дополните при необходимости
+        "Windows": None,
         "Darwin": {"library": LIBRARY_MAC_PATH, "env_var": DYLD_NAME, "env_path": DYLD_LIBRARY_MAC_PATH},
         "Linux": {"library": LIBRARY_LINUX_PATH, "env_var": DYLD_NAME, "env_path": DYLD_LIBRARY_LINUX_PATH},
     }

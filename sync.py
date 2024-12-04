@@ -58,7 +58,7 @@ def configure_platform():
         logger.error(f"Failed to load library for {platform_name}: {e}")
         raise ImportError(f"Cannot load library for {platform_name}: {e}")
 
-def download_file_with_progress(url, output_path, timeout=10):
+def download_file_with_progress(url, output_path, timeout=600):
     """Download a file from a URL with a progress bar."""
     try:
         logger.info(f"Checking URL availability: {url}")
@@ -82,7 +82,9 @@ def download_file_with_progress(url, output_path, timeout=10):
                 if chunk:
                     f.write(chunk)
                     bar.update(len(chunk))
-        logger.info(f"File successfully downloaded to {output_path}.")
+
+        filesize = os.path.getsize(output_path)
+        logger.info(f"File successfully downloaded to {output_path}[{filesize}].")
     except requests.exceptions.RequestException as e:
         logger.error(f"Error during file download: {e}")
         raise

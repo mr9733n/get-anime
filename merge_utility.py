@@ -369,6 +369,11 @@ def main():
     original_db = os.path.join(DB_FOLDER, "anime_player.db")
     temp_dbs = [os.path.join(TEMP_FOLDER, f) for f in os.listdir(TEMP_FOLDER) if f.endswith(".db")]
 
+    print("Anime Player Merge Utility App version 0.0.0.1")
+    print(f"Orig db: '{original_db}' , temp dbs: '{temp_dbs}'")
+    print(f"Merge dbs from 'temp' folder")
+    print(f"Then upload db to cloud")
+
     if POSTMARK_API_KEY and FROM_EMAIL and TO_EMAIL and FILEIO_API_KEY:
         postmark_api_key = POSTMARK_API_KEY
         from_email = FROM_EMAIL

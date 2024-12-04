@@ -1,395 +1,473 @@
-import asyncio
-import logging
-import time
-import shutil
-import aiohttp
-import requests
-import qrcode
 import os
-import argparse
+import shutil
+import importlib.util
+import time
+from tempfile import tempdir
 
-from PIL import Image
-from io import BytesIO
-
+import requests
+import logging
+import base64
 from tqdm import tqdm
-
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Column, Integer, String, select, update, inspect, MetaData, Table, NullPool, \
+    UniqueConstraint
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.types import DateTime
+from datetime import datetime
+import qrcode
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import IntegrityError
 
-from core.tables import Base, Title, Episode, History, Franchise, FranchiseRelease, Poster, Schedule, Rating, Torrent, \
-    ProductionStudio
-
-
+# Configure logging
+logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("DatabaseMergeUtility")
 
-MAIL_API_URL = f"https://api.postmarkapp.com/email"
-TEMP_CLOUD_API = 'https://file.io'
+# Constants
+DB_FOLDER = "db"
+TEMP_FOLDER = "temp"
+MERGE_DB_PREFIX = "merged_"
+TABLES_REF_FOLDER = "core"
+TABLES_FILE_PATH = os.path.join(TABLES_REF_FOLDER, "tables.py")
+FILE_API_URL = "https://file.io"  # Replace with the correct endpoint if necessary
+POSTMARK_API_URL = "https://api.postmarkapp.com/email"
 
-TEMP_DB_NAME = 'temp_downloaded.db'
-MERGED_DB_NAME = 'merged_database.db'
-DB_NAME = 'anime_player.db'
-QRCODE_NAME = 'qrcode.png'
+# Set your API keys and other sensitive information via environment variables
+FILEIO_API_KEY = os.environ.get('FILEIO_API_KEY', '')  # Replace with your file.io API key or leave empty if not needed
+POSTMARK_API_KEY = os.environ.get('POSTMARK_API_KEY')  # Replace with your Postmark API key
+FROM_EMAIL = os.environ.get('FROM_EMAIL')  # Your verified sender email address
+TO_EMAIL = os.environ.get('TO_EMAIL')  # Recipient email address
 
-class DatabaseMergeUtility:
-    def __init__(self, db_path_1, db_path_2):
-        # Подключение к двум базам данных
-        self.engine_1 = create_engine(f'sqlite:///{db_path_1}', echo=False)
-        self.engine_2 = create_engine(f'sqlite:///{db_path_2}', echo=False)
+Base = declarative_base()
 
-        # Сессии для работы с базами данных
-        self.Session1 = sessionmaker(bind=self.engine_1)
-        self.Session2 = sessionmaker(bind=self.engine_2)
 
-    def get_all_data(self, session, model):
-        try:
-            return session.query(model).all()
-        except Exception as e:
-            logger.error(f"Ошибка при получении данных из модели {model.__tablename__}: {e}")
-            return []
 
-    def compare_databases(self):
-        models = [Title, Episode, History, Franchise, FranchiseRelease, Poster, Schedule, Rating, Torrent,
-                  ProductionStudio]
-        with self.Session1() as session1, self.Session2() as session2:
-            for model in models:
-                logger.info(f"Сравнение таблицы {model.__tablename__}...")
-                data_1 = self.get_all_data(session1, model)
-                data_2 = self.get_all_data(session2, model)
+def load_tables_module(file_path):
+    spec = importlib.util.spec_from_file_location("tables", file_path)
+    tables_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tables_module)
+    return tables_module
 
-                diff_data = self.get_differences(data_1, data_2)
-                logger.info(f"Найдено различий в {model.__tablename__}: {len(diff_data)}")
+# Load tables module
+tables_module = load_tables_module(TABLES_FILE_PATH)
 
-                for data in diff_data:
-                    logger.info(f"Различие в {model.__tablename__}: {data}")
+# Get registered tables from Base.metadata
+def get_registered_tables(base):
+    return list(base.metadata.tables.keys())
 
-    def get_differences(self, list1, list2):
-        diff = []
-        primary_key_name = list2[0].__table__.primary_key.columns.values()[0].name if list2 else 'id'
-        ids_in_list2 = {getattr(item, primary_key_name) for item in list2}
-        list2_dict = {getattr(item, primary_key_name): item for item in list2}
+# Get registered tables
+registered_tables = get_registered_tables(tables_module.Base)
+logger.info("Registered tables: %s", registered_tables)
 
-        for item in list1:
-            item_id = getattr(item, primary_key_name)
-            if item_id not in ids_in_list2:
-                diff.append(item)
-            else:
-                # Сравнение значений полей
-                for column in item.__table__.columns:
-                    if getattr(item, column.name) != getattr(list2_dict[item_id], column.name):
-                        diff.append(item)
-                        break
-        return diff
+REQUIRED_TABLES = set(registered_tables)
 
-    def merge_databases(self, output_db_path):
-        models = [Title, Episode, History, Franchise, FranchiseRelease, Poster, Schedule, Rating, Torrent,
-                  ProductionStudio]
-        with self.Session1() as session1, self.Session2() as session2:
-            logger.info("Начало процесса мержа данных...")
-            for model in models:
-                data_1 = self.get_all_data(session1, model)
-                data_2 = self.get_all_data(session2, model)
+def validate_db(engine):
+    """
+    Validates the presence of required tables and columns in the database.
+    Returns a tuple (is_valid, matching_tables).
+    """
+    try:
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
 
-                merged_data = self.get_differences(data_1, data_2)
+        # Find matching tables
+        matching_tables = REQUIRED_TABLES & existing_tables
+        if not matching_tables:
+            logger.warning(f"No matching tables found. Skipping database {engine.url.database}.")
+            return False, []
 
-                # Добавление новых записей в первую базу данных
-                primary_key_name = model.__table__.primary_key.columns.values()[0].name
-                for data in merged_data:
-                    session1.add(data)
-                    primary_key_value = getattr(data, primary_key_name)
-                    logger.info(f"Добавлена запись с id {primary_key_value} в таблицу {model.__tablename__}")
+        # Optionally, validate columns in each table
+        for table_name in matching_tables:
+            # Define required columns for validation if necessary
+            required_columns = {
+                "titles": {"title_id", "name_ru", "type_code", "last_updated"},
+                "episodes": {"episode_id", "title_id", "episode_number", "created_timestamp"},
+                # Add required columns for other tables as needed
+            }.get(table_name, set())
 
-            session1.commit()
-            logger.info("Процесс мержа завершён успешно.")
+            if required_columns:
+                columns = {col['name'] for col in inspector.get_columns(table_name)}
+                missing_columns = required_columns - columns
+                if missing_columns:
+                    logger.warning(f"Table {table_name} is missing columns: {missing_columns}")
 
-        # Уничтожение движков после завершения
-        self.engine_1.dispose()
-        self.engine_2.dispose()
+        logger.info(f"Database {engine.url.database} passed validation.")
+        return True, matching_tables
 
-        # Сохранение изменений в новый файл базы данных
-        shutil.copyfile(self.engine_1.url.database, output_db_path)
-        logger.info(f"Итоговая база данных сохранена в {output_db_path}")
-        return output_db_path
+    except Exception as e:
+        logger.error(f"Error validating database {engine.url.database}: {e}")
+        return False, []
 
-    def merge_all_databases(self, temp_databases, output_db_path):
-        """
-        Объединяет все базы данных из списка temp_databases в один файл.
-        """
-        logger.info("Начинаем мерж всех найденных баз данных...")
+def upgrade_db(engine):
+    """Creates missing tables and columns in the database."""
+    try:
+        tables_module.Base.metadata.create_all(engine)
+        logger.info(f"Schema of database {engine.url.database} upgraded.")
+    except Exception as e:
+        logger.error(f"Error upgrading schema of database {engine.url.database}: {e}")
 
-        intermediate_files = []  # Список промежуточных файлов
+def compare_and_merge(original_engine, temp_engine, merge_engine):
+    """Compares and merges matching tables from the original and temporary databases into the merge database."""
+    with original_engine.connect() as orig_conn, \
+         temp_engine.connect() as temp_conn, \
+         merge_engine.connect() as merge_conn:
 
-        while len(temp_databases) > 1:
-            # Берем первые две базы данных из списка
-            db_path_1 = temp_databases.pop(0)
-            db_path_2 = temp_databases.pop(0)
+        orig_session = sessionmaker(bind=orig_conn)()
+        temp_session = sessionmaker(bind=temp_conn)()
+        merge_session = sessionmaker(bind=merge_conn)()
 
-            # Создаем уникальное имя для промежуточного файла
-            intermediate_output = os.path.join(
-                os.path.dirname(output_db_path),
-                f"intermediate_{len(temp_databases)}.db"
-            )
-            intermediate_files.append(intermediate_output)
+        # Reflect tables using temp_conn
+        inspector = inspect(temp_conn)
+        temp_tables = set(inspector.get_table_names())
+        matching_tables = set(tables_module.Base.metadata.tables.keys()) & temp_tables
 
-            # Мержим их с использованием существующего метода merge_databases
-            self.__init__(db_path_1, db_path_2)
-            self.merge_databases(intermediate_output)
+        if not matching_tables:
+            logger.warning(f"No matching tables to merge.")
+            return
 
-            # Используем результат как входной файл для следующего шага
-            temp_databases.insert(0, intermediate_output)
+        conflict_columns_mapping = {
+            'genres': ['name'],
+            'schedule': ['day_of_week', 'title_id'],
+            'days_of_week': ['day_name'],
+            'templates': ['name'],
+            'titles': ['code'],  # Conflict column for titles
+            # Add other tables as needed
+        }
+        do_nothing_tables = {'titles', 'days_of_week', 'templates', 'genres'}
 
-        # Перемещаем последний файл в output_db_path
-        final_intermediate = temp_databases[0]
-        shutil.move(final_intermediate, output_db_path)
-        logger.info(f"Все базы данных объединены в {output_db_path}")
+        for table_name in matching_tables:
+            logger.info(f"Processing table {table_name}...")
 
-    def generate_qr_code(self, link, qr_code_path):
-        try:
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(link)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            img.save(qr_code_path)
-            logger.info(f"QR-код успешно сохранен в {qr_code_path}")
-        except Exception as e:
-            logger.error(f"Ошибка при генерации QR-кода: {e}")
+            # Reflect the table from temp_conn
+            temp_metadata = MetaData()
+            temp_table = Table(table_name, temp_metadata, autoload_with=temp_conn)
 
-    async def async_download_from_fileio(self, url, output_path):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Ошибка при скачивании файла: {response.status} - {response.reason}")
-                        return
+            # Reflect the table from merge_conn
+            merge_metadata = MetaData()
+            merge_table = Table(table_name, merge_metadata, autoload_with=merge_conn)
 
-                    total_size = int(response.headers.get('content-length', 0))
-                    with open(output_path, 'wb') as f, tqdm(
-                            desc="Downloading",
-                            total=total_size,
-                            unit='B',
-                            unit_scale=True,
-                            unit_divisor=1024,
-                    ) as bar:
-                        async for chunk in response.content.iter_chunked(1024):
-                            if chunk:
-                                f.write(chunk)
-                                bar.update(len(chunk))
-            logger.info(f"Файл успешно загружен в {output_path}")
-        except Exception as e:
-            logger.error(f"Ошибка при асинхронной загрузке файла: {e}")
+            # Fetch data from temp_table
+            temp_data = temp_session.execute(select(temp_table)).fetchall()
 
-    def upload_to_fileio_with_retries(self, file_api_key, db_path, retries=3, delay=5):
-        """
-        Загружает файл на file.io с указанием срока хранения (1 день).
-        """
-        for attempt in range(retries):
-            try:
-                file_size = os.path.getsize(db_path)
-                with open(db_path, 'rb') as db_file, tqdm(
-                        total=file_size or 1,  # Минимум 1 для корректной работы
-                        unit='B',
-                        unit_scale=True,
-                        unit_divisor=1024,
-                        desc="Uploading"
-                ) as bar:
-                    response = requests.post(
-                        TEMP_CLOUD_API,
-                        headers={
-                            "Authorization": f"Bearer {file_api_key}"
-                        },
-                        files={'file': db_file},
-                        data={"expires": "1d",
-                              "maxDownloads": 1,
-                              "autoDelete": "true",
-                              },  # Устанавливаем срок хранения ссылки на 1 день
-                        stream=True,
-                        timeout=60
-                    )
-                    bar.update(file_size)
-                    if response.status_code == 200:
-                        link = response.json().get('link')
-                        if link:
-                            logger.info(f"Файл успешно загружен. Ссылка: {link}")
-                            return link
-                    else:
-                        logger.error(f"Ошибка загрузки файла: {response.status_code} - {response.text}")
-            except Exception as e:
-                logger.error(f"Попытка {attempt + 1} из {retries} не удалась: {e}")
-                if attempt < retries - 1:
-                    time.sleep(delay)
+            # Get columns in temp_table and merge_table
+            temp_columns = {col.name for col in temp_table.columns}
+            merge_columns = {col.name for col in merge_table.columns}
+            common_columns = temp_columns & merge_columns
+
+            # Map columns if necessary
+            column_mapping = {col: col for col in common_columns}
+
+            # Handle special cases where column names differ
+            # Example: If 'schedule_id' in temp_table corresponds to 'id' in merge_table
+            # Adjust as needed
+
+            # Get DateTime columns in merge_table
+            datetime_columns = [col.name for col in merge_table.columns if isinstance(col.type, DateTime)]
+
+            for row in temp_data:
+                # Map row data to merge_table columns
+                row_dict = dict(row._mapping)
+                filtered_row = {}
+                for temp_col_name, merge_col_name in column_mapping.items():
+                    value = row_dict.get(temp_col_name)
+                    filtered_row[merge_col_name] = value
+
+                # Ensure all required columns are present
+                required_columns = [col.name for col in merge_table.columns if not col.nullable and not col.default]
+                missing_columns = [col for col in required_columns if col not in filtered_row or filtered_row[col] is None]
+
+                if missing_columns:
+                    logger.error(f"Missing required columns {missing_columns} in row for table '{table_name}'. Skipping row.")
+                    continue
+
+                # Convert datetime columns to datetime objects
+                for col_name in datetime_columns:
+                    if col_name in filtered_row:
+                        value = filtered_row[col_name]
+                        if value is not None and not isinstance(value, datetime):
+                            try:
+                                if isinstance(value, str):
+                                    filtered_row[col_name] = datetime.fromisoformat(value)
+                                elif isinstance(value, (int, float)):
+                                    filtered_row[col_name] = datetime.fromtimestamp(value)
+                                else:
+                                    logger.warning(f"Unexpected data type for datetime column '{col_name}': {type(value)}")
+                                    filtered_row[col_name] = None
+                            except Exception as e:
+                                logger.error(f"Error parsing datetime column '{col_name}' with value '{value}': {e}")
+                                filtered_row[col_name] = None
+
+                # Exclude auto-incremented primary key columns
+                primary_keys = [col for col in merge_table.columns if col.primary_key]
+                for pk_col in primary_keys:
+                    if pk_col.autoincrement:
+                        pk_name = pk_col.name
+                        if pk_name in filtered_row:
+                            filtered_row.pop(pk_name)
+
+                # Log the filtered_row
+                logger.debug(f"Inserting into '{table_name}': {filtered_row}")
+
+                if not filtered_row:
+                    logger.warning(f"Filtered row is empty for table '{table_name}', skipping insert.")
+                    continue
+
+                # Determine conflict columns
+                if table_name in conflict_columns_mapping:
+                    conflict_columns = conflict_columns_mapping[table_name]
                 else:
-                    logger.error("Все попытки загрузки файла исчерпаны.")
-        return None
+                    conflict_columns = [col.name for col in merge_table.primary_key]
 
-    def get_all_data_with_progress(session, model):
+                # Use appropriate conflict action
+                stmt = insert(merge_table).values(**filtered_row)
+                if table_name in do_nothing_tables:
+                    # Use DO NOTHING for tables where we don't want to update existing records
+                    stmt = stmt.on_conflict_do_nothing(index_elements=conflict_columns)
+                else:
+                    # Use DO UPDATE for other tables
+                    update_columns = {col: stmt.excluded[col] for col in filtered_row.keys() if col not in conflict_columns}
+                    stmt = stmt.on_conflict_do_update(index_elements=conflict_columns, set_=update_columns)
+
+                try:
+                    merge_session.execute(stmt)
+                except IntegrityError as e:
+                    logger.error(f"IntegrityError inserting/updating table '{table_name}': {e}")
+                    logger.error(f"Failed row: {filtered_row}")
+                    merge_session.rollback()
+                except Exception as e:
+                    logger.error(f"Error inserting/updating table '{table_name}': {e}")
+                    logger.error(f"Failed row: {filtered_row}")
+                    merge_session.rollback()
+
+            # Commit after each table to release locks
+            merge_session.commit()
+
+        # Close sessions
+        orig_session.close()
+        temp_session.close()
+        merge_session.close()
+
+
+def inspect_db(engine):
+    """Prints the list of tables and their columns in the database."""
+    inspector = inspect(engine)
+    logger.info(f"Tables in database {engine.url.database}:")
+    for table_name in inspector.get_table_names():
+        columns = inspector.get_columns(table_name)
+        logger.info(f" - {table_name}: {[col['name'] for col in columns]}")
+
+
+def upload_to_fileio_with_retries(file_api_key, db_path, retries=3, delay=5, timeout=600):
+    file_size = os.path.getsize(db_path)
+    logger.info(f"Starting upload: {db_path} [{file_size}]")
+
+    headers = {"Authorization": f"Bearer {file_api_key}"} if file_api_key else {}
+    files = {"file": (os.path.basename(db_path), open(db_path, 'rb'), "application/octet-stream")}
+    data = {
+        "expires": "1h",  # Задать срок действия ссылки
+        "maxDownloads": 1,  # Максимальное количество скачиваний
+        "autoDelete": True  # Автоматическое удаление после загрузки
+    }
+
+    for attempt in range(retries):
         try:
-            query = session.query(model)
-            total_count = query.count()  # Количество строк
-            data = []
-            with tqdm(total=total_count, desc=f"Fetching {model.__tablename__}") as bar:
-                for item in query.yield_per(100):  # Чтение блоками для экономии памяти
-                    data.append(item)
-                    bar.update(1)
-            return data
-        except Exception as e:
-            logger.error(f"Ошибка при получении данных из модели {model.__tablename__}: {e}")
-            return []
-
-    def send_email_with_postmarkapp(self, url, api_key, user_name, download_link, qrcode_path):
-        """
-        Отправка письма с использованием Postmark API.
-        """
-        try:
-            logger.info(
-                f"url, api_key, email, download_link, qr_code_path: {url}, {api_key}, {user_name}, {download_link}, {qrcode_path}")
-
-            # Открытие QR-кода как изображения
-            with open(qrcode_path, 'rb') as image:
-                img_data = image.read()
-
-            # Подготовка данных для отправки
-            subject = "Ссылка для скачивания"
-            body = f"""
-            <p>Скачайте базу данных по следующей ссылке: <a href="{download_link}">{download_link}</a></p>
-            <p>QR-код для скачивания:</p>
-            <img src="cid:qr_code">
-            """
-
-            # Отправка письма
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "X-Postmark-Server-Token": api_key
-            }
-
-            # Данные письма
-            payload = {
-                "From": user_name,
-                "To": user_name,
-                "Subject": subject,
-                "HtmlBody": body  # Используем HTML для вставки QR-кода
-            }
-
-            # Отправка письма с вложением (QR-код)
-            files = {
-                "inline": ("qr_code.png", img_data, "image/png")  # Привязываем изображение через CID
-            }
-
-            # Сделаем запрос к API Postmark
-            response = requests.post(url, json=payload, headers=headers, files=files)
+            response = requests.post(
+                FILE_API_URL,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=timeout
+            )
 
             if response.status_code == 200:
-                logger.info(f"Письмо отправлено: {response.json()}")
+                logger.info("Файл успешно загружен.")
+                response_data = response.json()
+                logger.info(f"Response JSON: {response_data}")
+                link = response_data.get('link')
+                if not link:
+                    logger.error("Ссылка отсутствует в ответе сервера.")
+                    return False, None
+                return True, link
             else:
-                logger.error(f"Ошибка: {response.status_code}, {response.text}")
+                logger.error(f"Ошибка загрузки файла: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ошибка при загрузке: {e}")
 
+        logger.warning(f"Попытка {attempt + 1} загрузки не удалась. Повтор через {delay} секунд...")
+        time.sleep(delay)
+
+    return False, None
+
+
+def generate_qr_code(link, qr_code_path):
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(link)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        img.save(qr_code_path)
+        logger.info(f"QR code successfully saved to {qr_code_path}")
+    except Exception as e:
+        logger.error(f"Error generating QR code: {e}")
+
+def send_email_with_postmarkapp(api_url, api_key, from_email, to_email, download_link, qrcode_path):
+    """
+    Sends an email with the QR code image embedded using Postmark.
+    """
+    try:
+        logger.info(f"api_url, api_key, from_email, to_email, download_link, qrcode_path: {api_url}, {api_key}, {from_email}, {to_email}, {download_link}, {qrcode_path}")
+        # Read the QR code image and encode it in Base64
+        with open(qrcode_path, 'rb') as image_file:
+            img_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+        # Prepare the HTML body
+        subject = "Your Download Link"
+        body = f"""
+        <p>Please download the database from the following link: <a href="{download_link}">{download_link}</a></p>
+        <p>Or scan the QR code below:</p>
+        <img src="data:image/png;base64,{img_data}">
+        """
+
+        # Prepare headers and payload
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-Postmark-Server-Token": api_key
+        }
+
+        payload = {
+            "From": from_email,
+            "To": to_email,
+            "Subject": subject,
+            "HtmlBody": body
+        }
+
+        # Send the email
+        response = requests.post(api_url, json=payload, headers=headers)
+
+        if response.status_code == 200:
+            logger.info("Email sent successfully.")
+        else:
+            logger.error(f"Error sending email: {response.status_code}, {response.text}")
+
+    except Exception as e:
+        logger.error(f"Error sending email via Postmark: {e}")
+
+
+def main():
+    global postmark_api_key, from_email, to_email, fileio_api_key
+    original_db = os.path.join(DB_FOLDER, "anime_player.db")
+    temp_dbs = [os.path.join(TEMP_FOLDER, f) for f in os.listdir(TEMP_FOLDER) if f.endswith(".db")]
+
+    if POSTMARK_API_KEY and FROM_EMAIL and TO_EMAIL and FILEIO_API_KEY:
+        postmark_api_key = POSTMARK_API_KEY
+        from_email = FROM_EMAIL
+        to_email = TO_EMAIL
+        fileio_api_key = FILEIO_API_KEY
+    # Backup the original database
+    backup_db = os.path.join(DB_FOLDER, "anime_player_backup.db")
+    if not os.path.exists(backup_db):
+        shutil.copyfile(original_db, backup_db)
+        logger.info(f"Original database backed up to {backup_db}")
+
+    original_engine = create_engine(
+        f"sqlite:///{original_db}",
+        connect_args={'timeout': 30},
+        poolclass=NullPool,
+        isolation_level=None  # Set isolation_level to None for autocommit
+    )
+
+    for temp_db in temp_dbs:
+        temp_engine = create_engine(
+            f"sqlite:///{temp_db}",
+            connect_args={'timeout': 30},
+            poolclass=NullPool,
+            isolation_level=None  # Set isolation_level to None for autocommit
+        )
+        inspect_db(temp_engine)
+
+        # Upgrade the temp_db schema to match the current schema
+        upgrade_db(temp_engine)
+        is_valid, _ = validate_db(temp_engine)
+        if not is_valid:
+            logger.warning(f"Database {temp_db} did not pass validation. Skipping.")
+            continue
+
+        merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(temp_db)}")
+
+        # Copy the original database to the merge database before merging
+        shutil.copyfile(original_db, merge_db_path)
+
+        merge_engine = create_engine(
+            f"sqlite:///{merge_db_path}",
+            connect_args={'timeout': 30},
+            poolclass=NullPool,
+            isolation_level=None  # Set isolation_level to None for autocommit
+        )
+
+        logger.info(f"Comparing and merging {temp_db} with {original_db}...")
+        compare_and_merge(original_engine, temp_engine, merge_engine)
+
+        if not os.path.exists(merge_db_path):
+            logger.error(f"Error: File {merge_db_path} was not created. Skipping.")
+            continue
+
+        # Replace the original database with the merged database
+        shutil.move(merge_db_path, original_db)
+        logger.info(f"Original database updated: {original_db}")
+
+        # Dispose of engines to release resources
+        temp_engine.dispose()
+        merge_engine.dispose()
+
+        # Delete the temp database file after merging
+        try:
+            os.remove(temp_db)
+            logger.info(f"Temporary database {temp_db} deleted after merging.")
         except Exception as e:
-            logger.error(f"Ошибка при отправке письма через Postmark: {e}")
+            logger.error(f"Error deleting temporary database {temp_db}: {e}")
+
+    # Dispose of the original engine after all operations
+    original_engine.dispose()
+
+    # After merging databases, perform the following steps
+    merged_db_path = original_db  # The merged database is at original_db
+
+    # Upload the merged database to the cloud
+    success, download_link = upload_to_fileio_with_retries(fileio_api_key, merged_db_path)
+
+    if success and download_link:
+        # Generate QR code for the download link
+        qr_code_path = os.path.join(TEMP_FOLDER, "qrcode.png")
+        os.makedirs(os.path.dirname(qr_code_path), exist_ok=True)
+        generate_qr_code(download_link, qr_code_path)
+
+        # Send the QR code via email
+        if postmark_api_key and from_email and to_email:
+
+            send_email_with_postmarkapp(
+                api_url=POSTMARK_API_URL,
+                api_key=postmark_api_key,
+                from_email=from_email,
+                to_email=to_email,
+                download_link=download_link,
+                qrcode_path=qr_code_path
+            )
+        else:
+            logger.error("Missing Postmark API key or email addresses. Email not sent.")
+    else:
+        logger.error("Failed to upload the database and generate a download link.")
+
+    # Optionally, download the database into the temp folder
+    # Uncomment the following lines to enable downloading
+    """
+    output_path = os.path.join(TEMP_FOLDER, "downloaded_database.db")
+    asyncio.run(async_download_from_fileio(download_link, output_path))
+    """
 
 if __name__ == "__main__":
-    global mail_api_url, mail_api_key, email, file_api_key
-    parser = argparse.ArgumentParser(description="Utility for merging SQLite databases.")
-    parser.add_argument("--mail_api_key", help=" MAILGUN_API_KEY", required=True)
-    parser.add_argument("--file_api_key", help="FILE_IO_API_KEY", required=False)
-    parser.add_argument("--user", help="email", required=True)
-
-    parser.add_argument("--db_path_1", help="Path to the first database", required=False)
-    parser.add_argument("--db_path_2", help="Path to the second database", required=False)
-    parser.add_argument("--link", help="Link to the database for merging", required=False)
-    parser.add_argument("--qrcode_path", help="Path to the QR code image for merging", required=False)
-    args = parser.parse_args()
-
-    MAIL_API_KEY = args.mail_api_key  # Присваиваем переданный API ключ для почты
-    FILE_IO_API_KEY = args.file_api_key  # Присваиваем переданный API ключ для file.io
-    EMAIL = args.user  # Присваиваем email
-
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(base_dir, 'db')
-    temp_dir = os.path.join(base_dir, 'temp')
-
-    if not os.path.exists(db_dir):
-        os.makedirs(db_dir)
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
-
-    final_db_path = os.path.join(db_dir, DB_NAME)
-    temp_db_path = os.path.join(temp_dir, TEMP_DB_NAME)
-    merged_db_path = os.path.join(db_dir, MERGED_DB_NAME)
-    qr_code_path = os.path.join(temp_dir, QRCODE_NAME)
-
-    utility = None
-    if args.db_path_1 and args.db_path_2:
-        # Ручной мерж двух баз данных
-        utility = DatabaseMergeUtility(args.db_path_1, args.db_path_2)
-        utility.compare_databases()
-        utility.merge_databases(final_db_path)
-    elif args.link or args.qrcode_path:
-        # Скачивание базы данных по ссылке или QR-коду и мерж
-        link = args.link
-        if args.qrcode_path:
-            with open(args.qrcode_path, 'rb') as image:
-                img_data = image.read()
-
-        utility = DatabaseMergeUtility("", "")
-
-        if link:
-            # Асинхронное скачивание файла с прогрессом
-            asyncio.run(utility.async_download_from_fileio(link, temp_db_path))
-
-            # Проверка существования загруженного файла
-            if os.path.exists(temp_db_path):
-                logger.info(f"База данных успешно загружена в {temp_db_path}")
-
-                # Поиск всех баз данных в папке temp и мерж
-                temp_databases = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith('.db')]
-
-                if len(temp_databases) > 1:
-                    utility = DatabaseMergeUtility("", "")  # Пустые пути, т.к. они задаются динамически
-                    utility.merge_all_databases(temp_databases, final_db_path)
-
-                    # Загрузка в облако и отправка email
-                    link = utility.upload_to_fileio_with_retries(FILE_IO_API_KEY, final_db_path, retries=3, delay=5)
-                    if link:
-                        utility.generate_qr_code(link, qr_code_path)
-                        utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link, qr_code_path)
-                        logger.info("Уведомление отправлено.")
-            else:
-                logger.error("Ошибка: база данных не была загружена.")
-        else:
-            logger.error("Нужно указать либо ссылку, либо путь к QR-коду.")
-    else:
-        # Автоматический мерж всех найденных баз данных в temp_dir
-        # Список всех баз данных в папке temp
-        # Список всех баз данных в папке temp
-        temp_databases = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith('.db')]
-
-        if len(temp_databases) > 1:
-            logger.info(f"Найдены базы данных в temp_dir: {temp_databases}, начинаем мерж...")
-
-            # Создаем экземпляр утилиты
-            utility = DatabaseMergeUtility("", "")  # Пустые параметры, чтобы динамически задавать базы
-
-            # Итоговый путь для объединенной базы данных
-            output_db_path = os.path.join(db_dir, DB_NAME)
-
-            # Выполняем мерж всех баз данных
-            utility.merge_all_databases(temp_databases, output_db_path)
-
-            logger.info(f"Файл базы данных объединен и сохранен в '{output_db_path}'")
-
-            # Загрузка в облако и отправка email
-            link = utility.upload_to_fileio_with_retries(FILE_IO_API_KEY, final_db_path, retries=3, delay=5)
-            if link:
-                utility.generate_qr_code(link, qr_code_path)
-                utility.send_email_with_postmarkapp(MAIL_API_URL, MAIL_API_KEY, EMAIL, link, qr_code_path)
-                logger.info("Уведомление отправлено.")
-        else:
-            logger.warning("Недостаточно баз данных для выполнения мержа.")
-
-
-
+    main()

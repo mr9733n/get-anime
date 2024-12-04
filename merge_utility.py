@@ -4,6 +4,7 @@ import importlib.util
 import time
 from tempfile import tempdir
 
+from dotenv import load_dotenv
 import requests
 import logging
 import base64
@@ -22,6 +23,8 @@ from sqlalchemy.exc import IntegrityError
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+load_dotenv(dotenv_path='.env')
+
 # Constants
 DB_FOLDER = "db"
 TEMP_FOLDER = "temp"
@@ -39,7 +42,10 @@ TO_EMAIL = os.environ.get('TO_EMAIL')  # Recipient email address
 
 Base = declarative_base()
 
-
+logger.info(f"Loaded FILEIO_API_KEY: {FILEIO_API_KEY}")
+logger.info(f"Loaded POSTMARK_API_KEY: {POSTMARK_API_KEY}")
+logger.info(f"Loaded FROM_EMAIL: {FROM_EMAIL}")
+logger.info(f"Loaded TO_EMAIL: {TO_EMAIL}")
 
 def load_tables_module(file_path):
     spec = importlib.util.spec_from_file_location("tables", file_path)
@@ -459,15 +465,6 @@ def main():
             )
         else:
             logger.error("Missing Postmark API key or email addresses. Email not sent.")
-    else:
-        logger.error("Failed to upload the database and generate a download link.")
-
-    # Optionally, download the database into the temp folder
-    # Uncomment the following lines to enable downloading
-    """
-    output_path = os.path.join(TEMP_FOLDER, "downloaded_database.db")
-    asyncio.run(async_download_from_fileio(download_link, output_path))
-    """
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,8 @@
 import os
 import shutil
 import importlib.util
+import sqlite3
+import sys
 import time
 from tempfile import tempdir
 
@@ -363,11 +365,52 @@ def send_email_with_postmarkapp(api_url, api_key, from_email, to_email, download
     except Exception as e:
         logger.error(f"Error sending email via Postmark: {e}")
 
+def is_valid_sqlite_file(file_path):
+    """Проверяет, является ли файл корректной базой данных SQLite."""
+    if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
+        return False
+    
+    if os.path.getsize(file_path) == 0:
+        logger.error(f"File is empty: {file_path}")
+        return False
+
+    try:
+        with sqlite3.connect(file_path) as conn:
+            conn.execute("PRAGMA integrity_check;")
+        logger.info(f"File is a valid SQLite database: {file_path}")
+        return True
+    except sqlite3.DatabaseError:
+        logger.error(f"File is not a valid SQLite database: {file_path}")
+        return False
+
 
 def main():
     global postmark_api_key, from_email, to_email, fileio_api_key
     original_db = os.path.join(DB_FOLDER, "anime_player.db")
     temp_dbs = [os.path.join(TEMP_FOLDER, f) for f in os.listdir(TEMP_FOLDER) if f.endswith(".db")]
+
+    valid_temp_dbs = []
+    invalid_temp_dbs = []
+
+    for temp_db in temp_dbs:
+        if is_valid_sqlite_file(temp_db):
+            valid_temp_dbs.append(temp_db)
+        else:
+            logger.error(f"Invalid database file: {temp_db}. Marking for deletion.")
+            invalid_temp_dbs.append(temp_db)
+
+    # Удаление невалидных баз данных, если ни одна валидная не найдена
+    if not valid_temp_dbs:
+        logger.error("No valid database files found in TEMP_FOLDER.")
+        for invalid_db in invalid_temp_dbs:
+            try:
+                os.remove(invalid_db)
+                logger.info(f"Deleted invalid database file: {invalid_db}")
+            except Exception as e:
+                logger.error(f"Failed to delete invalid database file: {invalid_db}. Error: {e}")
+
+    logger.info(f"Valid databases: {valid_temp_dbs}")
 
     print("Anime Player Merge Utility App version 0.0.0.1")
     print(f"Orig db: '{original_db}' , temp dbs: '{temp_dbs}'")

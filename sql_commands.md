@@ -110,3 +110,7 @@ UPDATE team_members SET last_updated = strftime('%Y-%m-%d %H:%M:%f', 'now') || '
 UPDATE title_team_relation SET last_updated = strftime('%Y-%m-%d %H:%M:%f', 'now') || '000';
 ```
 
+```sql
+UPDATE torrents
+SET uploaded_timestamp = strftime('%Y-%m-%d %H:%M:%f', uploaded_timestamp, 'unixepoch', 'localtime')
+```

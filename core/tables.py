@@ -110,6 +110,7 @@ class Rating(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     rating_name = Column(String, default='CMERS', nullable=False)
     rating_value = Column(SmallInteger, nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     title = relationship("Title", back_populates="ratings")
 
@@ -125,6 +126,7 @@ class FranchiseRelease(Base):
     name_ru = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     name_alternative = Column(String, nullable=True)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     franchise = relationship("Franchise", back_populates="releases")
     title = relationship("Title", back_populates="franchises")
@@ -135,6 +137,7 @@ class Franchise(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
     franchise_name = Column(String, nullable=False)  # Название франшизы
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
 
@@ -142,6 +145,7 @@ class Genre(Base):
     __tablename__ = 'genres'
     genre_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     titles = relationship("TitleGenreRelation", back_populates="genre")
 
@@ -151,6 +155,7 @@ class TitleGenreRelation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     genre_id = Column(Integer, ForeignKey('genres.genre_id'), nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     title = relationship("Title", back_populates="genres")
     genre = relationship("Genre", back_populates="titles")
@@ -160,6 +165,7 @@ class TeamMember(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)  # Имя участника команды
     role = Column(String, nullable=False)  # Роль участника: voice, translator, timing
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     titles = relationship("TitleTeamRelation", back_populates="team_member")
 
@@ -169,6 +175,7 @@ class TitleTeamRelation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     team_member_id = Column(Integer, ForeignKey('team_members.id'), nullable=False)
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
     title = relationship("Title", back_populates="team_members")
     team_member = relationship("TeamMember", back_populates="titles")
@@ -213,7 +220,7 @@ class Torrent(Base):
     size_string = Column(String)
     url = Column(String)
     magnet_link = Column(String)
-    uploaded_timestamp = Column(Integer)
+    uploaded_timestamp = Column(DateTime, default=datetime.utcnow)
     hash = Column(String)
     torrent_metadata = Column(Text, nullable=True)
     raw_base64_file = Column(Text, nullable=True)

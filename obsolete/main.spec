@@ -2,6 +2,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import compileall
+import os
+import shutil
 
 # Compile the files in the 'app' directory
 compileall.compile_dir('app', force=True)
@@ -125,3 +127,14 @@ coll = COLLECT(
 	upx_exclude=[],
 	name='AnimePlayer'
 	)
+
+dist_dir = os.path.join(project_dir, 'dist')
+compiled_dir = os.path.join(dist_dir, 'AnimePlayer')
+
+for_delete2 = compiled_dir = os.path.join(compiled_dir, 'importlib_metadata-8.0.0.dist-info')
+for_delete3 = compiled_dir = os.path.join(compiled_dir, 'MarkupSafe-3.0.2.dist-info')
+
+for path in [for_delete2, for_delete3]:
+    if os.path.exists(path):
+        shutil.rmtree(path)
+        print(f"Deleted: {path}")

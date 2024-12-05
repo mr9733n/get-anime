@@ -204,9 +204,10 @@ class SaveManager:
                 if existing_rating:
                     existing_rating.rating_value = rating_value
                     existing_rating.rating_name = rating_name
+                    existing_rating.last_updated = datetime.utcnow()
                     self.logger.debug(f"Updated rating for title_id: {title_id}")
                 else:
-                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name)
+                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name, last_updated=datetime.utcnow())
                     session.add(new_rating)
                     self.logger.debug(f"Added new rating for title_id: {title_id}")
                 session.commit()
@@ -275,13 +276,15 @@ class SaveManager:
                     # Обновление существующей франшизы
                     existing_franchise.franchise_id = franchise_id
                     existing_franchise.franchise_name = franchise_name
+                    existing_franchise.last_updated = datetime.utcnow()
                     franchise = existing_franchise
                 else:
                     # Создание новой франшизы
                     new_franchise = Franchise(
                         title_id=title_id,
                         franchise_id=franchise_id,
-                        franchise_name=franchise_name
+                        franchise_name=franchise_name,
+                        last_updated=datetime.utcnow()
                     )
                     session.add(new_franchise)
                     session.flush()  # Получаем ID новой франшизы для использования в релизах
@@ -306,6 +309,7 @@ class SaveManager:
                         existing_release.name_ru = release_names.get('ru')
                         existing_release.name_en = release_names.get('en')
                         existing_release.name_alternative = release_names.get('alternative')
+                        existing_release.last_updated = datetime.utcnow()
                     else:
                         # Создание нового релиза франшизы
                         new_release = FranchiseRelease(
@@ -315,7 +319,8 @@ class SaveManager:
                             ordinal=release_ordinal,
                             name_ru=release_names.get('ru'),
                             name_en=release_names.get('en'),
-                            name_alternative=release_names.get('alternative')
+                            name_alternative=release_names.get('alternative'),
+                            last_updated=datetime.utcnow()
                         )
                         session.add(new_release)
 
@@ -336,7 +341,7 @@ class SaveManager:
 
                     # Если жанр не существует, добавляем его
                     if not existing_genre:
-                        new_genre = Genre(name=genre)
+                        new_genre = Genre(name=genre, last_updated=datetime.utcnow())
                         session.add(new_genre)
                         session.commit()  # Коммитим, чтобы получить genre_id для следующего этапа
                         genre_id = new_genre.genre_id
@@ -347,7 +352,7 @@ class SaveManager:
                     existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
                                                                                     genre_id=genre_id).first()
                     if not existing_relation:
-                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id)
+                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.utcnow())
                         session.add(new_relation)
 
                 session.commit()
@@ -373,7 +378,7 @@ class SaveManager:
                         existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
                         if not existing_member:
                             # Создаем нового участника команды
-                            new_member = TeamMember(name=member_name, role=role)
+                            new_member = TeamMember(name=member_name, role=role, last_updated=datetime.utcnow())
                             session.add(new_member)
                             session.flush()  # Получаем ID нового участника
                             team_member = new_member
@@ -381,7 +386,7 @@ class SaveManager:
                             team_member = existing_member
 
                         # Добавляем связь с тайтлом
-                        title_team_relation = TitleTeamRelation(title_id=title_id, team_member_id=team_member.id)
+                        title_team_relation = TitleTeamRelation(title_id=title_id, team_member_id=team_member.id, last_updated=datetime.utcnow())
                         session.add(title_team_relation)
 
                 session.commit()
@@ -391,6 +396,7 @@ class SaveManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
                 return False
+
 
     def save_episode(self, episode_data):
         with self.Session as session:
@@ -463,8 +469,16 @@ class SaveManager:
 
     def save_torrent(self, torrent_data):
         with self.Session as session:
-            title_id = torrent_data['title_id']
-            torrent_id = torrent_data['torrent_id']
+
+            # Создаем копию данных
+            processed_data = torrent_data.copy()
+
+            # Преобразуем timestamps если они есть в данных
+            if 'uploaded_timestamp' in processed_data:
+                processed_data['uploaded_timestamp'] = datetime.utcfromtimestamp(processed_data['uploaded_timestamp'])
+
+            title_id = processed_data['title_id']
+            torrent_id = processed_data['torrent_id']
             self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
             try:
                 # Проверяем, существует ли уже торрент с данным `torrent_id`
@@ -476,16 +490,16 @@ class SaveManager:
                     # Проверка на изменение данных
                     is_updated = any(
                         getattr(existing_torrent, key) != value
-                        for key, value in torrent_data.items()
+                        for key, value in processed_data.items()
                     )
 
                     if is_updated:
                         # Обновляем данные, если они изменились
-                        session.merge(Torrent(**torrent_data))
+                        session.merge(Torrent(**processed_data))
                         self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
                 else:
                     # Добавляем новый торрент, если его еще нет в базе
-                    session.add(Torrent(**torrent_data))
+                    session.add(Torrent(**processed_data))
                     self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
 
                 session.commit()

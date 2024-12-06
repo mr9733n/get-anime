@@ -403,7 +403,7 @@ class AnimePlayerAppVer3(QWidget):
             # Отображаем тайтлы в UI
             self.display_titles_in_ui(titles)
             # Проверяем и обновляем расписание после отображения every 10 min
-            QTimer.singleShot(600000, lambda: self.reload_schedule())
+            # QTimer.singleShot(600000, lambda: self.reload_schedule())
 
         else:
             try:
@@ -419,7 +419,7 @@ class AnimePlayerAppVer3(QWidget):
                     for titles_list in data:
                         titles_list = titles_list.get("list", [])
                     # TODO: fix this. need to count as dict
-                    self.logger.debug(f"title_list: {len(titles_list)}")
+                    self.logger.debug(f"title_list: {titles_list}")
                     # Сохраняем данные в базе данных
                     self._save_titles_list(titles_list)
 

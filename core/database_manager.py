@@ -10,7 +10,7 @@ from core.save import SaveManager
 from core.process import ProcessManager
 from core.get import GetManager
 from core.utils import PlaceholderManager, TemplateManager
-from core.tables import Base, DaysOfWeek
+from core.tables import Base, DaysOfWeek, History
 
 
 class DatabaseManager:
@@ -45,6 +45,12 @@ class DatabaseManager:
                         for day in days:
                             session.add(DaysOfWeek(day_of_week=day["day_of_week"], day_name=day["day_name"]))
                         session.commit()
+                    # Add initial record to the history table if it doesn't exist
+                    if session.query(History).count() == 0:
+                        initial_history = History(user_id=42, title_id=1, is_watched=False, is_download=False)
+                        session.add(initial_history)
+                        session.commit()
+
                     session.close()
                 except Exception as e:
                     session.rollback()

@@ -60,8 +60,8 @@
 
 ### Этап 6: Дополнительные Улучшения и Оптимизация
 ### 6.1 разнести логику
-- [ ] распилить qt/app.py , возможно часть логики можно оптимизировать
-- [ ] возможно стоит вынести сохранение в бд
+- [x] распилить qt/app.py , возможно часть логики можно оптимизировать
+- [x] возможно стоит вынести сохранение в бд
 
 
 ## Этап 7: Дополнительные Улучшения и Оптимизация
@@ -73,8 +73,8 @@
 - [ ] Добавить функциональность для резервного копирования базы данных.
 
 ### 7.3 Улучшение Интерфейса
-- [ ] Добавить отображение истории просмотра и рейтингов тайтлов в новом интерфейсе.
-- [ ] Реализовать возможность пользователю отмечать просмотренные эпизоды и добавлять рейтинг.
+- [x] Добавить отображение истории просмотра и рейтингов тайтлов в новом интерфейсе.
+- [x] Реализовать возможность пользователю отмечать просмотренные эпизоды и добавлять рейтинг.
 
 ## 8. Anime Player App 0.3.8.3 
 
@@ -129,18 +129,17 @@
 -[x] refactor display_titles
 -[x] refactor display_titles_in_ui
 -[x] refactor ui_manager
--[x] added:
--[x] TitleDisplayFactory
--[x] TitleDataFactory
--[x] TitleBrowserFactory
--[x] TitleHtmlFactory
+-[x] added: TitleDisplayFactory
+-[x] added: TitleDataFactory
+-[x] added: TitleBrowserFactory
+-[x] added: TitleHtmlFactory
 -[x] dynamic ui generating from metadata file
--[ ] get titles list without episodes
 -[x] get franchises list without episodes
 -[x] get need to see without episodes
 -[x] fixed empty screen by reset offset when offset is high and titles was not found
 -[x] fixed play button
 -[x] added shadow for UI elements
+-[ ] get titles list without episodes
 
 ### 8.11. need to think how to merge data from other devices
 -[x] added merge_utility
@@ -154,15 +153,16 @@
 -[x] send email with qrcode image
 -[x] Anime Player Merge Utility App version 0.0.0.1
 -[x] Anime Player Sync App version 0.0.0.1
--[ ] Fix Merge same DB ERROR in logs
 -[x] Added checksum verify for injection merge_utility.exe
-
    - #### Create binary: 
       ```commandline
       pyinstaller main.spec --noconfirm 
       pyinstaller merge_utility.spec --noconfirm
       pyinstaller sync.spec --noconfirm
       ```
+-[ ] Need to add refreshing title when loaded from db by api request 
+-[ ] ..
+-[ ] ..
 
 ### 8.12. redesign system browser
 -[x] need to add new layout window

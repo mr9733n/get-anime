@@ -62,14 +62,13 @@ CONFLICT_COLUMNS_MAPPING = {
     'franchises': ['franchise_id'],
     'history': ['user_id', 'title_id', 'episode_id', 'torrent_id'],  # Added relevant unique columns
     'days_of_week': ['day_of_week'],
-    'team_members': ['name', 'role'],
+    'team_members': ['id', 'name', 'role'],
     'title_team_relation': ['title_id', 'team_member_id'],
     'title_genre_relation': ['title_id', 'genre_id'],
     'franchise_releases': ['franchise_id', 'title_id'],
-    'production_studios': ['title_id'],
+    'production_studios': ['title_id', 'name'],
     'posters': ['title_id'],
     'torrents': ['torrent_id'],
-    'template': ['name'],
 }
 
 ORIG_COLUMNS_MAPPING = {
@@ -233,7 +232,7 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
 
                 # Get DateTime columns
                 datetime_columns = [col.name for col in original_table.columns if isinstance(col.type, DateTime)]
-                conflict_columns = CONFLICT_COLUMNS_MAPPING.get(table_name, [col.name for col in original_table.primary_key])
+                conflict_columns = CONFLICT_COLUMNS_MAPPING.get(table_name, [col.name for col in merge_table.primary_key])
 
                 # Ensure conflict_columns is a list of strings, not nested lists
                 if not all(isinstance(col, str) for col in conflict_columns):
@@ -256,7 +255,7 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
                     existing_record = orig_data_dict.get(key)
 
                     # Get the primary key columns
-                    primary_keys = [col.name for col in original_table.primary_key]
+                    primary_keys = [col.name for col in merge_table.primary_key]
 
                     if existing_record:
                         # Detailed logging for existing records
@@ -459,6 +458,8 @@ def initialize_merge_database(db_path):
     from core.database_manager import DatabaseManager
     db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
+    db_manager.save_template(template_name='default')
+    db_manager.save_placeholders()
 
 def main():
     global postmark_api_key, from_email, to_email, fileio_api_key
@@ -536,6 +537,7 @@ def main():
         merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(ORIG_DB_NAME)}")
         initialize_merge_database(merge_db_path)
 
+
         merge_engine = create_engine(
             f"sqlite:///{merge_db_path}",
             connect_args={'timeout': TIMEOUT_DB_CONN},
@@ -569,12 +571,13 @@ def main():
             logger.info(f"Comparing and merging {original_db} with {original_db}...")
             status1 = compare_and_merge(original_engine, temp_engine, merge_engine)
             logger.info(f"Comparing and merging {temp_db} with {original_db}...")
+            status2 = False
             status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
 
             # Dispose of engines to release resources
             temp_engine.dispose()
 
-            if status1 and status2:
+            if status1 or status2:
                 # Delete the temp database file after merging
                 try:
                     os.remove(temp_db)

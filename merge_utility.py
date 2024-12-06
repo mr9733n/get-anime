@@ -56,16 +56,50 @@ CONFLICT_COLUMNS_MAPPING = {
     'genres': ['name'],
     'schedule': ['day_of_week', 'title_id'],
     'templates': ['name'],
-    'titles': ['title_id'],
+    'titles': ['code'],
     'episodes': ['uuid'],
-    'production_studios': ['name'],
-    'title_genre_relation': ['title_id', 'genre_id'],
-    'title_team_relation': ['title_id', 'team_member_id'],
     'ratings': ['title_id', 'rating_name'],
-    'franchise_releases': ['franchise_id', 'title_id'],
     'franchises': ['franchise_id'],
-    'history': ['title_id'],
-    # Add other tables as needed
+    'history': ['user_id', 'title_id', 'episode_id', 'torrent_id'],  # Added relevant unique columns
+    'days_of_week': ['day_of_week'],
+    'team_members': ['name', 'role'],
+    'title_team_relation': ['title_id', 'team_member_id'],
+    'title_genre_relation': ['title_id', 'genre_id'],
+    'franchise_releases': ['franchise_id', 'title_id'],
+    'production_studios': ['title_id'],
+    'posters': ['title_id'],
+    'torrents': ['torrent_id'],
+    'template': ['name'],
+}
+
+ORIG_COLUMNS_MAPPING = {
+    "titles": {"title_id", "name_ru", "type_code", "last_updated", "updated", "last_change", "code", "name_en",
+               "alternative_name", "title_franchises", "announce", "status_string", "status_code", "poster_path_small",
+               "poster_path_medium", "poster_path_original", "type_full_string", "type_string", "type_episodes",
+               "type_length", "title_genres", "team_voice", "team_translator", "team_timing", "season_string",
+               "season_code", "season_year", "season_week_day", "description", "in_favorites", "blocked_copyrights",
+               "blocked_geoip", "blocked_geoip_list", "host_for_player", "alternative_player"},
+    "episodes": {"episode_id", "title_id", "episode_number", "created_timestamp", "name", "uuid", "hls_fhd", "hls_hd",
+                 "hls_sd", "preview_path", "skips_opening", "skips_ending"},
+    "posters": {"poster_id", "title_id", "poster_blob", "last_updated"},
+    "torrents": {"torrent_id", "title_id", "uploaded_timestamp", "magnet_link", "episodes_range", "quality",
+                 "quality_type", "resolution", "encoder", "leechers", "seeders", "downloads", "total_size",
+                 "size_string", "url", "hash", "torrent_metadata", "raw_base64_file"},
+    "schedule": {"day_of_week", "title_id", "last_updated"},
+    "history": {"id", "user_id", "title_id", "episode_id", "torrent_id", "is_watched", "last_watched_at",
+                "previous_watched_at", "watch_change_count", "is_download", "last_download_at", "previous_download_at",
+                "download_change_count", "need_to_see"},
+    "ratings": {"rating_id", "title_id", "rating_name", "rating_value", "last_updated"},
+    "franchise_releases": {"id", "franchise_id", "title_id", "code", "ordinal", "name_ru", "name_en",
+                           "name_alternative", "last_updated"},
+    "franchises": {"id", "title_id", "franchise_id", "franchise_name", "last_updated"},
+    "genres": {"genre_id", "name", "last_updated"},
+    "title_genre_relation": {"id", "title_id", "genre_id", "last_updated"},
+    "team_members": {"id", "name", "role", "last_updated"},
+    "title_team_relation": {"id", "title_id", "team_member_id", "last_updated"},
+    "production_studios": {"title_id", "name", "last_updated"},
+    "days_of_week": {"day_of_week", "day_name"},
+    "templates": {"id", "name", "one_title_html", "titles_html", "text_list_html", "styles_css", "created_at"},
 }
 
 # Tables to skip updating existing records (e.g., days_of_week)
@@ -139,14 +173,9 @@ def validate_db(engine):
             logger.warning(f"No matching tables found. Skipping database {engine.url.database}.")
             return False, []
 
-        # Optionally, validate columns in each table
+        # Validate columns in each table
         for table_name in matching_tables:
-            # Define required columns for validation if necessary
-            required_columns = {
-                "titles": {"title_id", "name_ru", "type_code", "last_updated"},
-                "episodes": {"episode_id", "title_id", "episode_number", "created_timestamp"},
-                # Add required columns for other tables as needed
-            }.get(table_name, set())
+            required_columns = ORIG_COLUMNS_MAPPING.get(table_name, set())
 
             if required_columns:
                 columns = {col['name'] for col in inspector.get_columns(table_name)}
@@ -161,157 +190,140 @@ def validate_db(engine):
         logger.error(f"Error validating database {engine.url.database}: {e}")
         return False, []
 
+# Upgrade database
 def upgrade_db(engine):
     """Creates missing tables and columns in the database."""
     try:
-        tables_module.Base.metadata.create_all(engine)
+        from core.tables import Base
+        Base.metadata.create_all(engine)
         logger.info(f"Schema of database {engine.url.database} upgraded.")
     except Exception as e:
         logger.error(f"Error upgrading schema of database {engine.url.database}: {e}")
 
 def compare_and_merge(original_engine, temp_engine, merge_engine):
     """Compares and merges matching tables from the original and temporary databases into the merge database."""
-    with original_engine.connect() as orig_conn, \
-         temp_engine.connect() as temp_conn, \
-         merge_engine.connect() as merge_conn:
+    try:
+        with original_engine.connect() as orig_conn, \
+             temp_engine.connect() as temp_conn, \
+             merge_engine.connect() as merge_conn:
 
-        orig_session = sessionmaker(bind=orig_conn)()
-        temp_session = sessionmaker(bind=temp_conn)()
-        merge_session = sessionmaker(bind=merge_conn)()
+            update_count = 0
+            insert_count = 0
+            existed_count = 0
 
-        # Reflect tables using temp_conn
-        inspector = inspect(temp_conn)
-        temp_tables = set(inspector.get_table_names())
-        matching_tables = set(tables_module.Base.metadata.tables.keys()) & temp_tables
+            orig_session = sessionmaker(bind=orig_conn)()
+            temp_session = sessionmaker(bind=temp_conn)()
+            merge_session = sessionmaker(bind=merge_conn)()
 
-        if not matching_tables:
-            logger.warning(f"No matching tables to merge.")
-            return
+            inspector = inspect(temp_conn)
+            temp_tables = set(inspector.get_table_names())
+            matching_tables = set(tables_module.Base.metadata.tables.keys()) & temp_tables
 
-        conflict_columns_mapping = CONFLICT_COLUMNS_MAPPING
-        # Tables to skip updating existing records (e.g., days_of_week)
-        tables_skip_update = TABLES_SKIP_UPDATE
+            if not matching_tables:
+                logger.warning(f"No matching tables to merge.")
+                return
 
-        update_count = 0
-        insert_count = 0
-        skip_update_count = 0
+            for table_name in matching_tables:
+                logger.info(f"Processing table {table_name}...")
 
-        for table_name in matching_tables:
-            logger.info(f"Processing table {table_name}...")
+                # Reflect tables
+                original_table = Table(table_name, MetaData(), autoload_with=orig_conn)
+                temp_table = Table(table_name, MetaData(), autoload_with=temp_conn)
+                merge_table = Table(table_name, MetaData(), autoload_with=temp_conn)
 
-            # Reflect the tables
-            temp_metadata = MetaData()
-            temp_table = Table(table_name, temp_metadata, autoload_with=temp_conn)
+                # Get DateTime columns
+                datetime_columns = [col.name for col in original_table.columns if isinstance(col.type, DateTime)]
+                conflict_columns = CONFLICT_COLUMNS_MAPPING.get(table_name, [col.name for col in original_table.primary_key])
 
-            merge_metadata = MetaData()
-            merge_table = Table(table_name, merge_metadata, autoload_with=merge_conn)
+                # Ensure conflict_columns is a list of strings, not nested lists
+                if not all(isinstance(col, str) for col in conflict_columns):
+                    raise ValueError(f"Conflict columns for table '{table_name}' should be a list of column names.")
 
-            # Get columns
-            temp_columns = {col.name for col in temp_table.columns}
-            merge_columns = {col.name for col in merge_table.columns}
-            common_columns = temp_columns & merge_columns
+                # Fetch all data from temp_table and original_table
+                temp_data = temp_session.execute(select(temp_table)).fetchall()
+                orig_data = orig_session.execute(select(temp_table)).fetchall()
 
-            # Map columns
-            column_mapping = {col: col for col in common_columns}
+                # Convert original data rows to dictionary form
+                orig_data_dict = {
+                    tuple(row._mapping[col] for col in conflict_columns): row._mapping for row in orig_data
+                }
 
-            # Get DateTime columns
-            datetime_columns = [col.name for col in merge_table.columns if isinstance(col.type, DateTime)]
+                for temp_row in temp_data:
+                    temp_filtered_row = dict(temp_row._mapping)
 
-            # Prepare conflict columns
-            conflict_columns = conflict_columns_mapping.get(table_name, [col.name for col in merge_table.primary_key])
+                    # Determine if this row exists in the original data
+                    key = tuple(temp_filtered_row[col] for col in conflict_columns)
+                    existing_record = orig_data_dict.get(key)
 
-            # Fetch all data from temp_table
-            temp_data = temp_session.execute(select(temp_table)).fetchall()
+                    # Get the primary key columns
+                    primary_keys = [col.name for col in original_table.primary_key]
 
-            for temp_row in temp_data:
-                # Map row data to merge_table columns
-                temp_row_dict = dict(temp_row._mapping)
-                temp_filtered_row = {merge_col_name: temp_row_dict.get(temp_col_name) for temp_col_name, merge_col_name in column_mapping.items()}
+                    if existing_record:
+                        # Detailed logging for existing records
+                        #logger.debug(f"Existing record found for table '{table_name}', key: {key}")
+                        existed_count += 1
+                        # Find a suitable DateTime column to compare if available
+                        update_needed = False
+                        for datetime_column in datetime_columns:
+                            if datetime_column in temp_filtered_row and datetime_column in existing_record:
+                                orig_timestamp = normalize_datetime(existing_record[datetime_column])
+                                temp_timestamp = normalize_datetime(temp_filtered_row[datetime_column])
 
-                # Ensure all required columns are present
-                required_columns = [col.name for col in merge_table.columns if not col.nullable and col.default is None]
-                missing_columns = [col for col in required_columns if temp_filtered_row.get(col) is None]
+                                # Compare timestamps and update if necessary
+                                if temp_timestamp > orig_timestamp:
+                                    update_needed = True
+                                    #logger.debug(f"Updating record for table '{table_name}', key: {key}, column: {datetime_column}")
+                                    update_count = +1
+                                    break
 
-                if missing_columns:
-                    logger.error(f"Missing required columns {missing_columns} in row for table '{table_name}'. Skipping row.")
-                    continue
-
-                # Exclude auto-incremented primary key columns from temp_filtered_row for updates
-                primary_keys = [col for col in merge_table.columns if col.primary_key]
-                update_values = temp_filtered_row.copy()
-                for pk_col in primary_keys:
-                    if pk_col.autoincrement:
-                        pk_name = pk_col.name
-                        if pk_name in update_values:
-                            update_values.pop(pk_name)
-
-                # Convert datetime columns in temp_filtered_row
-                for col_name in datetime_columns:
-                    if col_name in temp_filtered_row:
-                        value = temp_filtered_row[col_name]
-                        if value is not None and not isinstance(value, datetime):
-                            try:
-                                if isinstance(value, str):
-                                    temp_filtered_row[col_name] = datetime.fromisoformat(value)
-                                elif isinstance(value, (int, float)):
-                                    temp_filtered_row[col_name] = datetime.fromtimestamp(value)
-                                else:
-                                    logger.warning(f"Unexpected data type for datetime column '{col_name}': {type(value)}")
-                                    temp_filtered_row[col_name] = None
-                            except Exception as e:
-                                logger.error(f"Error parsing datetime column '{col_name}' with value '{value}': {e}")
-                                temp_filtered_row[col_name] = None
-
-                # Build the filter condition based on conflict columns
-                filter_condition = [merge_table.c[col] == temp_filtered_row[col] for col in conflict_columns]
-
-                # Check if the record exists in the original database
-                existing_record = merge_session.execute(select(merge_table).where(*filter_condition)).fetchone()
-
-                if existing_record:
-                    # Record exists, check if update is necessary
-                    update_needed = False
-                    for key, value in temp_filtered_row.items():
-                        if existing_record._mapping[key] != value:
-                            update_needed = True
-                            break
-
-                    if update_needed:
-                        try:
-                            update_stmt = (
+                        # Update if required
+                        if update_needed:
+                            # Remove primary key columns from the update values
+                            update_values = {
+                                k: v for k, v in temp_filtered_row.items() if k not in primary_keys
+                            }
+                            merge_session.execute(
                                 merge_table.update()
-                                .where(*filter_condition)
-                                .values(**temp_filtered_row)
+                                .where(*[merge_table.c[col] == temp_filtered_row[col] for col in conflict_columns])
+                                .values(**update_values)
                             )
-                            merge_session.execute(update_stmt)
-                            merge_session.commit()
                             update_count += 1
-                        except IntegrityError as e:
-                            logger.error(f"Error updating record in table '{table_name}': {e}")
-                            merge_session.rollback()
+                            #logger.info(f"Record updated in table '{table_name}', key: {key}")
+
                     else:
-                        skip_update_count += 1
-                else:
-                    # Record does not exist, insert it
-                    try:
-                        insert_stmt = insert(merge_table).values(**temp_filtered_row)
-                        merge_session.execute(insert_stmt)
-                        merge_session.commit()
-                        insert_count += 1
-                    except IntegrityError as e:
-                        logger.error(f"Error inserting record into table '{table_name}': {e}")
-                        merge_session.rollback()
+                        # Insert new record if not found in original
+                        try:
+                            merge_session.execute(insert(merge_table).values(**temp_filtered_row))
+                            insert_count += 1
+                        except IntegrityError as e:
+                            # Handle unique constraint errors by removing the conflicting primary key
+                            logger.warning(f"Unique constraint error on insert. Generating new primary key for '{table_name}': {e}")
+                            for pk in primary_keys:
+                                temp_filtered_row.pop(pk, None)  # Remove existing primary key to let the DB generate a new one
+                            merge_session.execute(insert(merge_table).values(**temp_filtered_row))
+                            insert_count += 1
 
-            # Commit after each table to release locks
-            merge_session.commit()
+                # Log summary statistics
+                logger.info(
+                    f"Merge summary: {update_count} records updated, {insert_count} records inserted, {existed_count} records existed.")
 
-        # Log summary statistics
-        logger.info(f"Merge summary: {update_count} records updated, {insert_count} records inserted, {skip_update_count} records skipped.")
+                merge_session.commit()
+                merge_session.close()
+                orig_session.close()
+                temp_session.close()
 
-        # Close sessions
-        orig_session.close()
-        temp_session.close()
-        merge_session.close()
+            logger.info("Merge completed.")
+            return True
+    except Exception as e:
+        error_message = f"An error occurred while processing Merge: {str(e)}"
+        logger.error(error_message)
+        return False
+
+# Normalize DateTime fields
+def normalize_datetime(dt):
+    if dt is None:
+        return None
+    return dt.replace(microsecond=0, tzinfo=None)
 
 def inspect_db(engine):
     """Prints the list of tables and their columns in the database."""
@@ -442,6 +454,11 @@ def is_valid_sqlite_file(file_path):
         logger.error(f"File is not a valid SQLite database: {file_path}")
         return False
 
+# Use DatabaseManager to initialize tables
+def initialize_merge_database(db_path):
+    from core.database_manager import DatabaseManager
+    db_manager = DatabaseManager(db_path)
+    db_manager.initialize_tables()
 
 def main():
     global postmark_api_key, from_email, to_email, fileio_api_key
@@ -512,16 +529,28 @@ def main():
         original_engine = create_engine(
             f"sqlite:///{original_db}",
             connect_args={'timeout': TIMEOUT_DB_CONN},
+            poolclass=NullPool
+        )
+
+        # Replace the previous table creation code with the following
+        merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(ORIG_DB_NAME)}")
+        initialize_merge_database(merge_db_path)
+
+        merge_engine = create_engine(
+            f"sqlite:///{merge_db_path}",
+            connect_args={'timeout': TIMEOUT_DB_CONN},
             poolclass=NullPool,
             isolation_level=None  # Set isolation_level to None for autocommit
         )
+
+        if not os.path.exists(merge_db_path):
+            logger.error(f"Error: File {merge_db_path} was not created. Skipping.")
 
         for temp_db in temp_dbs:
             temp_engine = create_engine(
                 f"sqlite:///{temp_db}",
                 connect_args={'timeout': TIMEOUT_DB_CONN},
-                poolclass=NullPool,
-                isolation_level=None  # Set isolation_level to None for autocommit
+                poolclass=NullPool
             )
             inspect_db(temp_engine)
 
@@ -532,42 +561,38 @@ def main():
                 logger.warning(f"Database {temp_db} did not pass validation. Skipping.")
                 continue
 
-            merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(temp_db)}")
+            file_size_original_db = round(os.path.getsize(original_db) / (1024 * 1024), 2)
+            file_size_temp_db = round(os.path.getsize(temp_db) / (1024 * 1024), 2)
+            logger.info(f"{original_db} (file size: {file_size_original_db} MB).")
+            logger.info(f"{temp_db} (file size: {file_size_temp_db} MB).")
 
-            # Copy the original database to the merge database before merging
-            shutil.copyfile(original_db, merge_db_path)
-
-            merge_engine = create_engine(
-                f"sqlite:///{merge_db_path}",
-                connect_args={'timeout': TIMEOUT_DB_CONN},
-                poolclass=NullPool,
-                isolation_level=None  # Set isolation_level to None for autocommit
-            )
-
+            logger.info(f"Comparing and merging {original_db} with {original_db}...")
+            status1 = compare_and_merge(original_engine, temp_engine, merge_engine)
             logger.info(f"Comparing and merging {temp_db} with {original_db}...")
-            compare_and_merge(original_engine, temp_engine, merge_engine)
-
-            if not os.path.exists(merge_db_path):
-                logger.error(f"Error: File {merge_db_path} was not created. Skipping.")
-                continue
-
-            # Replace the original database with the merged database
-            shutil.move(merge_db_path, original_db)
-            logger.info(f"Original database updated: {original_db}")
+            status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
 
             # Dispose of engines to release resources
             temp_engine.dispose()
-            merge_engine.dispose()
 
-            # Delete the temp database file after merging
-            try:
-                os.remove(temp_db)
-                logger.info(f"Temporary database {temp_db} deleted after merging.")
-            except Exception as e:
-                logger.error(f"Error deleting temporary database {temp_db}: {e}")
+            if status1 and status2:
+                # Delete the temp database file after merging
+                try:
+                    os.remove(temp_db)
+                    logger.info(f"Temporary database {temp_db} deleted after merging.")
+                except Exception as e:
+                    logger.error(f"Error deleting temporary database {temp_db}: {e}")
+            else:
+                logger.info(f"Merging orig->temp: {status1}, Merging temp->orig: {status2}"
+                            f"\nTemporary database {temp_db} cannot be deleted.")
 
         # Dispose of the original engine after all operations
         original_engine.dispose()
+        merge_engine.dispose()
+
+        # Replace the original database with the merged database
+        shutil.move(merge_db_path, original_db)
+        logger.info(f"Original database updated: {original_db}")
+
     else:
         logger.info("Merge process skipped as per user request.")
 

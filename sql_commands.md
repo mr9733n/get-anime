@@ -110,7 +110,26 @@ UPDATE team_members SET last_updated = strftime('%Y-%m-%d %H:%M:%f', 'now') || '
 UPDATE title_team_relation SET last_updated = strftime('%Y-%m-%d %H:%M:%f', 'now') || '000';
 ```
 
+9. Update 'uploaded_timestamp' from unix epoch to datetime
 ```sql
 UPDATE torrents
-SET uploaded_timestamp = strftime('%Y-%m-%d %H:%M:%f', uploaded_timestamp, 'unixepoch', 'localtime')
+SET uploaded_timestamp = strftime('%Y-%m-%d %H:%M:%f', uploaded_timestamp, 'unixepoch', 'localtime');
+UPDATE torrents
+SET uploaded_timestamp = uploaded_timestamp || '000';
+```
+
+9. Update 'last_change', 'updated' from unix epoch to datetime
+```sql
+UPDATE titles
+SET updated = updated || '.000000'
+WHERE updated NOT LIKE '%.%';
+UPDATE titles
+SET last_change = last_change || '.000000'
+WHERE last_change NOT LIKE '%.%';
+UPDATE titles
+SET updated = strftime('%Y-%m-%d %H:%M:%f000000', updated, 'unixepoch', 'localtime')
+WHERE LENGTH(updated) <= 10 AND updated GLOB '[0-9]*';
+UPDATE titles
+SET last_change = strftime('%Y-%m-%d %H:%M:%f000000', last_change, 'unixepoch', 'localtime')
+WHERE LENGTH(last_change) <= 10 AND last_change GLOB '[0-9]*';
 ```

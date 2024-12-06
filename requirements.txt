@@ -14,3 +14,4 @@ tqdm
 pyzbar
 requests_toolbelt
 python-dotenv
+pytest

@@ -103,7 +103,18 @@ class ProcessManager:
             self.logger.error(f"Failed to save title to database: {e}")
 
     def process_episodes(self, title_data):
-        for episode in title_data.get("player", {}).get("list", {}).values():
+        list_data = title_data.get("player", {}).get("list")
+
+        # Проверяем, является ли `list_data` словарем или списком
+        if isinstance(list_data, dict):
+            episodes = list_data.values()
+        elif isinstance(list_data, list):
+            episodes = list_data
+        else:
+            self.logger.error("Unexpected type for list_data in player. Expected dict or list.")
+            return
+
+        for episode in episodes:
             if not isinstance(episode, dict):
                 self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
                 continue
@@ -116,7 +127,8 @@ class ProcessManager:
                         'episode_number': episode.get('episode'),
                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
                         'uuid': episode.get('uuid'),
-                        'created_timestamp': episode.get('created_timestamp'),
+                        'created_timestamp': episode.get('created_timestamp') if title_data.get(
+                            'created_timestamp') is not None else 0,
                         'hls_fhd': episode.get('hls', {}).get('fhd'),
                         'hls_hd': episode.get('hls', {}).get('hd'),
                         'hls_sd': episode.get('hls', {}).get('sd'),
@@ -152,7 +164,8 @@ class ProcessManager:
                             'size_string': torrent.get('size_string'),
                             'url': torrent.get('url'),
                             'magnet_link': torrent.get('magnet'),
-                            'uploaded_timestamp': torrent.get('uploaded_timestamp'),
+                            'uploaded_timestamp': torrent.get('uploaded_timestamp') if title_data.get(
+                                'uploaded_timestamp') is not None else 0,
                             'hash': torrent.get('hash'),
                             'torrent_metadata': torrent.get('metadata'),
                             'raw_base64_file': torrent.get('raw_base64_file')

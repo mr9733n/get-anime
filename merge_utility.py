@@ -24,6 +24,8 @@ import qrcode
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 
+STATUS = False
+
 # Constants
 DB_FOLDER = "db"
 TEMP_FOLDER = "temp"
@@ -51,6 +53,9 @@ QRCODE_VER = 1
 QRCODE_BOX_SIZE = 6
 QRCODE_BORDER = 2
 
+# Tables to skip updating existing records (e.g., days_of_week)
+TABLES_SKIP_UPDATE = {'days_of_week', 'schedule'}
+
 # Tables conflict columns mapping
 CONFLICT_COLUMNS_MAPPING = {
     'genres': ['name'],
@@ -59,8 +64,8 @@ CONFLICT_COLUMNS_MAPPING = {
     'titles': ['code'],
     'episodes': ['uuid'],
     'ratings': ['title_id', 'rating_name'],
-    'franchises': ['franchise_id'],
-    'history': ['user_id', 'title_id', 'episode_id', 'torrent_id'],  # Added relevant unique columns
+    'franchises': ['title_id', 'franchise_id'],
+    'history': ['user_id', 'title_id'],  # Added relevant unique columns
     'days_of_week': ['day_of_week'],
     'team_members': ['id', 'name', 'role'],
     'title_team_relation': ['title_id', 'team_member_id'],
@@ -100,9 +105,6 @@ ORIG_COLUMNS_MAPPING = {
     "days_of_week": {"day_of_week", "day_name"},
     "templates": {"id", "name", "one_title_html", "titles_html", "text_list_html", "styles_css", "created_at"},
 }
-
-# Tables to skip updating existing records (e.g., days_of_week)
-TABLES_SKIP_UPDATE = {'days_of_week'}
 
 # Logging configuration
 log_dir = os.path.join(BASE_DIR, LOG_FOLDER_NAME)
@@ -225,6 +227,10 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
             for table_name in matching_tables:
                 logger.info(f"Processing table {table_name}...")
 
+                if table_name in TABLES_SKIP_UPDATE:
+                    logger.info(f"Skipping table {table_name} as it's marked as static.")
+                    continue
+
                 # Reflect tables
                 original_table = Table(table_name, MetaData(), autoload_with=orig_conn)
                 temp_table = Table(table_name, MetaData(), autoload_with=temp_conn)
@@ -240,7 +246,15 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
 
                 # Fetch all data from temp_table and original_table
                 temp_data = temp_session.execute(select(temp_table)).fetchall()
-                orig_data = orig_session.execute(select(temp_table)).fetchall()
+                orig_data = orig_session.execute(select(original_table)).fetchall()
+
+                # Choose the data from the table that has values
+                if not orig_data and temp_data:
+                    orig_data = temp_data
+                    logger.info(f"No data found in original table '{table_name}', using data from temporary table.")
+                elif not temp_data and orig_data:
+                    temp_data = orig_data
+                    logger.info(f"No data found in temporary table '{table_name}', using data from original table.")
 
                 # Convert original data rows to dictionary form
                 orig_data_dict = {
@@ -264,15 +278,27 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
                         # Find a suitable DateTime column to compare if available
                         update_needed = False
                         for datetime_column in datetime_columns:
-                            if datetime_column in temp_filtered_row and datetime_column in existing_record:
-                                orig_timestamp = normalize_datetime(existing_record[datetime_column])
-                                temp_timestamp = normalize_datetime(temp_filtered_row[datetime_column])
+                            temp_value = temp_filtered_row.get(datetime_column)
+                            orig_value = existing_record.get(datetime_column)
 
-                                # Compare timestamps and update if necessary
+                            # Normalize values if they are not None
+                            temp_timestamp = normalize_datetime(temp_value) if temp_value is not None else None
+                            orig_timestamp = normalize_datetime(orig_value) if orig_value is not None else None
+
+                            # Determine if an update is needed
+                            if temp_timestamp is not None and orig_timestamp is None:
+                                # Original is None, so we want to update with the value from temp
+                                update_needed = True
+                                update_count += 1
+                                break
+                            elif temp_timestamp is None and orig_timestamp is not None:
+                                # Temp is None, original has value, so no update needed
+                                continue
+                            elif temp_timestamp is not None and orig_timestamp is not None:
+                                # Both values are present, compare them
                                 if temp_timestamp > orig_timestamp:
                                     update_needed = True
-                                    #logger.debug(f"Updating record for table '{table_name}', key: {key}, column: {datetime_column}")
-                                    update_count = +1
+                                    update_count += 1
                                     break
 
                         # Update if required
@@ -305,18 +331,15 @@ def compare_and_merge(original_engine, temp_engine, merge_engine):
                 # Log summary statistics
                 logger.info(
                     f"Merge summary: {update_count} records updated, {insert_count} records inserted, {existed_count} records existed.")
-
                 merge_session.commit()
-                merge_session.close()
-                orig_session.close()
-                temp_session.close()
 
-            logger.info("Merge completed.")
-            return True
+        logger.info("Merge completed.")
+        return True
     except Exception as e:
         error_message = f"An error occurred while processing Merge: {str(e)}"
         logger.error(error_message)
         return False
+
 
 # Normalize DateTime fields
 def normalize_datetime(dt):
@@ -572,7 +595,7 @@ def main():
             status1 = compare_and_merge(original_engine, temp_engine, merge_engine)
             logger.info(f"Comparing and merging {temp_db} with {original_db}...")
             status2 = False
-            status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
+            #status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
 
             # Dispose of engines to release resources
             temp_engine.dispose()
@@ -588,6 +611,7 @@ def main():
                 logger.info(f"Merging orig->temp: {status1}, Merging temp->orig: {status2}"
                             f"\nTemporary database {temp_db} cannot be deleted.")
 
+#
         # Dispose of the original engine after all operations
         original_engine.dispose()
         merge_engine.dispose()

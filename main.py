@@ -17,6 +17,7 @@ from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
 
+# TODO: Remove from build version command injection
 def fetch_version():
     global version
     try:

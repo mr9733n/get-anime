@@ -113,7 +113,6 @@
 		├── tables.py
 		├── utils.py
 		└── database_manager.py
-
 ```
 
 ### 8.9. Add ProductionStudio table
@@ -124,7 +123,7 @@
 -[x] bug fixes and improvements
 -[x] fix builder
 -[x] add icon to app
-- 
+
 ### 8.10. APP REFACTORING
 -[x] refactor display_titles
 -[x] refactor display_titles_in_ui
@@ -156,12 +155,10 @@
 -[x] Added checksum verify for injection merge_utility.exe
    - #### Create binary: 
       ```commandline
-      pyinstaller main.spec --noconfirm 
-      pyinstaller merge_utility.spec --noconfirm
-      pyinstaller sync.spec --noconfirm
+      pyinstaller build.spec --noconfirm 
       ```
 -[ ] Need to add refreshing title when loaded from db by api request 
--[ ] ..
+-[ ] Merge algorithm is unstable
 -[ ] ..
 
 ### 8.12. redesign system browser
@@ -174,7 +171,7 @@
 ### 8.13. Some fixes
 -[ ] add night theme
 -[ ] deprecate more than one run
--[ ] add button to show Need to see list
+-[x] add button to show Need to see list
 -[ ] max size for log file then rotate
 -[ ] need to fix watch status for title_id when set status first time
 

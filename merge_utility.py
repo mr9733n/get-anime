@@ -492,6 +492,7 @@ def main():
     # Set up argument parsing
     parser = argparse.ArgumentParser(description='Anime Player Merge Utility App version 0.0.0.1')
     parser.add_argument('--skip-merge', action='store_true', help='Skip the merging process')
+    parser.add_argument('--merge-error-ignore', action='store_true', help='Start unstable merging process')
     parser.add_argument('--skip-upload-email', action='store_true', help='Skip uploading and sending email')
     parser.add_argument('--skip-email', action='store_true', help='Skip sending email')
     args = parser.parse_args()
@@ -544,81 +545,83 @@ def main():
         sys.exit(1)
 
     if not args.skip_merge:
-        # Backup the original database
-        backup_db = os.path.join(DB_FOLDER, BACKUP_DB_NAME)
-        if not os.path.exists(backup_db):
-            shutil.copyfile(original_db, backup_db)
-            logger.info(f"Original database backed up to {backup_db}")
+       logger.info(f"Merge algorithm skipped cuz unstable.."
+                   f"to enable use --merge-error-ignore")
+    if args.merge_error_ignore:
+       # Backup the original database
+       backup_db = os.path.join(DB_FOLDER, BACKUP_DB_NAME)
+       if not os.path.exists(backup_db):
+           shutil.copyfile(original_db, backup_db)
+           logger.info(f"Original database backed up to {backup_db}")
 
-        original_engine = create_engine(
-            f"sqlite:///{original_db}",
-            connect_args={'timeout': TIMEOUT_DB_CONN},
-            poolclass=NullPool
-        )
+       original_engine = create_engine(
+           f"sqlite:///{original_db}",
+           connect_args={'timeout': TIMEOUT_DB_CONN},
+           poolclass=NullPool
+       )
 
-        # Replace the previous table creation code with the following
-        merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(ORIG_DB_NAME)}")
-        initialize_merge_database(merge_db_path)
+       # Replace the previous table creation code with the following
+       merge_db_path = os.path.join(DB_FOLDER, f"{MERGE_DB_PREFIX}{os.path.basename(ORIG_DB_NAME)}")
+       initialize_merge_database(merge_db_path)
 
+       merge_engine = create_engine(
+           f"sqlite:///{merge_db_path}",
+           connect_args={'timeout': TIMEOUT_DB_CONN},
+           poolclass=NullPool,
+           isolation_level=None  # Set isolation_level to None for autocommit
+       )
 
-        merge_engine = create_engine(
-            f"sqlite:///{merge_db_path}",
-            connect_args={'timeout': TIMEOUT_DB_CONN},
-            poolclass=NullPool,
-            isolation_level=None  # Set isolation_level to None for autocommit
-        )
+       if not os.path.exists(merge_db_path):
+           logger.error(f"Error: File {merge_db_path} was not created. Skipping.")
 
-        if not os.path.exists(merge_db_path):
-            logger.error(f"Error: File {merge_db_path} was not created. Skipping.")
+       for temp_db in temp_dbs:
+           temp_engine = create_engine(
+               f"sqlite:///{temp_db}",
+               connect_args={'timeout': TIMEOUT_DB_CONN},
+               poolclass=NullPool
+           )
+           inspect_db(temp_engine)
 
-        for temp_db in temp_dbs:
-            temp_engine = create_engine(
-                f"sqlite:///{temp_db}",
-                connect_args={'timeout': TIMEOUT_DB_CONN},
-                poolclass=NullPool
-            )
-            inspect_db(temp_engine)
+           # Upgrade the temp_db schema to match the current schema
+           upgrade_db(temp_engine)
+           is_valid, _ = validate_db(temp_engine)
+           if not is_valid:
+               logger.warning(f"Database {temp_db} did not pass validation. Skipping.")
+               continue
 
-            # Upgrade the temp_db schema to match the current schema
-            upgrade_db(temp_engine)
-            is_valid, _ = validate_db(temp_engine)
-            if not is_valid:
-                logger.warning(f"Database {temp_db} did not pass validation. Skipping.")
-                continue
+           file_size_original_db = round(os.path.getsize(original_db) / (1024 * 1024), 2)
+           file_size_temp_db = round(os.path.getsize(temp_db) / (1024 * 1024), 2)
+           logger.info(f"{original_db} (file size: {file_size_original_db} MB).")
+           logger.info(f"{temp_db} (file size: {file_size_temp_db} MB).")
 
-            file_size_original_db = round(os.path.getsize(original_db) / (1024 * 1024), 2)
-            file_size_temp_db = round(os.path.getsize(temp_db) / (1024 * 1024), 2)
-            logger.info(f"{original_db} (file size: {file_size_original_db} MB).")
-            logger.info(f"{temp_db} (file size: {file_size_temp_db} MB).")
+           logger.info(f"Comparing and merging {original_db} with {original_db}...")
+           status1 = compare_and_merge(original_engine, temp_engine, merge_engine)
+           logger.info(f"Comparing and merging {temp_db} with {original_db}...")
+           status2 = False
+           # status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
 
-            logger.info(f"Comparing and merging {original_db} with {original_db}...")
-            status1 = compare_and_merge(original_engine, temp_engine, merge_engine)
-            logger.info(f"Comparing and merging {temp_db} with {original_db}...")
-            status2 = False
-            #status2 = compare_and_merge(temp_engine, original_engine, merge_engine)
+           # Dispose of engines to release resources
+           temp_engine.dispose()
 
-            # Dispose of engines to release resources
-            temp_engine.dispose()
+           if status1 or status2:
+               # Delete the temp database file after merging
+               try:
+                   os.remove(temp_db)
+                   logger.info(f"Temporary database {temp_db} deleted after merging.")
+               except Exception as e:
+                   logger.error(f"Error deleting temporary database {temp_db}: {e}")
+           else:
+               logger.info(f"Merging orig->temp: {status1}, Merging temp->orig: {status2}"
+                           f"\nTemporary database {temp_db} cannot be deleted.")
 
-            if status1 or status2:
-                # Delete the temp database file after merging
-                try:
-                    os.remove(temp_db)
-                    logger.info(f"Temporary database {temp_db} deleted after merging.")
-                except Exception as e:
-                    logger.error(f"Error deleting temporary database {temp_db}: {e}")
-            else:
-                logger.info(f"Merging orig->temp: {status1}, Merging temp->orig: {status2}"
-                            f"\nTemporary database {temp_db} cannot be deleted.")
+       #
+       # Dispose of the original engine after all operations
+       original_engine.dispose()
+       merge_engine.dispose()
 
-#
-        # Dispose of the original engine after all operations
-        original_engine.dispose()
-        merge_engine.dispose()
-
-        # Replace the original database with the merged database
-        shutil.move(merge_db_path, original_db)
-        logger.info(f"Original database updated: {original_db}")
+       # Replace the original database with the merged database
+       shutil.move(merge_db_path, original_db)
+       logger.info(f"Original database updated: {original_db}")
 
     else:
         logger.info("Merge process skipped as per user request.")

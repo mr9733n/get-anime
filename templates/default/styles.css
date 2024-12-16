@@ -14,7 +14,7 @@ body {
 h3, p, ul, li {
 	margin: 5px 0;
 	text-shadow: 1px 1px 2px #FFF;
-	background: rgba(255, 255, 0, 0.5);
+	background: rgba(255, 255, 255, 0.5);
 	padding: 3px 6px;
 	border-radius: 3px;
 	display: inline-block;
@@ -29,15 +29,17 @@ h3, p, ul, li {
 }
 .header_episodes {
 	text-align: left;
-	background: rgba(255, 255, 0, 0.5);
+
 }
 .episodes {
 	text-align: left;
-	background: rgba(255, 255, 0, 0.5);
+	background: rgba(255, 255, 255, 0.5);
+	display: inline-block;
+	border-radius: 3px;
 }
 .header_span {
 	text-align: right;
-	background: rgba(255, 255, 0, 0.5);
+	background: rgba(255, 255, 255, 0.5);
 }
 .header_p {
 	text-align: left;
@@ -49,7 +51,7 @@ h3, p, ul, li {
 	margin-bottom: 15px;
 	line-height: 0.9;
 	padding: 5px 8px;
-	background: rgba(255, 255, 0, 0.4)
+
 }
 a {
 	text-decoration: none;

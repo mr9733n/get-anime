@@ -221,44 +221,48 @@ class SaveManager:
             title_id = title_data['title_id']
             self.logger.info(f"save_title started for {title_id}")
             try:
-                # Проверка на наличие и корректность данных
+                # Check if the title data is a dictionary
                 if not isinstance(title_data, dict):
-                    raise ValueError("Переданные данные для сохранения тайтла должны быть словарем")
+                    raise ValueError("The title data must be a dictionary.")
 
-                # Проверка типов ключевых полей
-                if not isinstance(title_data.get('title_id'), int):
-                    raise ValueError("Неверный тип для 'title_id'. Ожидался тип int.")
+                # Check key field types
+                if not isinstance(title_id, int):
+                    raise ValueError("Invalid type for 'title_id'. Expected int.")
 
-                # Преобразование списков и словарей в строки в формате JSON для хранения в базе данных
-                existing_title = session.query(Title).filter_by(title_id=title_data['title_id']).first()
-                # Преобразуем timestamps если они есть в данных
+                # Convert timestamps if they exist
                 if 'updated' in title_data:
                     title_data['updated'] = datetime.utcfromtimestamp(title_data['updated'])
                 if 'last_change' in title_data:
                     title_data['last_change'] = datetime.utcfromtimestamp(title_data['last_change'])
 
+                # Check for an existing title by title_id or code
+                existing_title = session.query(Title).filter(
+                    or_(
+                        Title.title_id == title_id,
+                        Title.code == title_data['code']
+                    )
+                ).first()
+
                 if existing_title:
                     # Update existing title if data has changed
                     is_updated = False
-
                     for key, value in title_data.items():
                         if getattr(existing_title, key, None) != value:
                             setattr(existing_title, key, value)
                             is_updated = True
 
-                    # Если было установлено, что данные обновились, фиксируем изменения в базе данных
                     if is_updated:
                         session.commit()
                         self.logger.debug(f"Updated title_id: {title_id}")
                 else:
-                    # Add new title
+                    # Add a new title
                     new_title = Title(**title_data)
                     session.add(new_title)
                     session.commit()
                     self.logger.debug(f"Successfully saved title_id: {title_id}")
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Ошибка при сохранении тайтла в базе данных: {e}")
+                self.logger.error(f"Error saving title to database: {e}")
 
     def save_franchise(self, franchise_data):
         with self.Session as session:

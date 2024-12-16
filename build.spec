@@ -22,7 +22,6 @@ compileall.compile_dir('templates', force=True)
 
 # Импортируем необходимый модуль Analysis, EXE, COLLECT
 from PyInstaller.utils.hooks import collect_data_files
-import os
 
 block_cipher = None
 

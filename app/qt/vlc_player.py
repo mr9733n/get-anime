@@ -63,7 +63,7 @@ class VLCPlayer(QWidget):
         self.playlist_button = QPushButton("PLAYLIST")
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(50)
+        self.volume_slider.setValue(100)
         self.progress_slider = QSlider(Qt.Horizontal)
         self.progress_slider.setRange(0, 100)
         self.time_label = QLabel("00:00 / 00:00")
@@ -72,7 +72,7 @@ class VLCPlayer(QWidget):
 
         # Задание длины слайдеров
         self.volume_slider.setFixedWidth(50)
-        self.progress_slider.setFixedWidth(200)
+        self.progress_slider.setFixedWidth(300)
 
         # Layout
         control_layout = QHBoxLayout()
@@ -165,7 +165,7 @@ class VLCPlayer(QWidget):
             else:
                 self.load_playlist_from_file(path)
         except Exception as e:
-            self.logger.error(f"Ошибка при загрузке плейлиста: {e}")
+            self.logger.error(f"!!! Error playing playlist file: {e}")
             return
 
     def is_url(self, path):
@@ -179,14 +179,14 @@ class VLCPlayer(QWidget):
             self.media_list.add_media(media)
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
-            self.logger.info(f"Плейлист из URL загружен: {url}")
+            self.logger.info(f"Playing stream url: {url}")
         except Exception as e:
-            self.logger.error(f"Ошибка при загрузке плейлиста из URL: {e}")
+            self.logger.error(f"!!! Error playing stream url: {e}")
 
     def load_playlist_from_file(self, file_path):
         """Загружает и воспроизводит плейлист из локального файла."""
         if not os.path.exists(file_path):
-            self.logger.error(f"Файл плейлиста не найден: {file_path}")
+            self.logger.error(f"!!! Playlist file not found: {file_path}")
             return
 
         try:
@@ -200,9 +200,9 @@ class VLCPlayer(QWidget):
 
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
-            self.logger.info(f"Плейлист из файла загружен: {file_path}")
+            self.logger.info(f"Playlist playing from file: {file_path}")
         except Exception as e:
-            self.logger.error(f"Ошибка при чтении файла плейлиста: {e}")
+            self.logger.error(f"!!! Error playing playlist file: {e}")
 
     def play_selected_item(self, item):
         """Воспроизводит выбранную серию."""
@@ -213,16 +213,16 @@ class VLCPlayer(QWidget):
     def play_pause(self):
         if self.media_player.is_playing():
             self.media_player.pause()
-            self.play_button.setText("Play")
+            self.play_button.setText("PLAY")
             self.timer.stop()
         else:
             self.list_player.play()
-            self.play_button.setText("Pause")
+            self.play_button.setText("PAUSE")
             self.timer.start()
 
     def stop_media(self):
         self.list_player.stop()
-        self.play_button.setText("Play")
+        self.play_button.setText("PLAY")
         self.timer.stop()
 
     def set_volume(self, volume):

@@ -37,6 +37,7 @@ datas = [
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),
     (os.path.join(project_dir, 'core/'), 'core'),
     (os.path.join(project_dir, 'utils/'), 'utils'),
+    (os.path.join(project_dir, 'libs/'), 'libs'),
     (os.path.join(project_dir, 'app/qt/__pycache__'), 'app/qt/__pycache__'),  # Add compiled .pyc files
     (os.path.join(project_dir, 'core/__pycache__'), 'core/__pycache__'),      # Add compiled .pyc files
     (os.path.join(project_dir, 'utils/__pycache__'), 'utils/__pycache__'),    # Add compiled .pyc files
@@ -70,6 +71,7 @@ a = Analysis(
 		'urllib3.contrib.socks',
         'uuid',
         'jinja2',
+        'python-vlc',
 		'sqlalchemy',
 		'sqlalchemy.orm',
 		'sqlalchemy.ext.declarative',
@@ -93,6 +95,7 @@ a = Analysis(
         'utils.playlist_manager',
         'utils.poster_manager',
         'utils.torrent_manager',
+        'utils.library_loader',
     ],
     hookspath=['.'],
     hooksconfig={},

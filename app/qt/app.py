@@ -10,6 +10,7 @@ import sys
 import base64
 import datetime
 from datetime import datetime, timezone
+from app.qt.vlc_player import VLCPlayer
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -39,11 +40,18 @@ APP_X_POS = 100
 APP_Y_POS = 100
 
 
+class APIClientError(Exception):
+    """Исключение для ошибок при работе с API."""
+    def __init__(self, message):
+        super().__init__(message)
+
+
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
 
     def __init__(self, db_manager, version):
         super().__init__()
+        self.vlc_window = None
         self.day_of_week = None
         self.quality_dropdown = None
         self.logger = logging.getLogger(__name__)
@@ -78,7 +86,7 @@ class AnimePlayerAppVer3(QWidget):
         self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
-
+        self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
         self.titles_list_batch_size = int(self.config_manager.get_setting('Settings', 'titles_list_batch_size'))
         self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
@@ -247,8 +255,11 @@ class AnimePlayerAppVer3(QWidget):
         if not day:
             day = 0 # Monday
         status, title_ids = self.check_and_update_schedule_after_display(day, titles)
+        if not title_ids:
+            self.display_titles_for_day(day)
         if status:
             self.display_titles(title_ids)
+
 
     def generate_callbacks(self):
         # Существующие статические колбеки
@@ -410,8 +421,10 @@ class AnimePlayerAppVer3(QWidget):
                 # Если тайтлы отсутствуют, получаем данные с сервера
                 titles_list = []
                 data = self.get_schedule(day_of_week)
-                self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
-                if data:
+                if not data:
+                    self.display_titles(start=True)
+                else:
+                    self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
                     parsed_data = self.parse_schedule_data(data)
                     self.logger.debug(f"parsed_data: {parsed_data}")
                     self._save_parsed_data(parsed_data)
@@ -427,6 +440,7 @@ class AnimePlayerAppVer3(QWidget):
                     self.total_titles = titles
                     self.display_titles_in_ui(titles)
                     self.day_of_week = day_of_week
+
             except Exception as e:
                 self.logger.error(f"Error fetching titles from schedule: {e}")
 
@@ -449,41 +463,49 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Ошибка при save titles расписания: {e}")
 
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
-        """Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо."""
+        """
+        Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо.
+
+        Args:
+            day_of_week (int): День недели.
+            current_titles (list): Текущие данные о титулах.
+
+        Returns:
+            tuple: (bool, set) Успешность операции и список новых титулов.
+        """
         try:
-            # Получаем актуальные данные из API
             titles_list = []
             data = self.get_schedule(day_of_week)
-            if data:
-                parsed_data = self.parse_schedule_data(data)
-                self.logger.debug(f"parsed_data: {parsed_data}")
-                self._save_parsed_data(parsed_data)
 
-                for item in data:
-                    titles = item.get("list", [])
-                    titles_list.extend(titles)
-                # TODO: fix this. need to count as dict
-                self.logger.debug(f"title_list: {len(titles_list)}")
-                # Сохраняем данные в базе данных
-                self._save_titles_list(titles_list)
-                # TODO: fix this. need to count as dict
-                self.logger.debug(f"Title list from db {len(titles_list)}")
-                self.logger.debug(f"parsed data from API for saving schedule {len(parsed_data)}")
-                self.logger.debug(f"DATA from API {len(data)}")
+            if data is None:
+                self.logger.warning(f"No data available for day {day_of_week}. Skipping update.")
+                return False, None
 
-                new_title_ids = {title_data.get('id') for title_data in titles_list}
-                if current_titles:
-                    # TODO: fix this. need to count as dict
-                    self.logger.debug(f"Attributes of current title: {len(vars(current_titles[0]))}")
-                    current_title_ids = {title_data.title_id for title_data in current_titles}
-                    titles_to_remove = current_title_ids - new_title_ids
-                    if titles_to_remove:
-                        self.logger.debug(f"find titles for remove: {titles_to_remove}")
-                        self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
-                    self.logger.debug(f"no need to update schedule {current_title_ids} equal {new_title_ids}")
-                return True, new_title_ids
+            parsed_data = self.parse_schedule_data(data)
+            self.logger.debug(f"Parsed data: {parsed_data}")
+            self._save_parsed_data(parsed_data)
+
+            for item in data:
+                titles = item.get("list", [])
+                titles_list.extend(titles)
+
+            self.logger.debug(f"Total titles: {len(titles_list)}")
+            self._save_titles_list(titles_list)
+
+            new_title_ids = {title_data.get('id') for title_data in titles_list}
+
+            if current_titles:
+                current_title_ids = {title_data.title_id for title_data in current_titles}
+                titles_to_remove = current_title_ids - new_title_ids
+                if titles_to_remove:
+                    self.logger.debug(f"Titles to remove: {titles_to_remove}")
+                    self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
+                else:
+                    self.logger.debug(f"No updates required: {current_title_ids} == {new_title_ids}")
+
+            return True, new_title_ids
         except Exception as e:
-            self.logger.error(f"Ошибка при проверке обновлений расписания: {e}")
+            self.logger.error(f"Error while checking or updating schedule: {e}")
             return False, None
 
     def clear_previous_posters(self):
@@ -560,16 +582,32 @@ class AnimePlayerAppVer3(QWidget):
         self.current_data = data
 
     def get_schedule(self, day):
+        """
+        Получает расписание с сервера API.
+        Args:
+            day (int): День недели для запроса.
+
+        Returns:
+            list: Данные расписания.
+
+        Raises:
+            APIClientError: Если произошла ошибка при запросе или обработке данных.
+        """
         try:
             data = self.api_client.get_schedule(day)
-            # Проверка на ошибку в данных
+            if data is None:
+                raise APIClientError(f"No data returned for day {day}.")
             if isinstance(data, dict) and 'error' in data:
-                self.logger.error(data['error'])
-                return None
+                raise APIClientError(f"API returned an error: {data['error']}")
+
+            self.logger.debug(f"Data received for day {day}: {data}")
             self.current_data = data
-            return data  # Возвращаем данные вместо True
+            return data
+        except APIClientError as api_error:
+            self.logger.error(f"API Client Error: {api_error}")
+            return None
         except Exception as e:
-            self.logger.error(f"Ошибка при получении расписания: {e}")
+            self.logger.error(f"Unexpected error while fetching schedule: {e}")
             return None
 
     def parse_schedule_data(self, data):
@@ -703,7 +741,13 @@ class AnimePlayerAppVer3(QWidget):
             file_name = self.playlist_filename
         video_player_path = self.video_player_path
         self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
-        self.playlist_manager.play_playlist(file_name, video_player_path)
+
+        file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
+        if self.use_libvlc == "true":
+            self.open_vlc_player(file_path)
+        else:
+            self.playlist_manager.play_playlist(file_name, video_player_path)
+
         self.logger.debug("Opening video player...")
 
     def save_torrent_wrapper(self, link, title_name, torrent_id):
@@ -819,11 +863,8 @@ class AnimePlayerAppVer3(QWidget):
                 else:
                     self.logger.error(f"Invalid play_all link structure: {link}")
             elif link.endswith('.m3u8'):
-                video_player_path = self.video_player_path
-                open_link = self.pre + self.stream_video_url + link
-                media_player_command = [video_player_path, open_link]
-                subprocess.Popen(media_player_command)
-                self.logger.info(f"Playing video link: {link}")
+                self.logger.info(f"Sending video link: {link} to VLC")
+                self.play_link(link)
                 title_id = link.split('/')[4]
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif '/torrent/download.php' in link:
@@ -892,3 +933,20 @@ class AnimePlayerAppVer3(QWidget):
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
 
+    def open_vlc_player(self, playlist_path):
+        self.vlc_window = VLCPlayer()
+        self.logger.debug(f"playlist_path: {playlist_path}")
+        self.vlc_window.load_playlist(playlist_path)
+        self.vlc_window.show()
+        self.vlc_window.timer.start()
+
+    def play_link(self, link):
+        open_link = self.pre + self.stream_video_url + link
+        if self.use_libvlc == "true":
+            self.open_vlc_player(open_link)
+            self.logger.info(f"Playing video link: {link} in libVLC")
+        else:
+            video_player_path = self.video_player_path
+            media_player_command = [video_player_path, open_link]
+            subprocess.Popen(media_player_command)
+            self.logger.info(f"Playing video link: {link} in VLC")

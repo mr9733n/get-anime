@@ -1,5 +1,6 @@
 import re
 import subprocess
+from urllib.parse import quote
 
 from PyQt5.QtWidgets import QTextBrowser, QLabel, QHBoxLayout, QVBoxLayout, QWidget
 from PyQt5.QtGui import QPixmap
@@ -212,7 +213,7 @@ class UIGenerator:
             error_message = f"Error in generate_watch_history_html: {str(e)}"
             self.logger.error(error_message)
 
-    def generate_play_all_html(self, title):
+    def generate_play_all_html(self, title, skip_opening, skip_ending):
         """Generates M3U Playlist link"""
         try:
             self.app.stream_video_url = title.host_for_player
@@ -226,7 +227,7 @@ class UIGenerator:
 
                     self.logger.debug(
                         f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
-                    return f'<a href="play_all/{title.title_id}/{filename}">Play all</a>'
+                    return f'<a href="play_all/{title.title_id}/{filename}/{skip_opening}/{skip_ending}">Play all</a>'
                 else:
                     self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
                     return "No playlist available"
@@ -357,6 +358,7 @@ class UIGenerator:
 
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
+        global skips_opening, skips_ending
         try:
             selected_quality = self.app.quality_dropdown.currentText()
             self.app.discovered_links = []
@@ -367,6 +369,8 @@ class UIGenerator:
             episode_links = []
             for i, episode in enumerate(title.episodes):
                 episode_name = episode.name if episode.name else f'Серия {i + 1}'
+                skips_opening = episode.skips_opening if episode.skips_opening else f'[]'
+                skips_ending = episode.skips_ending if episode.skips_ending else f'[]'
                 link = None
                 if selected_quality == 'fhd':
                     link = episode.hls_fhd
@@ -380,16 +384,20 @@ class UIGenerator:
                 if link:
                     episode_ids.append(episode.episode_id)
                     episode_links.append((episode.episode_id, episode_name, link))
+                    # TODO: improve logs without reducing speed
+                    # self.logger.debug(f"{episode.episode_id} {episode_name} {len(link)}")
                 else:
                     self.logger.warning(
                         f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'")
             watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids)
-            play_all_html = self.generate_play_all_html(title)
+            play_all_html = self.generate_play_all_html(title, skips_opening, skips_ending)
             if episode_links:
                 episodes_html = f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}Episodes:{blank_space * 6}{play_all_html}</p><ul>'
                 for episode_id, episode_name, link in episode_links:
                     watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
-                    episodes_html += f'<p class="episodes">{watched_html}{blank_space * 4}<a href="{link}" target="_blank">{episode_name}</a></p>'
+                    link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
+                    episodes_html += f'<p class="episodes">{watched_html}{blank_space * 4}<a href="play_m3u8/{title.title_id}/{skips_opening}/{skips_ending}/[{link_encoded}]" target="_blank">{episode_name}</a></p>'
+                    self.logger.debug(f"play_m3u8/{title.title_id}/{skips_opening}/{skips_ending}/[{link_encoded}]")
                     self.app.discovered_links.append(link)
             else:
                 episodes_html = f'<p class="header_episodes">Episodes:{blank_space * 6}{play_all_html}</p><ul>'

@@ -30,7 +30,6 @@
 - [x] Реализовать функцию `save_title_async`, которая асинхронно сохраняет данные о тайтлах в базу данных.
 - [x] Обновить код для обработки расписания, чтобы после получения JSON сохранять все тайтлы и эпизоды в базу.
 
-
 ## Этап 3: Валидация Данных
 ### 3.1 Добавление Проверок Перед Сохранением
 - [x] Реализовать проверку структуры JSON перед сохранением, чтобы убедиться, что все ключевые поля присутствуют.
@@ -62,7 +61,6 @@
 ### 6.1 разнести логику
 - [x] распилить qt/app.py , возможно часть логики можно оптимизировать
 - [x] возможно стоит вынести сохранение в бд
-
 
 ## Этап 7: Дополнительные Улучшения и Оптимизация
 ### 7.1 Оптимизация Работы с Датами
@@ -157,30 +155,37 @@
       ```commandline
       pyinstaller build.spec --noconfirm 
       ```
+-[x] bug fix: get schedule or reload schedule when request fails
+-[x] check_dll script added
 -[ ] Need to add refreshing title when loaded from db by api request 
 -[ ] Merge algorithm is unstable
 -[ ] ..
 
-### 8.12. redesign system browser
+### 8.12. need to implement own player window uses vlc_lib
+-[x] added config setting 'use_libvlc'
+-[x] added verifying and injecting libvlc.dll
+-[x] vlc layout
+-[x] player controls layout
+-[ ] ..
+
+### 8.13. redesign system browser
 -[x] need to add new layout window
 -[x] view statics
 -[ ] add/update table data
 -[ ] template name add
 -[x] reset offset link for extra issues
 
-### 8.13. Some fixes
+### 8.14. Some fixes
 -[ ] add night theme
 -[ ] deprecate more than one run
 -[x] add button to show Need to see list
 -[ ] max size for log file then rotate
 -[ ] need to fix watch status for title_id when set status first time
 
-### 8.14. change one title view
+### 8.15. change one title view
 -[ ] show production studio
 -[ ] need to change width of title browser if window is changed
 -[ ] idea: you can change window horizontal size and stretch title browser with window
-
-### 8.15. need to implement own player window uses vlc_lib
 
 ### 8.16. something for db
 -[ ] remove schedule view logic from get_titles

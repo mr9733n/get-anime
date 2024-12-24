@@ -8,6 +8,7 @@ hiddenimports = (
     collect_submodules('app.qt.ui_s_generator') +
     collect_submodules('app.qt.app_helpers') +
     collect_submodules('app.qt.layout_metadata') +
+    collect_submodules('app.qt.vlc_player.py') +
     collect_submodules('core.database_manager') +
     collect_submodules('core.get') +
     collect_submodules('core.save') +
@@ -19,6 +20,7 @@ hiddenimports = (
     collect_submodules('utils.logging_handlers') +
     collect_submodules('utils.playlist_manager') +
     collect_submodules('utils.poster_manager') +
+    collect_submodules('utils.library_loader') +
     collect_submodules('utils.torrent_manager')
 )
 

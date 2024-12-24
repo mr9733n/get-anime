@@ -600,7 +600,7 @@ class AnimePlayerAppVer3(QWidget):
             if isinstance(data, dict) and 'error' in data:
                 raise APIClientError(f"API returned an error: {data['error']}")
 
-            self.logger.debug(f"Data received for day {day}: {data}")
+            self.logger.debug(f"Data received for day {day}: {len(data)} keys (type: {type(data).__name__})")
             self.current_data = data
             return data
         except APIClientError as api_error:
@@ -729,27 +729,6 @@ class AnimePlayerAppVer3(QWidget):
         else:
             self.logger.error("No valid links found for saving the combined playlist.")
 
-    def play_playlist_wrapper(self, file_name=None):
-        """
-        Wrapper function to handle playing the playlist.
-        Determines the file name and passes it to play_playlist.
-        """
-        if not self.sanitized_titles:
-            self.logger.error("Playlist not found, please save playlist first.")
-            return
-        if not file_name:
-            file_name = self.playlist_filename
-        video_player_path = self.video_player_path
-        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
-
-        file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
-        if self.use_libvlc == "true":
-            self.open_vlc_player(file_path)
-        else:
-            self.playlist_manager.play_playlist(file_name, video_player_path)
-
-        self.logger.debug("Opening video player...")
-
     def save_torrent_wrapper(self, link, title_name, torrent_id):
         """
         Wrapper function to handle saving the torrent.
@@ -854,18 +833,34 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.error(f"Invalid set_rating/ link structure: {link}")
             elif link.startswith('play_all/'):
                 parts = link.split('/')
-                if len(parts) >= 3:
+                if len(parts) >= 5:
                     title_id = int(parts[1])
                     filename = parts[2]
-                    self.logger.debug(f"Play_all: title_id: {title_id}, filename: {filename}")
-                    self.play_playlist_wrapper(filename)
+                    skip_opening = parts[3]
+                    skip_ending = parts[4]
+                    self.logger.debug(f"Play_all: title_id: {title_id}, Skip opening: {skip_opening}, Skip ending: {skip_ending}, filename: {filename}")
+                    self.play_playlist_wrapper(filename, title_id, skip_opening, skip_ending)
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid play_all link structure: {link}")
-            elif link.endswith('.m3u8'):
-                self.logger.info(f"Sending video link: {link} to VLC")
-                self.play_link(link)
-                title_id = link.split('/')[4]
+            # play_m3u8/8330/[]/[]/[/videos/media/ts/8330/12/1080/6304ca1f37c6192732ee93dddd40e465.m3u8]
+            elif link.startswith('play_m3u8/'):
+                parts = link.split('/')
+                if len(parts) >= 5:
+                    try:
+                        title_id = int(parts[1])  # Идентификатор тайтла
+                        # Убираем квадратные скобки и приводим строки к спискам или None
+                        skip_opening = eval(parts[2]) if parts[2] != '[]' else None
+                        skip_ending = eval(parts[3]) if parts[3] != '[]' else None
+                        extracted_link = parts[4].strip("[]")  # Убираем квадратные скобки из ссылки
+                        decoded_link = base64.urlsafe_b64decode(extracted_link).decode()
+                        self.logger.info(
+                            f"Skip opening: {skip_opening}, Skip ending: {skip_ending}, Extracted link: {extracted_link}, Decoded link: {decoded_link}")
+                        link = decoded_link
+                        self.logger.info(f"Sending video link: {link} to VLC")
+                        self.play_link(link, title_id, skip_opening, skip_ending)
+                    except (ValueError, SyntaxError) as e:
+                        self.logger.error(f"Error parsing link: {e}")
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif '/torrent/download.php' in link:
                 title_id, title_code, torrent_id = self.torrent_data
@@ -933,20 +928,41 @@ class AnimePlayerAppVer3(QWidget):
         # Basic URL standardization example: stripping spaces and removing query parameters
         return url.strip().split('?')[0]
 
-    def open_vlc_player(self, playlist_path):
+    def open_vlc_player(self, playlist_path, title_id, skip_opening=None, skip_ending=None):
         self.vlc_window = VLCPlayer()
-        self.logger.debug(f"playlist_path: {playlist_path}")
-        self.vlc_window.load_playlist(playlist_path)
+        self.logger.debug(f"title_id: {title_id}, playlist_path: {playlist_path}")
+        self.vlc_window.load_playlist(playlist_path, title_id, skip_opening, skip_ending)
         self.vlc_window.show()
         self.vlc_window.timer.start()
 
-    def play_link(self, link):
+    def play_link(self, link, title_id=None, skip_opening=None, skip_ending=None):
         open_link = self.pre + self.stream_video_url + link
         if self.use_libvlc == "true":
-            self.open_vlc_player(open_link)
-            self.logger.info(f"Playing video link: {link} in libVLC")
+            self.open_vlc_player(open_link, title_id, skip_opening, skip_ending)
+            self.logger.info(f"title_id: {title_id}, Skip opening: {skip_opening}, Skip ending: {skip_ending}, Playing video link: {link} in libVLC")
         else:
             video_player_path = self.video_player_path
             media_player_command = [video_player_path, open_link]
             subprocess.Popen(media_player_command)
             self.logger.info(f"Playing video link: {link} in VLC")
+
+    def play_playlist_wrapper(self, file_name=None, title_id=None, skip_opening=None, skip_ending=None):
+        """
+        Wrapper function to handle playing the playlist.
+        Determines the file name and passes it to play_playlist.
+        """
+        if not self.sanitized_titles:
+            self.logger.error("Playlist not found, please save playlist first.")
+            return
+        if not file_name:
+            file_name = self.playlist_filename
+        video_player_path = self.video_player_path
+        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
+
+        file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
+        if self.use_libvlc == "true":
+            self.open_vlc_player(file_path, title_id, skip_opening, skip_ending)
+        else:
+            self.playlist_manager.play_playlist(file_name, video_player_path)
+
+        self.logger.debug("Opening video player...")

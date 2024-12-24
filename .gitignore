@@ -39,3 +39,4 @@ merge.cmd
 merged_log.txt
 .env
 libs/libvlc.dll
+screenshots/*

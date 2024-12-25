@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 from urllib.parse import quote
@@ -213,30 +214,6 @@ class UIGenerator:
             error_message = f"Error in generate_watch_history_html: {str(e)}"
             self.logger.error(error_message)
 
-    def generate_play_all_html(self, title, skip_opening, skip_ending):
-        """Generates M3U Playlist link"""
-        try:
-            self.app.stream_video_url = title.host_for_player
-            playlist = self.app.playlists.get(title.title_id)
-            if playlist:
-                sanitized_title = playlist['sanitized_title']
-                discovered_links = playlist['links']
-                if discovered_links:
-                    filename = self.app.playlist_manager.save_playlist([sanitized_title], discovered_links,
-                                                                   self.app.stream_video_url)
-
-                    self.logger.debug(
-                        f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
-                    return f'<a href="play_all/{title.title_id}/{filename}/{skip_opening}/{skip_ending}">Play all</a>'
-                else:
-                    self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-                    return "No playlist available"
-            else:
-                return "No playlist available"
-        except Exception as e:
-            error_message = f"Error in generate_play_all_html: {str(e)}"
-            self.logger.error(error_message)
-
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
         try:
@@ -358,19 +335,27 @@ class UIGenerator:
 
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
-        global skips_opening, skips_ending
         try:
             selected_quality = self.app.quality_dropdown.currentText()
             self.app.discovered_links = []
             self.app.sanitized_titles = []
-            # TODO: fix blank space
             blank_space = self.blank_spase
             episode_ids = []
             episode_links = []
+            skip_data = {"episode_skips": []}  # Структура для skip_data
+
             for i, episode in enumerate(title.episodes):
                 episode_name = episode.name if episode.name else f'Серия {i + 1}'
-                skips_opening = episode.skips_opening if episode.skips_opening else f'[]'
-                skips_ending = episode.skips_ending if episode.skips_ending else f'[]'
+                skip_opening = episode.skips_opening if episode.skips_opening else []
+                skip_ending = episode.skips_ending if episode.skips_ending else []
+
+                # Добавляем данные о пропусках
+                skip_data["episode_skips"].append({
+                    "episode_number": episode.episode_number,
+                    "skip_opening": skip_opening,
+                    "skip_ending": skip_ending
+                })
+
                 link = None
                 if selected_quality == 'fhd':
                     link = episode.hls_fhd
@@ -384,29 +369,32 @@ class UIGenerator:
                 if link:
                     episode_ids.append(episode.episode_id)
                     episode_links.append((episode.episode_id, episode_name, link))
-                    # TODO: improve logs without reducing speed
-                    # self.logger.debug(f"{episode.episode_id} {episode_name} {len(link)}")
                 else:
                     self.logger.warning(
                         f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'")
+
+            # Упаковка skip_data в base64
+            skip_data_encoded = base64.urlsafe_b64encode(json.dumps(skip_data).encode()).decode()
+
             watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids)
-            play_all_html = self.generate_play_all_html(title, skips_opening, skips_ending)
+            play_all_html = self.generate_play_all_html(title, skip_data_encoded)
+
             if episode_links:
                 episodes_html = f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}Episodes:{blank_space * 6}{play_all_html}</p><ul>'
                 for episode_id, episode_name, link in episode_links:
                     watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
-                    episodes_html += f'<p class="episodes">{watched_html}{blank_space * 4}<a href="play_m3u8/{title.title_id}/{skips_opening}/{skips_ending}/[{link_encoded}]" target="_blank">{episode_name}</a></p>'
-                    self.logger.debug(f"play_m3u8/{title.title_id}/{skips_opening}/{skips_ending}/[{link_encoded}]")
+                    episodes_html += f'<p class="episodes">{watched_html}{blank_space * 4}<a href="play_m3u8/{title.title_id}/[{skip_data_encoded}]/[{link_encoded}]" target="_blank">{episode_name}</a></p>'
+                    self.logger.debug(f"play_m3u8/{title.title_id}/{skip_data_encoded}/[{link_encoded}]")
                     self.app.discovered_links.append(link)
             else:
                 episodes_html = f'<p class="header_episodes">Episodes:{blank_space * 6}{play_all_html}</p><ul>'
                 episodes_html += f'<li>Нет доступных ссылок для выбранного качества: {selected_quality}</li>'
             episodes_html += "</ul>"
-            # Добавляем имя эпизода в sanitized_titles
+
             sanitized_name = self.app.sanitize_filename(title.code)
             self.app.sanitized_titles.append(sanitized_name)
-            # Обновляем плейлисты, если есть обнаруженные ссылки
+
             if self.app.discovered_links:
                 self.app.playlists[title.title_id] = {
                     'links': self.app.discovered_links,
@@ -419,6 +407,25 @@ class UIGenerator:
             error_message = f"Error in generate_episodes_html: {str(e)}"
             self.logger.error(error_message)
 
-
-
-
+    def generate_play_all_html(self, title, skip_data_encoded):
+        """Generates M3U Playlist link with encoded skip data."""
+        try:
+            self.app.stream_video_url = title.host_for_player
+            playlist = self.app.playlists.get(title.title_id)
+            if playlist:
+                sanitized_title = playlist['sanitized_title']
+                discovered_links = playlist['links']
+                if discovered_links:
+                    filename = self.app.playlist_manager.save_playlist([sanitized_title], discovered_links,
+                                                                       self.app.stream_video_url)
+                    self.logger.debug(
+                        f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
+                    return f'<a href="play_all/{title.title_id}/{filename}/[{skip_data_encoded}]">Play all</a>'
+                else:
+                    self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+                    return "No playlist available"
+            else:
+                return "No playlist available"
+        except Exception as e:
+            error_message = f"Error in generate_play_all_html: {str(e)}"
+            self.logger.error(error_message)

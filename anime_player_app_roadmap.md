@@ -158,6 +158,7 @@
 - [x] player controls layout
 - [x] video seek bar fixed ?
 - [x] add skip_opening and skip_endings
+- [x] fixed skip_opening and skip_endings ^-^
 - [ ] add additional feature to seek bar: sliding toggle with click to position
 - [ ] ...
 

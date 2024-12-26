@@ -489,6 +489,7 @@ class VLCPlayer(QWidget):
     def update_ui(self):
         """Updates the progress bar, timer, and checks for skips."""
         try:
+            self.play_button.setText("PAUSE")
             if self.is_seeking or self.is_buffering:
                 return
 

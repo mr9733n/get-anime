@@ -48,6 +48,8 @@ class VideoWindow(QWidget):
 class VLCPlayer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.is_skip_credits_pressed = None
+        self.skip_credits_pressed = False
         self.skip_in_progress = None
         self.skip_data_cache = None
         self.current_episode = None
@@ -56,8 +58,8 @@ class VLCPlayer(QWidget):
         self.is_buffering = None
         self.title_id = None
         self.setWindowTitle("VLC Video Player Controls")
-        self.setMinimumSize(800, 100)
-        self.setMaximumSize(800, 200)
+        self.setMinimumSize(850, 100)
+        self.setMaximumSize(850, 200)
         self.setMinimumHeight(100)
         self.setMaximumHeight(200)
         self.video_window = None
@@ -81,6 +83,7 @@ class VLCPlayer(QWidget):
         self.repeat_button = QPushButton("REPEAT")
         self.playlist_button = QPushButton("PLAYLIST")
         self.screenshot_button = QPushButton("SCREENSHOT")
+        self.skip_credits_button = QPushButton("SKIP CREDITS")
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(100)
@@ -91,15 +94,16 @@ class VLCPlayer(QWidget):
         self.playlist_widget.hide()  # Прячем список по умолчанию
 
         # Задание длины слайдеров
-        self.screenshot_button.setFixedHeight(25)
         self.play_button.setFixedHeight(25)
         self.stop_button.setFixedHeight(25)
         self.next_button.setFixedHeight(25)
         self.previous_button.setFixedHeight(25)
         self.playlist_button.setFixedHeight(25)
+        self.screenshot_button.setFixedHeight(25)
+        self.skip_credits_button.setFixedHeight(25)
         self.volume_slider.setFixedHeight(25)
-        self.volume_slider.setFixedWidth(120)
-        self.progress_slider.setFixedWidth(780)
+        self.volume_slider.setFixedWidth(80)
+        self.progress_slider.setFixedWidth(830)
 
         # Layout
         progress_layout = QHBoxLayout()
@@ -107,6 +111,7 @@ class VLCPlayer(QWidget):
 
         control_layout = QHBoxLayout()
         control_layout.addWidget(self.time_label)
+        control_layout.addWidget(self.skip_credits_button)
         control_layout.addWidget(self.play_button)
         control_layout.addWidget(self.previous_button)
         control_layout.addWidget(self.stop_button)
@@ -114,7 +119,6 @@ class VLCPlayer(QWidget):
         control_layout.addWidget(self.repeat_button)
         control_layout.addWidget(self.playlist_button)
         control_layout.addWidget(self.screenshot_button)
-        control_layout.addWidget(QLabel("VOLUME"))
         control_layout.addWidget(self.volume_slider)
 
         main_layout = QVBoxLayout()
@@ -182,6 +186,7 @@ class VLCPlayer(QWidget):
         self.repeat_button.clicked.connect(self.toggle_repeat)
         self.playlist_button.clicked.connect(self.toggle_playlist_visibility)
         self.screenshot_button.clicked.connect(self.take_screenshot)
+        self.skip_credits_button.clicked.connect(self.handle_skip_credits)
         self.playlist_widget.itemClicked.connect(self.play_selected_item)
         self.volume_slider.valueChanged.connect(self.set_volume)
 
@@ -224,10 +229,10 @@ class VLCPlayer(QWidget):
         """Переключает видимость списка воспроизведения."""
         if self.playlist_widget.isVisible():
             self.playlist_widget.hide()
-            self.resize(800, 100)
+            self.resize(850, 100)
         else:
             self.playlist_widget.show()
-            self.resize(800, 200)
+            self.resize(850, 200)
 
     def is_url(self, path):
         """Проверяет, является ли path URL."""
@@ -264,8 +269,7 @@ class VLCPlayer(QWidget):
         except Exception as e:
             self.logger.error(f"!!! Error playing playlist file: {e}")
 
-    def load_playlist_from_url(self, url):
-        """Loads and plays a playlist from a URL."""
+    def extract_from_link(self, url):
         try:
             # Extract title ID, episode number, and quality from the URL
             match = re.search(r"/(\d+)/(\d+)/(\d+)/", url)
@@ -273,8 +277,18 @@ class VLCPlayer(QWidget):
                 title_id = int(match.group(1))
                 episode_number = int(match.group(2))
                 episode_quality = int(match.group(3))
+                self.logger.debug(f"Title {title_id} Episode {episode_number} Quality {episode_quality}")
             else:
                 raise ValueError(f"Could not parse URL for title_id, episode_number, or quality: {url}")
+            return title_id, episode_number, episode_quality
+        except Exception as e:
+            self.logger.error(f"!!! Error extracting from URL: {e}")
+
+    def load_playlist_from_url(self, url):
+        """Loads and plays a playlist from a URL."""
+        try:
+            # Extract title ID, episode number, and quality from the URL
+            title_id, episode_number, episode_quality = self.extract_from_link(url)
 
             self.current_episode =  episode_number
             self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
@@ -288,16 +302,14 @@ class VLCPlayer(QWidget):
                         skip_ending = json.loads(skip_entry.get("skip_ending", "[]"))
                         break
 
-            self.logger.debug(f"Title {title_id} Episode {episode_number} Quality {episode_quality}: "
-                              f"Skip opening: {skip_opening}, Skip ending: {skip_ending}")
+            self.logger.debug(f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
             # Load media
             media = self.instance.media_new(url)
             self.media_list.add_media(media)
+            self.playlist_widget.addItem(url)
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
-
-
 
             self.logger.info(f"Playing stream URL: {url}")
         except Exception as e:
@@ -311,14 +323,14 @@ class VLCPlayer(QWidget):
 
         try:
             with open(file_path, "r", encoding="utf-8") as playlist_file:
-                for line in playlist_file:
-                    line = line.strip()
-                    if line and not line.startswith("#"):  # Игнорируем комментарии
+                for link in playlist_file:
+                    link = link.strip()
+                    if link and not link.startswith("#"):  # Игнорируем комментарии
                         # Извлекаем номер эпизода из строки
-                        match = re.search(r"/(\d+)/\d+/1080/", line)
-                        episode_number = int(match.group(1)) if match else None
+                        title_id, episode_number, episode_quality = self.extract_from_link(link)
 
                         self.current_episode = episode_number
+                        self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
 
                         # Получаем данные о пропусках из кэша
                         skip_opening, skip_ending = None, None
@@ -332,9 +344,9 @@ class VLCPlayer(QWidget):
                         self.logger.debug(
                             f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
-                        media = self.instance.media_new(line)
+                        media = self.instance.media_new(link)
                         self.media_list.add_media(media)
-                        self.playlist_widget.addItem(line)  # Добавляем серию в список
+                        self.playlist_widget.addItem(link)  # Добавляем серию в список
 
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
@@ -351,11 +363,11 @@ class VLCPlayer(QWidget):
     def play_pause(self):
         if self.skip_opening and not self.media_player.is_playing():
             # Пропуск начала
-            self.logger.info(f"Skipping opening: {self.skip_opening}")
+            self.logger.debug(f"Skipping opening: {self.skip_opening}")
             total_length = self.media_player.get_length() / 1000  # Общая длина в секундах
             if total_length > 0:
                 skip_position = self.skip_opening[1] / total_length
-                self.logger.info(f"Setting position to skip opening: {skip_position:.2f}")
+                self.logger.debug(f"Setting position to skip opening: {skip_position:.2f}")
                 self.media_player.set_position(skip_position)
             self.skip_opening = None  # Убираем, чтобы больше не срабатывало
             self.play_button.setText("PLAY")
@@ -363,11 +375,11 @@ class VLCPlayer(QWidget):
             self.timer.start()
         elif self.skip_ending and not self.media_player.is_playing():
             # Пропуск конца
-            self.logger.info(f"Skipping ending: {self.skip_ending}")
+            self.logger.debug(f"Skipping ending: {self.skip_ending}")
             total_length = self.media_player.get_length() / 1000  # Общая длина в секундах
             if total_length > 0:
                 skip_position = (total_length - self.skip_ending[0]) / total_length
-                self.logger.info(f"Setting position to skip ending: {skip_position:.2f}")
+                self.logger.debug(f"Setting position to skip ending: {skip_position:.2f}")
                 self.media_player.set_position(skip_position)
             self.skip_ending = None  # Убираем, чтобы больше не срабатывало
             self.play_button.setText("PLAY")
@@ -441,8 +453,6 @@ class VLCPlayer(QWidget):
         self.is_buffering = False
         self.is_seeking = False
 
-
-
     def format_time(self, seconds):
         minutes = int(seconds // 60)
         seconds = int(seconds % 60)
@@ -471,58 +481,93 @@ class VLCPlayer(QWidget):
     def resizeEvent(self, event):
         """Ограничивает размер окна при попытке изменения."""
         if self.playlist_widget.isVisible():
-            self.resize(810, 150)
+            self.resize(850, 150)
         else:
-            self.resize(810, 50)  # Устанавливаем фиксированный размер при попытке изменить
+            self.resize(850, 50)  # Устанавливаем фиксированный размер при попытке изменить
         event.accept()
 
     def update_ui(self):
         """Updates the progress bar, timer, and checks for skips."""
-        if self.is_seeking or self.is_buffering:
+        try:
+            if self.is_seeking or self.is_buffering:
+                return
+
+            if not self.media_player.is_playing():
+                return
+
+            length = self.media_player.get_length() / 1000
+            current_time = self.media_player.get_time() / 1000
+
+            # Highlight the currently playing video
+            self.update_playlist_highlight()
+
+            if self.skip_credits_pressed:
+                # Get current episode and skip data
+                episode_number = self.get_playing_episode_number()
+                if episode_number is not None:
+                    self.get_episode_skips(episode_number)
+
+                    if not self.skip_in_progress:
+                        self.skip_in_progress = True
+                        self.logger.debug(f"Setting position to skip: {self.skip_in_progress}")
+                        # Проверка пропуска начала
+                        if self.skip_opening and self.skip_opening[0] <= current_time <= self.skip_opening[1]:
+                            self.logger.info(f"Skipping opening for episode {episode_number}: {self.skip_opening}")
+                            total_length = self.media_player.get_length() / 1000
+                            if total_length > 0:
+                                skip_position = self.skip_opening[1] / total_length
+                                self.logger.info(f"Skip opening: {(self.skip_opening[1] - self.skip_opening[0]):.2f} seconds. "
+                                                 f"Setting position to: {(skip_position * total_length)/60:.2f} minutes")
+
+                                self.media_player.set_position(skip_position)
+                            self.skip_opening = None  # Убираем, чтобы больше не срабатывало
+                            self.play_button.setText("PLAY")
+                            return
+
+                        # Проверка пропуска конца
+                        if self.skip_ending and (length - self.skip_ending[0]) <= current_time:
+                            self.logger.debug(f"Skipping ending for episode {episode_number}: {self.skip_ending}")
+                            self.media_player.stop()
+                            self.next_media()
+                            return
+                        self.skip_in_progress = False
+                        self.logger.debug(f"Setting position to skip: {self.skip_in_progress}")
+
+            # Update progress bar
+            if length > 0:
+                position = int((current_time / length) * 100)
+                self.progress_slider.setValue(position)
+
+            self.time_label.setText(f"{self.format_time(current_time)} / {self.format_time(length)}")
+        except Exception as e:
+            error_message = f"An error occurred while updating UI: {str(e)}"
+            self.logger.error(error_message)
+
+    def update_playlist_highlight(self):
+        """Highlight the currently playing video in the playlist."""
+        current_media = self.media_player.get_media()
+        if not current_media:
             return
 
-        if not self.media_player.is_playing():
-            return
+        current_url = current_media.get_mrl()
+        for i in range(self.playlist_widget.count()):
+            item = self.playlist_widget.item(i)
+            if item.text() == current_url:
+                # Highlight the currently playing item
+                item.setBackground(Qt.lightGray)
+                item.setForeground(Qt.black)
+            else:
+                # Reset the color of other items
+                item.setBackground(Qt.white)
+                item.setForeground(Qt.black)
 
-        length = self.media_player.get_length() / 1000
-        current_time = self.media_player.get_time() / 1000
-
-        # Get current episode and skip data
-        episode_number = self.get_playing_episode_number()
-        if episode_number is not None:
-            self.get_episode_skips(episode_number)
-
-            if not self.skip_in_progress:
-                self.skip_in_progress = True
-                self.logger.info(f"Setting position to skip: {self.skip_in_progress}")
-                # Проверка пропуска начала
-                if self.skip_opening and self.skip_opening[0] <= current_time <= self.skip_opening[1]:
-                    self.logger.info(f"Skipping opening for episode {episode_number}: {self.skip_opening}")
-                    total_length = self.media_player.get_length() / 1000
-                    if total_length > 0:
-                        skip_position = self.skip_opening[1] / total_length
-                        self.logger.info(f"Skip opening: {(skip_position - self.skip_opening[0]):.2f} seconds")
-                        self.media_player.set_position(skip_position)
-                    self.skip_opening = None  # Убираем, чтобы больше не срабатывало
-                    self.play_button.setText("PLAY")
-                    return
-
-                # Проверка пропуска конца
-                if self.skip_ending and (length - self.skip_ending[0]) <= current_time:
-                    self.logger.info(f"Skipping ending for episode {episode_number}: {self.skip_ending}")
-                    self.media_player.stop()
-                    self.next_media()
-                    return
-                self.skip_in_progress = False
-                self.logger.info(f"Setting position to skip: {self.skip_in_progress}")
-
-        # Update progress bar
-        if length > 0:
-            position = int((current_time / length) * 100)
-            self.progress_slider.setValue(position)
-
-        self.time_label.setText(f"{self.format_time(current_time)} / {self.format_time(length)}")
-
+    def handle_skip_credits(self):
+        """Handles manual skip credits button press."""
+        self.is_skip_credits_pressed = not self.is_skip_credits_pressed
+        self.logger.info(f"Skip credits mode {'enabled' if self.is_skip_credits_pressed else 'disabled'}")
+        self.skip_credits_button.setStyleSheet("background-color: #5c5c5c;" if self.is_skip_credits_pressed else "")
+        self.skip_credits_pressed = True
+        self.logger.info("SKIP CREDITS button pressed.")
 
     def get_episode_skips(self, episode_number):
         """

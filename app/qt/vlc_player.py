@@ -2,7 +2,6 @@ import base64
 import json
 import os
 import logging
-import random
 import re
 
 import vlc
@@ -481,9 +480,9 @@ class VLCPlayer(QWidget):
     def resizeEvent(self, event):
         """Ограничивает размер окна при попытке изменения."""
         if self.playlist_widget.isVisible():
-            self.resize(850, 150)
+            self.resize(850, 200)
         else:
-            self.resize(850, 50)  # Устанавливаем фиксированный размер при попытке изменить
+            self.resize(850, 100)  # Устанавливаем фиксированный размер при попытке изменить
         event.accept()
 
     def update_ui(self):

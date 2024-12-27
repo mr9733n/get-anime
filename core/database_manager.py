@@ -68,7 +68,7 @@ class DatabaseManager:
         """
         return self.template_manager.save_template(template_name)
 
-    def remove_schedule_day(self, title_ids, day_of_week, new_day_of_week):
+    def remove_schedule_day(self, title_ids, day_of_week):
         return self.save_manager.remove_schedule_day(title_ids, day_of_week)
 
     def save_studio_to_db(self, title_id, studio_name):

@@ -514,18 +514,42 @@ class SaveManager:
     def remove_schedule_day(self, title_ids, day_of_week):
         with self.Session as session:
             try:
-                schedules_to_update = (
-                        session.query(Schedule)
-                        .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
-                    )
+                # Преобразуем title_ids, если это множество
+                if isinstance(title_ids, set):
+                    title_ids = list(title_ids)
 
-                schedules_to_update.delete(synchronize_session=False)
-                session.commit()
-                self.logger.debug(
-                    f"Removed schedules for day {day_of_week} and titles {title_ids}")
+                # Проверяем корректность входных данных
+                if not title_ids or not isinstance(title_ids, list):
+                    raise ValueError(f"Invalid title_ids: {title_ids}")
+
+                self.logger.debug(f"Querying schedules with title_ids: {title_ids} and day_of_week: {day_of_week}")
+
+                # Проверяем, что находится в таблице
+                all_schedules = session.query(Schedule).all()
+                self.logger.debug(f"All schedules in table: {all_schedules}")
+
+                # Выполняем фильтрацию
+                schedules_to_update = (
+                    session.query(Schedule)
+                    .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
+                )
+
+                result = schedules_to_update.all()
+                self.logger.debug(f"Filtered schedules: {result}")
+
+                # Если записи найдены, удаляем их
+                if result:
+                    deleted_count = schedules_to_update.delete(synchronize_session='fetch')
+                    session.commit()
+                    self.logger.debug(
+                        f"Removed {deleted_count} schedules for day {day_of_week} and titles {title_ids}"
+                    )
+                else:
+                    self.logger.debug(f"No schedules found for day {day_of_week} and titles {title_ids}")
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Ошибка при удалении расписания для title_ids {title_ids}: {e}")
+                self.logger.error(
+                    f"Error while removing schedules for title_ids {title_ids} and day {day_of_week}: {e}")
 
     def save_studio_to_db(self, title_ids, studio_name):
         """Функция для добавления новой студии в базу данных для нескольких тайтлов."""

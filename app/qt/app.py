@@ -251,7 +251,7 @@ class AnimePlayerAppVer3(QWidget):
     def reload_schedule(self):
         """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
         day = self.day_of_week
-        titles = self.current_titles
+        titles = self.total_titles
         if not day:
             day = 0 # Monday
         status, title_ids = self.check_and_update_schedule_after_display(day, titles)
@@ -351,7 +351,7 @@ class AnimePlayerAppVer3(QWidget):
             self.display_titles_in_ui(titles, show_mode)
 
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-            self.total_titles = titles
+
             self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
         except Exception as e:
             self.logger.error(f"Ошибка display_titles: {e}")
@@ -403,21 +403,20 @@ class AnimePlayerAppVer3(QWidget):
         self.display_titles_in_ui(titles)
 
     def display_titles_for_day(self, day_of_week):
-        # Очистка предыдущих постеров
-        self.clear_previous_posters()
-        titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
-        self.day_of_week = day_of_week
-        self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
-        if titles:
-            # Сохраняем текущие тайтлы для последующего использования
-            self.total_titles = titles
-            # Отображаем тайтлы в UI
-            self.display_titles_in_ui(titles)
-            # Проверяем и обновляем расписание после отображения every 10 min
-            # QTimer.singleShot(600000, lambda: self.reload_schedule())
-
-        else:
-            try:
+        try:
+            # Очистка предыдущих постеров
+            self.clear_previous_posters()
+            titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
+            self.day_of_week = day_of_week
+            self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
+            if titles:
+                # Сохраняем текущие тайтлы для последующего использования
+                self.total_titles = {title.title_id for title in titles}
+                # Отображаем тайтлы в UI
+                self.display_titles_in_ui(titles)
+                # Проверяем и обновляем расписание после отображения every 10 min
+                # QTimer.singleShot(600000, lambda: self.reload_schedule())
+            else:
                 # Если тайтлы отсутствуют, получаем данные с сервера
                 titles_list = []
                 data = self.get_schedule(day_of_week)
@@ -440,9 +439,8 @@ class AnimePlayerAppVer3(QWidget):
                     self.total_titles = titles
                     self.display_titles_in_ui(titles)
                     self.day_of_week = day_of_week
-
-            except Exception as e:
-                self.logger.error(f"Error fetching titles from schedule: {e}")
+        except Exception as e:
+            self.logger.error(f"Error fetching titles from schedule: {e}")
 
     def _save_parsed_data(self, parsed_data):
         for i, item in enumerate(parsed_data):
@@ -465,11 +463,9 @@ class AnimePlayerAppVer3(QWidget):
     def check_and_update_schedule_after_display(self, day_of_week, current_titles):
         """
         Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо.
-
         Args:
             day_of_week (int): День недели.
             current_titles (list): Текущие данные о титулах.
-
         Returns:
             tuple: (bool, set) Успешность операции и список новых титулов.
         """
@@ -495,8 +491,9 @@ class AnimePlayerAppVer3(QWidget):
             new_title_ids = {title_data.get('id') for title_data in titles_list}
 
             if current_titles:
-                current_title_ids = {title_data.title_id for title_data in current_titles}
-                titles_to_remove = current_title_ids - new_title_ids
+                current_title_ids = set(current_titles)
+
+                titles_to_remove = current_title_ids.difference(new_title_ids)
                 if titles_to_remove:
                     self.logger.debug(f"Titles to remove: {titles_to_remove}")
                     self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
@@ -637,6 +634,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def get_search_by_title(self):
         search_text = self.title_search_entry.text()
+        self.title_search_entry.clear()
         if not search_text:
             return
         self.logger.debug(f"keywords: {search_text}")

@@ -27,7 +27,7 @@ class APIClient:
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
             num_items = len(response.text) if response.text else 0
-            self.logger.debug(f"Successful API call to URL: {url[-15:]}, "
+            self.logger.info(f"Successful API call to URL: {url[-15:]}, "
                             f"Time taken: {end_time - start_time:.2f} seconds, "
                             f"Response size: {num_items} bytes.")
             return data

@@ -57,6 +57,7 @@ class VLCPlayer(QWidget):
         self.is_buffering = None
         self.title_id = None
         self.setWindowTitle("VLC Video Player Controls")
+        self.setGeometry(100, 950, 850, 100)
         self.setMinimumSize(850, 100)
         self.setMaximumSize(850, 200)
         self.setMinimumHeight(100)
@@ -386,6 +387,7 @@ class VLCPlayer(QWidget):
             self.timer.start()
         elif self.media_player.is_playing():
             # Пауза
+
             self.media_player.pause()
             self.play_button.setText("PLAY")
             self.timer.stop()

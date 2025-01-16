@@ -30,6 +30,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Собрать приложение
+```bash
+pyinstller build.spec --noconfirm
+```
+
 ## Использование приложения:
 
 Используйте кнопки дней недели для просмотра расписания аниме.

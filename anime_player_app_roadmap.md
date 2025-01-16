@@ -165,23 +165,27 @@
 - [ ] add additional feature to seek bar: sliding toggle with click to position
 - [ ] ...
 
-### 8.13. Some fixes
+### 8.13 REFACTORING custom vlc player
+- [ ] fix bug with PAUSE button it set position of skip credits instead  self.media_player.set_time(int(self.paused_position * 1000))  
+- [ ] ...
+
+### 8.14. Some fixes
 - [ ] add night theme
 - [ ] deprecate more than one run
 - [ ] fix deleting titles from schedule table after reload
 - [ ] max size for log file then rotate
 - [ ] need to fix watch status for title_id when set status first time
 
-### 8.14. redesign system browser 2
+### 8.15. redesign system browser 2
 - [ ] add/update table data
 - [ ] template name add
 
-### 8.15. change one title view
+### 8.16. change one title view
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 
-### 8.16. something for db
+### 8.17. something for db
 - [ ] remove schedule view logic from get_titles
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition

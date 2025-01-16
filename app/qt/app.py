@@ -851,7 +851,7 @@ class AnimePlayerAppVer3(QWidget):
                         skip_data = parts[2].strip("[]")
                         extracted_link = parts[3].strip("[]")  # Убираем квадратные скобки из ссылки
                         decoded_link = base64.urlsafe_b64decode(extracted_link).decode()
-                        self.logger.info(
+                        self.logger.debug(
                             f"Skip data base64: {skip_data}, Extracted link: {extracted_link}, Decoded link: {decoded_link}")
                         link = decoded_link
                         self.logger.info(f"Sending video link: {link} to VLC")
@@ -936,7 +936,7 @@ class AnimePlayerAppVer3(QWidget):
         open_link = self.pre + self.stream_video_url + link
         if self.use_libvlc == "true":
             self.open_vlc_player(open_link, title_id, skip_data)
-            self.logger.info(f"title_id: {title_id}, Skip data base64: {skip_data}, Playing video link: {link} in libVLC")
+            self.logger.debug(f"title_id: {title_id}, Skip data base64: {skip_data}, Playing video link: {link} in libVLC")
         else:
             video_player_path = self.video_player_path
             media_player_command = [video_player_path, open_link]

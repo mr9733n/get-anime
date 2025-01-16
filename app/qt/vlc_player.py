@@ -310,7 +310,7 @@ class VLCPlayer(QWidget):
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
 
-            self.logger.info(f"Playing stream URL: {url}")
+            self.logger.info(f"Playing stream URL: {url[-15:]}")
         except Exception as e:
             self.logger.error(f"!!! Error playing stream URL: {e}")
 

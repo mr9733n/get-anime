@@ -7,6 +7,7 @@ import sqlalchemy
 
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
     and_, SmallInteger, PrimaryKeyConstraint
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -36,6 +37,10 @@ class GetManager:
                     self.logger.debug(f"user_id: {user_id} Watch status: {history_status.is_watched} for title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
                     # days_ago = (datetime.utcnow() - history_status.last_watched_at).days if history_status.last_watched_at else 0
                     return history_status.is_watched, history_status.is_download
+                return False, False
+            except NoResultFound:
+                self.logger.debug(
+                    f"No history found for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
                 return False, False
             except Exception as e:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")

@@ -162,6 +162,7 @@
 - [x] add skip credits button
 - [x] add highlighting for current playing stream
 - [x] need to fix  skip_opening and skip_endings ^-^ when next episode started from playlist
+- [x] add prevent to sleep while playing 
 - [ ] add additional feature to seek bar: sliding toggle with click to position
 - [ ] ...
 

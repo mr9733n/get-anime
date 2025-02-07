@@ -142,7 +142,9 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle(f'Anime Player App {self.app_version}')
+
         self.setGeometry(APP_X_POS, APP_Y_POS, APP_WIDTH, APP_HEIGHT)
+        self.setMinimumSize(APP_WIDTH, APP_HEIGHT)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -841,7 +843,7 @@ class AnimePlayerAppVer3(QWidget):
                     QTimer.singleShot(100, lambda: self.display_info(title_id))
                 else:
                     self.logger.error(f"Invalid play_all link structure: {link}")
-            # play_m3u8/8330/[]/[]/[/videos/media/ts/8330/12/1080/6304ca1f37c6192732ee93dddd40e465.m3u8]
+            # play_m3u8/8330/[]/[/videos/media/ts/8330/12/1080/6304ca1f37c6192732ee93dddd40e465.m3u8]
             elif link.startswith('play_m3u8/'):
                 parts = link.split('/')
                 if len(parts) >= 4:

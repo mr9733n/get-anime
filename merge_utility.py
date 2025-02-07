@@ -3,6 +3,7 @@ import os
 import shutil
 import importlib.util
 import sqlite3
+import subprocess
 import sys
 import time
 from logging.handlers import RotatingFileHandler
@@ -356,16 +357,41 @@ def inspect_db(engine):
         logger.info(f" - {table_name}: {[col['name'] for col in columns]}")
 
 
-def upload_to_fileio_with_retries(file_api_key, db_path, retries=RETRIES, delay=DELAY, timeout=TIMEOUT_UPLOAD):
-    file_size = os.path.getsize(db_path)
-    logger.info(f"Starting upload: {db_path} [{file_size}]")
+def upload_to_nullpointer_with_retries(db_path, retries=RETRIES, delay=DELAY, timeout=TIMEOUT_UPLOAD):
+    """
+    Загружает файл на сервис Null Pointer с указанными параметрами, используя несколько попыток.
 
-    headers = {"Authorization": f"Bearer {file_api_key}"} if file_api_key else {}
-    files = {"file": (os.path.basename(db_path), open(db_path, 'rb'), "application/octet-stream")}
+    Valid fields:
+      - file: данные файла (передаются через multipart форму)
+      - expires: задаёт время жизни файла (например, "1h")
+      - secret: (опционально) если указан, генерируется более сложный URL.
+
+    Возвращает:
+        tuple: (True, download_link, response_data) при успешной загрузке,
+               иначе (False, None, None)
+    """
+    file_size = os.path.getsize(db_path)
+    logger.info(f"Starting upload of {db_path} ({file_size} bytes)")
+
+    # Убедитесь, что FILE_API_URL содержит корректный URL, например:
+    # FILE_API_URL = "https://nullpointer.example/upload"
+    headers = {}  # Если авторизация не требуется
+
+    try:
+        file_stream = open(db_path, 'rb')
+    except Exception as e:
+        logger.error(f"Cannot open file {db_path}: {e}")
+        return False, None, None
+
+    # Передаем файл через параметр files – requests сформирует нужное multipart-сообщение
+    files = {
+        "file": (os.path.basename(db_path), file_stream, "application/octet-stream")
+    }
+
+    # Передаем дополнительные параметры в data
     data = {
-        "expires": EXPIRES,
-        "maxDownloads": MAX_DOWNLOADS,
-        "autoDelete": AUTO_DELETE
+        "expires": EXPIRES,  # Убедитесь, что EXPIRES имеет корректное значение, например "1h"
+        # "secret": "optional_secret_value"  # Если нужно
     }
 
     for attempt in range(retries):
@@ -377,26 +403,53 @@ def upload_to_fileio_with_retries(file_api_key, db_path, retries=RETRIES, delay=
                 data=data,
                 timeout=timeout
             )
-
             if response.status_code == 200:
-                logger.info("Файл успешно загружен.")
-                response_data = response.json()
+                logger.info("File successfully uploaded.")
+                try:
+                    response_data = response.json()
+                except Exception as e:
+                    logger.error(f"Error parsing response as JSON: {e}")
+                    response_data = {}
                 logger.info(f"Response JSON: {response_data}")
                 link = response_data.get('link')
                 if not link:
-                    logger.error("Ссылка отсутствует в ответе сервера.")
-                    return False, None
-                return True, link, response.json()
+                    logger.error("Link not found in server response.")
+                    return False, None, response_data
+                return True, link, response_data
             else:
-                logger.error(f"Ошибка загрузки файла: {response.status_code} - {response.text}")
+                logger.error(f"Upload error: {response.status_code} - {response.text}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Ошибка при загрузке: {e}")
+            logger.error(f"Error during file upload: {e}")
 
-        logger.warning(f"Попытка {attempt + 1} загрузки не удалась. Повтор через {delay} секунд...")
+        logger.warning(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
         time.sleep(delay)
 
-    return False, None
+    file_stream.close()  # Закрываем файл после завершения попыток
+    return False, None, None
 
+def upload_to_transfersh_via_curl(db_path, timeout=TIMEOUT_UPLOAD):
+    file_name = os.path.basename(db_path)
+    file_size = os.path.getsize(db_path)
+    logger.info(f"{db_path}")
+    logger.info(f"Starting upload: {file_name} [{file_size}]")
+
+    url = f"{FILE_API_URL}/{file_name}"
+    try:
+        result = subprocess.run(
+            ["curl", "--upload-file", db_path, url],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=True
+        )
+        download_link = result.stdout.decode().strip()
+        logger.info(f"File successfully uploaded. Download link: {download_link}")
+        return True, download_link, {"link": download_link}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Curl error: {e.stderr.decode()}")
+    except Exception as e:
+        logger.error(f"Error during curl upload: {e}")
+    return False, None, None
 
 def generate_qr_code(link, qr_code_path):
     try:
@@ -631,7 +684,9 @@ def main():
 
     if not args.skip_upload_email:
         # Upload the merged database to the cloud
-        success, download_link, response_json = upload_to_fileio_with_retries(fileio_api_key, merged_db_path)
+        #success, download_link, response_json = upload_to_transfersh_via_curl(merged_db_path)
+        #success, download_link, response_json = upload_to_fileio_with_retries(fileio_api_key, merged_db_path)
+        success, download_link, response_json = upload_to_nullpointer_with_retries(merged_db_path)
 
         if success and download_link:
             # Generate QR code for the download link

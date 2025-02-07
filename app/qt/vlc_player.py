@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import re
+import ctypes
 
 import vlc
 from PyQt5.QtMultimediaWidgets import QVideoWidget
@@ -13,6 +14,10 @@ from utils.library_loader import verify_library, load_library
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s.%(funcName)s | %(message)s")
 logger = logging.getLogger(__name__)
+
+ES_CONTINUOUS       = 0x80000000  # постоянный режим
+ES_SYSTEM_REQUIRED  = 0x00000001  # предотвращает переход в спящий режим
+ES_DISPLAY_REQUIRED = 0x00000002  # предотвращает отключение дисплея
 
 # Константы для библиотеки
 LIB_DIR = "libs"
@@ -344,21 +349,42 @@ class VLCPlayer(QWidget):
         self.list_player.play_item_at_index(index)
         self.timer.start()
 
+    @staticmethod
+    def prevent_sleep():
+        """Предотвращает переход системы в спящий режим и отключение дисплея."""
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            )
+        except Exception as e:
+            logging.getLogger(__name__).error("Error preventing sleep: %s", e)
+
+    @staticmethod
+    def allow_sleep(self):
+        """Разрешает системе переход в спящий режим (сбрасывает флаги)."""
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        except Exception as e:
+            logging.getLogger(__name__).error("Error allowing sleep: %s", e)
+
     def play_pause(self):
         """Простой переключатель воспроизведения/паузы без автоматического пропуска титров."""
         if self.media_player.is_playing():
             self.media_player.pause()
             self.play_button.setText("PLAY")
             self.timer.stop()
+            self.allow_sleep()
         else:
             self.media_player.play()
             self.play_button.setText("PAUSE")
             self.timer.start()
+            self.prevent_sleep()
 
     def stop_media(self):
         self.list_player.stop()
         self.play_button.setText("PLAY")
         self.timer.stop()
+        self.allow_sleep()
 
     def set_volume(self, volume):
         self.media_player.audio_set_volume(volume)

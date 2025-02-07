@@ -349,8 +349,7 @@ class VLCPlayer(QWidget):
         self.list_player.play_item_at_index(index)
         self.timer.start()
 
-    @staticmethod
-    def prevent_sleep():
+    def prevent_sleep(self):
         """Предотвращает переход системы в спящий режим и отключение дисплея."""
         try:
             ctypes.windll.kernel32.SetThreadExecutionState(
@@ -359,7 +358,6 @@ class VLCPlayer(QWidget):
         except Exception as e:
             logging.getLogger(__name__).error("Error preventing sleep: %s", e)
 
-    @staticmethod
     def allow_sleep(self):
         """Разрешает системе переход в спящий режим (сбрасывает флаги)."""
         try:

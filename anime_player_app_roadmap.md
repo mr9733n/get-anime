@@ -163,6 +163,7 @@
 - [x] add highlighting for current playing stream
 - [x] need to fix  skip_opening and skip_endings ^-^ when next episode started from playlist
 - [x] add prevent to sleep while playing 
+- [x] prevent multiple instances of your app from running
 - [ ] add additional feature to seek bar: sliding toggle with click to position
 - [ ] ...
 
@@ -172,7 +173,6 @@
 
 ### 8.14. Some fixes
 - [ ] add night theme
-- [ ] deprecate more than one run
 - [ ] fix deleting titles from schedule table after reload
 - [ ] max size for log file then rotate
 - [ ] need to fix watch status for title_id when set status first time

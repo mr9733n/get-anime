@@ -6,6 +6,7 @@ import sys
 import argparse
 import threading
 
+from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from PyQt5.uic.Compiler.qobjectcreator import logger
@@ -17,7 +18,7 @@ from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
 
-# TODO: Remove from build version command injection
+# TODO: Remove from production version command injection
 def fetch_version():
     global version
     try:
@@ -40,6 +41,15 @@ if __name__ == "__main__":
         os.makedirs(log_dir)
 
     logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
+
+    # Создаём объект разделяемой памяти с уникальным ключом
+    unique_key = "Xokl-xhcL-moUl-xz04-Kg5v-VtL9-3IQH-UOV7"
+    shared_memory = QSharedMemory(unique_key)
+
+    # Пытаемся создать сегмент памяти размером в 1 байт
+    if not shared_memory.create(1):
+        logger.error("App is already running!")
+        sys.exit(1)
 
     # Construct the path to the database in the main directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

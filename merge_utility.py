@@ -6,14 +6,14 @@ import sqlite3
 import subprocess
 import sys
 import time
-from logging.handlers import RotatingFileHandler
-from tempfile import tempdir
-
-from dotenv import load_dotenv
+import qrcode
 import requests
 import logging
 import base64
 
+from logging.handlers import RotatingFileHandler
+from tempfile import tempdir
+from dotenv import load_dotenv
 from tqdm import tqdm
 from sqlalchemy import create_engine, Column, Integer, String, select, update, inspect, MetaData, Table, NullPool, \
     UniqueConstraint
@@ -21,7 +21,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.types import DateTime
 from datetime import datetime
-import qrcode
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 

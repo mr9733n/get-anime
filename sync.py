@@ -8,13 +8,14 @@ import platform
 import subprocess
 import sys
 import time
-from logging.handlers import RotatingFileHandler
-
 import requests
+import argparse
+
+from logging.handlers import RotatingFileHandler
 from tqdm import tqdm
 from pyzbar.pyzbar import decode
 from PIL import Image
-import argparse
+
 
 # Constants
 ORIG_DB_NAME = "anime_player.db"

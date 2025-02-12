@@ -9,9 +9,9 @@ import subprocess
 import sys
 import base64
 import datetime
+
 from datetime import datetime, timezone
 from app.qt.vlc_player import VLCPlayer
-
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect,
@@ -19,7 +19,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
 from PyQt5.QtGui import QPixmap
-
 from core import database_manager
 from core.database_manager import DatabaseManager
 from app.qt.ui_manger import UIManager

@@ -164,6 +164,7 @@
 - [x] need to fix  skip_opening and skip_endings ^-^ when next episode started from playlist
 - [x] add prevent to sleep while playing 
 - [x] prevent multiple instances of your app from running
+- [x] fixed saving screenshot 
 - [ ] add additional feature to seek bar: sliding toggle with click to position
 - [ ] ...
 

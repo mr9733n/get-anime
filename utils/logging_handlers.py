@@ -2,7 +2,10 @@
 
 import os
 import logging
+import datetime
+
 from logging.handlers import TimedRotatingFileHandler
+
 
 class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
     def __init__(self, filename, when='midnight', interval=1, maxBytes=10485760, backupCount=5, encoding=None, delay=False, utc=False, atTime=None):
@@ -12,18 +15,21 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         full_log_file = os.path.join(self.log_dir, filename)
         super(CustomTimedRotatingFileHandler, self).__init__(full_log_file, when, interval, backupCount, encoding, delay, utc, atTime)
 
-    def getLogFileName(self, current_date):
+    def getLogFileName(self, current_time):
+        """Генерирует имя файла с учетом полного временного штампа."""
         base_filename, file_extension = os.path.splitext(self.baseFilename)
-        return f"{base_filename}_{current_date}.{file_extension}"
+        # Форматируем дату и время: год-месяц-день_часы-минуты-секунды
+        timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+        return f"{base_filename}_{timestamp}{file_extension}"
 
     def shouldRollover(self, record):
         """
-        Определяет, нужно ли делать ротацию: если истёк интервал по времени или размер файла превышен.
+        Определяет, нужно ли выполнять ротацию: если истек интервал по времени или размер файла превышен.
         """
-        # Сначала проверим условие таймовой ротации
+        # Проверяем условие таймовой ротации
         time_based = super().shouldRollover(record)
 
-        # Если файл ещё не существует, то нет смысла проверять его размер
+        # Если файла ещё нет, то размер проверить не имеет смысла
         if not os.path.exists(self.baseFilename):
             size_based = False
         else:
@@ -32,3 +38,25 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
             size_based = size >= self.maxBytes
 
         return time_based or size_based
+
+    def doRollover(self):
+        """
+        Переопределяем метод ротации, чтобы использовать наше имя файла с полным временным штампом.
+        """
+        import os
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        current_time = datetime.datetime.now()
+        dfn = self.getLogFileName(current_time)
+        # Если по какой-то причине такой файл уже существует, удаляем его
+        if os.path.exists(dfn):
+            os.remove(dfn)
+        self.rotate(self.baseFilename, dfn)
+        # Удаляем старые файлы, если число резервных файлов превышает backupCount
+        if self.backupCount > 0:
+            for s in self.getFilesToDelete():
+                os.remove(s)
+        self.mode = "a"
+        self.stream = self._open()

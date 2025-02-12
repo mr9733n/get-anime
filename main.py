@@ -10,7 +10,6 @@ from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from PyQt5.uic.Compiler.qobjectcreator import logger
-
 # Импортируем классы версий приложения
 from core.database_manager import DatabaseManager  # База данных
 from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3

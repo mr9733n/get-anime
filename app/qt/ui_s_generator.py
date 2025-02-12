@@ -1,7 +1,7 @@
 # ui_s_generator.py
 import logging
-from tempfile import template
 
+from tempfile import template
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QGroupBox
 
 

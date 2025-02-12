@@ -1,14 +1,15 @@
 import json
 import re
 import subprocess
-from urllib.parse import quote
+import base64
+import logging
 
+from urllib.parse import quote
 from PyQt5.QtWidgets import QTextBrowser, QLabel, QHBoxLayout, QVBoxLayout, QWidget
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
-import base64
-import logging
+
 
 class UIGenerator:
     def __init__(self, app, db_manager):

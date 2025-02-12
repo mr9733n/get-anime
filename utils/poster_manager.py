@@ -4,9 +4,10 @@ import queue
 import threading
 import time
 import requests
-from PIL import Image, UnidentifiedImageError
 import io
 import logging
+from PIL import Image, UnidentifiedImageError
+
 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # Задержка в секундах между повторными попытками

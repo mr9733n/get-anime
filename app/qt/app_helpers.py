@@ -1,5 +1,6 @@
 # app_helpers.py
 import logging
+
 from jinja2 import Template
 from PyQt5.QtWidgets import QTextBrowser, QLabel, QWidget
 from PyQt5.QtGui import QPixmap

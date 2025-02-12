@@ -4,8 +4,9 @@ import os
 import logging
 import re
 import ctypes
-
 import vlc
+import time
+
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
@@ -213,14 +214,14 @@ class VLCPlayer(QWidget):
             os.makedirs(screenshots_dir)
 
         screenshot_path = os.path.join(screenshots_dir, f"screenshot_{self.title_id}_{self.get_timestamp()}.png")
-        if self.media_player.video_take_snapshot(0, screenshot_path, 0, 0):
+        result = self.media_player.video_take_snapshot(0, screenshot_path, 0, 0)
+        if result == 0:
             self.logger.info(f"Screenshot saved: {screenshot_path}")
         else:
             self.logger.error("Failed to take screenshot.")
 
     def get_timestamp(self):
         """Возвращает текущий таймкод в формате ЧЧ-ММ-СС."""
-        import time
         return time.strftime("%H-%M-%S")
 
     def toggle_playlist_visibility(self):

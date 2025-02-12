@@ -162,20 +162,20 @@
 - [x] add skip credits button
 - [x] add highlighting for current playing stream
 - [x] need to fix  skip_opening and skip_endings ^-^ when next episode started from playlist
-- [x] add prevent to sleep while playing 
 - [x] prevent multiple instances of your app from running
+- [x] add prevent to sleep while playing 
 - [x] fixed saving screenshot 
-- [ ] add additional feature to seek bar: sliding toggle with click to position
+- [x] fix bug with PAUSE button it set on position
+- [x] max size for log file then rotate
 - [ ] ...
 
 ### 8.13 REFACTORING custom vlc player
-- [ ] fix bug with PAUSE button it set position of skip credits instead  self.media_player.set_time(int(self.paused_position * 1000))  
+- [ ] add additional feature to seek bar: sliding toggle with click to position  
 - [ ] ...
 
 ### 8.14. Some fixes
 - [ ] add night theme
-- [ ] fix deleting titles from schedule table after reload
-- [ ] max size for log file then rotate
+- [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 
 ### 8.15. redesign system browser 2

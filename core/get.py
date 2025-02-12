@@ -258,8 +258,8 @@ class GetManager:
                     titles = query.all()
                 else:
                     # Build dynamic filter using SQLAlchemy's 'or_' to match any keyword in any column
-                    filters = [
-                        and_(
+                    keyword_filters = [
+                        or_(
                             Title.code.ilike(f"%{keyword}%"),
                             Title.name_ru.ilike(f"%{keyword}%"),
                             Title.name_en.ilike(f"%{keyword}%"),
@@ -268,7 +268,8 @@ class GetManager:
                         for keyword in keywords
                     ]
                     # Combine filters using 'and_' so that all keywords must match (across any field)
-                    query = session.query(Title).filter(*filters)
+                    query = session.query(Title).filter(and_(*keyword_filters))
+                    self.logger.info(f"keywords find in DB")
                     titles = query.all()
 
                 # Extract and return only the title_ids from the matched titles

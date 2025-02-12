@@ -167,6 +167,7 @@
 - [x] fixed saving screenshot 
 - [x] fix bug with PAUSE button it set on position
 - [x] max size for log file then rotate
+- [x] fixed search by keywords in local db 
 - [ ] ...
 
 ### 8.13 REFACTORING custom vlc player

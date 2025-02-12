@@ -291,12 +291,10 @@ class VLCPlayer(QWidget):
 
             # Получаем данные о пропуске из кэша (если есть)
             skip_opening, skip_ending = None, None
-            if self.skip_data_cache:
-                for skip_entry in self.skip_data_cache.get("episode_skips", []):
-                    if skip_entry["episode_number"] == episode_number:
-                        skip_opening = json.loads(skip_entry.get("skip_opening", "[]"))
-                        skip_ending = json.loads(skip_entry.get("skip_ending", "[]"))
-                        break
+            if self.skip_data_cache.get("episode_number") == episode_number:
+                skip_opening = self.skip_data_cache.get("skip_opening", [])
+                skip_ending = self.skip_data_cache.get("skip_ending", [])
+
 
             self.logger.debug(f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
@@ -557,11 +555,21 @@ class VLCPlayer(QWidget):
         """
         skip_opening, skip_ending = None, None
         if self.skip_data_cache:
-            for skip_entry in self.skip_data_cache.get("episode_skips", []):
-                if skip_entry["episode_number"] == episode_number:
-                    # Предполагается, что данные приходят в виде JSON-строк
-                    skip_opening = json.loads(skip_entry.get("skip_opening", "[]"))
-                    skip_ending = json.loads(skip_entry.get("skip_ending", "[]"))
+            # Если структура содержит ключ "episode_skips", используем его;
+            # иначе оборачиваем сам словарь в список.
+            entries = self.skip_data_cache.get("episode_skips")
+            if not entries:
+                entries = [self.skip_data_cache]
+            for skip_entry in entries:
+                if skip_entry.get("episode_number") == episode_number:
+                    try:
+                        skip_opening = json.loads(skip_entry.get("skip_opening", "[]"))
+                    except Exception:
+                        skip_opening = skip_entry.get("skip_opening", [])
+                    try:
+                        skip_ending = json.loads(skip_entry.get("skip_ending", "[]"))
+                    except Exception:
+                        skip_ending = skip_entry.get("skip_ending", [])
                     break
         self.skip_opening = skip_opening
         self.skip_ending = skip_ending

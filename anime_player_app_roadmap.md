@@ -168,9 +168,10 @@
 - [x] fix bug with PAUSE button it set on position
 - [x] max size for log file then rotate
 - [x] fixed search by keywords in local db 
-- [ ] ...
 
 ### 8.13 REFACTORING custom vlc player
+- [x] refactoring skip credits
+- [x] refactoring episode skip credits data sending
 - [ ] add additional feature to seek bar: sliding toggle with click to position  
 - [ ] ...
 
@@ -178,6 +179,7 @@
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
+- [ ] ...
 
 ### 8.15. redesign system browser 2
 - [ ] add/update table data

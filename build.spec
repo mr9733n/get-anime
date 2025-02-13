@@ -7,6 +7,7 @@
 
 import os
 import re
+import uuid
 import shutil
 import hashlib
 import tempfile
@@ -26,9 +27,12 @@ if env_path.exists():
         lines = f.readlines()
     with open(build_env_path, 'w', encoding='utf-8') as f:
         for line in lines:
-            if "USE_GIT_VERSION=0" in line:
+            if "USE_GIT_VERSION=1" in line:
                 continue
             f.write(line)
+        prod_key = str(uuid.uuid4())
+        f.write(f"PROD_KEY={prod_key}\n")
+        os.environ["PROD_KEY"] = prod_key
     print(f"Temporary .env file created and modified: {build_env_path}")
 
 # Compile the files in the 'app' directory

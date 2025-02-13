@@ -10,28 +10,11 @@ import time
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
-from utils.library_loader import verify_library, load_library
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s.%(funcName)s | %(message)s")
-logger = logging.getLogger(__name__)
 
 ES_CONTINUOUS       = 0x80000000  # постоянный режим
 ES_SYSTEM_REQUIRED  = 0x00000001  # предотвращает переход в спящий режим
 ES_DISPLAY_REQUIRED = 0x00000002  # предотвращает отключение дисплея
-
-# Константы для библиотеки
-LIB_DIR = "libs"
-LIB_NAME = "libvlc.dll"
-EXPECTED_HASH = "a2625d21b2cbca52ae5a9799e375529c715dba797a5646adf62f1c0289dbfb68"
-
-# Проверка и загрузка библиотеки
-try:
-    lib_file_path = load_library(LIB_DIR, LIB_NAME)
-    verify_library(lib_file_path, EXPECTED_HASH)
-except Exception as e:
-    logger.error(f"Failed to initialize library: {e}")
-    exit(1)
 
 
 class VideoWindow(QWidget):

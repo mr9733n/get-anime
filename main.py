@@ -12,14 +12,18 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.uic.Compiler.qobjectcreator import logger
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
+from dotenv import load_dotenv
+
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
 
+load_dotenv()
+
 def fetch_version():
     global version
     # development
-    if os.getenv('USE_GIT_VERSION', '0') == '1':
+    if os.getenv('USE_GIT_VERSION') == '0':
         try:
             commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B'], text=True).strip()
             version_pattern = r"^\d+\.\d+\.\d+\.\d+$"
@@ -28,12 +32,14 @@ def fetch_version():
                 version = match.group()
             else:
                 version = APP_MINOR_VERSION
+            logger.info(f"Development version: {version}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Error occurred while getting commit message: {e}")
             version = APP_MAJOR_VERSION
     else:
         # production
         version = APP_MINOR_VERSION
+        logger.info(f"Production version: {version}")
 
 if __name__ == "__main__":
     logger = logging.getLogger(__name__)

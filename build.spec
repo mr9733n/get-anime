@@ -4,13 +4,32 @@
 # ---
 # main.spec
 
-import compileall
+
 import os
+import re
 import shutil
 import hashlib
-import re
+import tempfile
+import compileall
 
-os.environ["USE_GIT_VERSION"] = "0"
+from pathlib import Path
+
+project_dir = os.getcwd()
+
+env_path = Path(project_dir) / '.env'
+temp_env_dir = Path(tempfile.mkdtemp(prefix="build_env_"))
+build_env_path = temp_env_dir / '.env'
+
+if env_path.exists():
+    shutil.copy(env_path, build_env_path)
+    with open(build_env_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    with open(build_env_path, 'w', encoding='utf-8') as f:
+        for line in lines:
+            if "USE_GIT_VERSION=0" in line:
+                continue
+            f.write(line)
+    print(f"Temporary .env file created and modified: {build_env_path}")
 
 # Compile the files in the 'app' directory
 compileall.compile_dir('app', force=True)
@@ -24,15 +43,10 @@ compileall.compile_dir('utils', force=True)
 # Compile the files in the 'templates' directory
 compileall.compile_dir('templates', force=True)
 
-# Импортируем необходимый модуль Analysis, EXE, COLLECT
 from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
-# Указываем путь к директории проекта
-project_dir = os.getcwd()
-
-# Сбор данных для ресурсы, например из папок `static` и `db`
 datas = [
     (os.path.join(project_dir, 'static/*'), 'static'),
     (os.path.join(project_dir, 'templates/default/*'), 'templates/default'),
@@ -50,7 +64,7 @@ datas = [
 	(os.path.join(project_dir, 'LICENSE.md'), '.'),
 	(os.path.join(project_dir, 'README.md'), '.'),
 	(os.path.join(project_dir, 'sql_commands.md'), '.'),
-	(os.path.join(project_dir, '.env'), '.')
+	(str(build_env_path), '.')
 ]
 
 packages = 'c:\\users\\cicada\\appdata\\local\\programs\\python\\python312\\lib\\site-packages'
@@ -249,7 +263,6 @@ sync_script = os.path.join(project_dir, 'sync.py')
 shutil.copyfile(binary_file, binary_file_path)
 
 def calculate_sha256(file_path):
-    """Вычисляет SHA-256 хэш файла."""
     hash_function = hashlib.sha256()
     with open(file_path, 'rb') as f:
         while chunk := f.read(8192):

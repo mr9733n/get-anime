@@ -5,9 +5,11 @@ import zipfile
 from pathlib import Path
 
 OUTPUT_DIR = r"F:\9834758345hf7A\Anime4.1\get-anime\dist"
-SOURCE_DIR = r"F:\9834758345hf7A\Anime4.1\get-anime\dist\AnimePlayer"
-OUTPUT_NAME = "AnimePlayer"
-EXCLUSIONS = {"*.py", "logs", "*.db"}
+EXCLUSIONS = {"*.py", "logs", "*.db", "*.cpython-311.pyc", "*.cpython-313.pyc"}
+ARCHIVES = {
+    "AnimePlayer": r"F:\9834758345hf7A\Anime4.1\get-anime\dist\AnimePlayer",
+    "AnimePlayerLite": r"F:\9834758345hf7A\Anime4.1\get-anime\dist\AnimePlayerLite"
+}
 
 def should_exclude(path: Path):
     """
@@ -81,7 +83,9 @@ def create_clean_archive(source_dir, output_dir, archive_name):
 
 
 if __name__ == "__main__":
-    temp_dir = Path(OUTPUT_DIR)
-    source_directory = SOURCE_DIR
-    output_archive_name = OUTPUT_NAME
-    create_clean_archive(source_directory, temp_dir, output_archive_name)
+    if __name__ == "__main__":
+        temp_dir = Path(OUTPUT_DIR)
+        for archive_name, source_dir in ARCHIVES.items():
+            create_clean_archive(source_dir, temp_dir, archive_name)
+
+

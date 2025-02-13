@@ -177,6 +177,7 @@
 - [x] removed 2.x version
 - [x] add creating archive module with production version
 - [x] small optimizations for build
+- [x] AnimePlayerLite from app version 1.9 added
 - [ ] add additional feature to seek bar: sliding toggle with click to position  
 - [ ] ...
 

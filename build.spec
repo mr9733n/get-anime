@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+
+# ---
 # main.spec
 
 import compileall
@@ -140,7 +142,61 @@ coll = COLLECT(
 	name='AnimePlayer'
 	)
 
+
+# ---
+# anime_player_lite.spec
+
+block_cipher = None
+project_dir = os.getcwd()
+
+a = Analysis(
+    ['app/tinker_v1/app.py'],
+    pathex=['.'],
+    binaries=[],
+    datas=[('config/config.ini', 'config'), (os.path.join(project_dir, 'favicon.ico'), '.'),],
+    hiddenimports=['PIL', 'tkinter', 'tkinter.ttk', 'requests', 'configparser'],
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=["cryptography", "numpy"],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+	a.scripts,
+	[],
+	exclude_binaries=True,
+    name='AnimePlayerLite',
+	icon='favicon.ico',
+	debug=False,
+	bootloader_ignore_signals=False,
+	strip=False,
+	upx=True,
+	upx_exclude=[],
+	runtime_tmpdir=None,
+	console=True,
+	onefile=False,  # Important for imports to set to False to keep everything in the same folder
+)
+
+coll = COLLECT(
+    exe,
+	a.binaries,
+	a.zipfiles,
+	a.datas,
+	strip=False,
+	upx=True,
+	upx_exclude=[],
+	name='AnimePlayerLite'
+)
+
+
+# ---
 # merge_utility.spec
+
 a = Analysis(['merge_utility.py'],
              pathex=[
                  project_dir,
@@ -224,7 +280,10 @@ if os.path.exists(binary_file_path):
 else:
     print(f"Error: Target binary {binary_file_path} does not exist.")
 
+
+# ---
 # sync.spec
+
 a = Analysis(
     ['sync.py'],
 	pathex=[
@@ -272,6 +331,7 @@ coll = COLLECT(exe,
                name='sync')
 
 compiled_dir2 = os.path.join(dist_dir, 'sync')
+compiled_dir3 = os.path.join(dist_dir, 'AnimePlayerLite')
 binary_file1 = os.path.join(compiled_dir2, 'sync.exe')
 binary_file_path1 = os.path.join(compiled_dir1, 'sync.exe')
 binary_file2 = os.path.join(compiled_dir2, 'libiconv.dll')
@@ -283,15 +343,24 @@ shutil.copyfile(binary_file1, binary_file_path1)
 shutil.copyfile(binary_file2, binary_file_path2)
 shutil.copyfile(binary_file3, binary_file_path3)
 
-folders_to_delete = [
-    "importlib_metadata-8.0.0.dist-info",
-    "MarkupSafe-3.0.2.dist-info",
-    "cryptography-44.0.0.dist-info",
-    "h2-3.2.0.dist-info"
-]
+def delete_folders(target_dir, folders):
+    for folder in folders:
+        folder_path = os.path.join(target_dir, folder)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path)
+            print(f"Deleted: {folder_path}")
 
-for folder in folders_to_delete:
-    folder_path = os.path.join(compiled_dir1, folder)
-    if os.path.exists(folder_path):
-        shutil.rmtree(folder_path)
-        print(f"Deleted: {folder_path}")
+folders_to_delete = {
+    compiled_dir1: [
+        "importlib_metadata-8.0.0.dist-info",
+        "MarkupSafe-3.0.2.dist-info",
+        "cryptography-44.0.0.dist-info",
+        "h2-3.2.0.dist-info"
+    ],
+    compiled_dir3: [
+        "h2-3.2.0.dist-info"
+    ]
+}
+
+for target_dir, folders in folders_to_delete.items():
+    delete_folders(target_dir, folders)

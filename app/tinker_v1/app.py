@@ -1,19 +1,22 @@
 import io
-import tkinter as tk
-from tkinter import ttk
-import json
-import subprocess
 import os
-import configparser
-import requests
-import atexit
-from PIL import Image, ImageTk
 import time
+import json
+import atexit
 import logging
-from logging.handlers import TimedRotatingFileHandler
-import datetime
-from tkinter.ttk import Combobox
 import warnings
+import datetime
+import platform
+import requests
+import subprocess
+import configparser
+import tkinter as tk
+
+from tkinter import ttk
+from PIL import Image, ImageTk
+from tkinter.ttk import Combobox
+from urllib.parse import urlparse
+from logging.handlers import TimedRotatingFileHandler
 
 # Suppress urllib3 NotOpenSSLWarning
 warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
@@ -29,6 +32,22 @@ class ConfigManager:
 
     def get_setting(self, section, setting, default=None):
         return self.config[section].get(setting, default)
+
+    def get_torrent_client_path(self, platform_name):
+        if platform_name == "Windows":
+            return self.get_setting('Settings', 'win_torrent_client_path')
+        elif platform_name == "Darwin":  # macOS
+            return self.get_setting('Settings', 'mac_torrent_client_path')
+        else:
+            return None
+
+    def get_video_player_path(self, platform_name):
+        if platform_name == "Windows":
+            return self.get_setting('Settings', 'win_video_player_path')
+        elif platform_name == "Darwin":  # macOS
+            return self.get_setting('Settings', 'mac_video_player_path')
+        else:
+            return None  # Handle other platforms if needed
 
 
 class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
@@ -72,8 +91,16 @@ class AnimePlayerAppVer1:
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
-        self.video_player_path = self.config_manager.get_setting('Settings', 'video_player_path')
-        self.torrent_client_path = self.config_manager.get_setting('Settings', 'torrent_client_path')
+        self.video_player_path, self.torrent_client_path = self.setup_paths()
+
+    def setup_paths(self):
+        """Sets up paths based on the current platform and returns them for use."""
+        current_platform = platform.system()
+        video_player_path = self.config_manager.get_video_player_path(current_platform)
+        torrent_client_path = self.config_manager.get_torrent_client_path(current_platform)
+
+        # Return paths to be used in the class
+        return video_player_path, torrent_client_path
 
     def init_ui(self):
         self.days_of_week = [
@@ -303,9 +330,13 @@ class AnimePlayerAppVer1:
     # Функция для скачивания торрента
     def download_torrent(self, url, save_path):
         try:
+            parsed_url = urlparse(url)
+            filename = os.path.basename(parsed_url.path)
             response = requests.get(url)
             response.raise_for_status()  # Проверка на ошибки при скачивании
-            torrent_path = os.path.join(save_path, os.path.basename(url))
+            if not filename:
+                filename = "torrent"  # Если путь пустой, зададим имя по умолчанию
+            torrent_path = os.path.join(save_path, filename)
             with open(torrent_path, 'wb') as file:
                 file.write(response.content)
             self.log_message(f"Torrent downloaded: {torrent_path}")

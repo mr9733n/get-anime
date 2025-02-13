@@ -10,28 +10,30 @@ from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from PyQt5.uic.Compiler.qobjectcreator import logger
-# Импортируем классы версий приложения
-from core.database_manager import DatabaseManager  # База данных
-from app.qt.app import AnimePlayerAppVer3  # PyQt версия 3
+from core.database_manager import DatabaseManager
+from app.qt.app import AnimePlayerAppVer3
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
 
-# TODO: Remove from production version command injection
 def fetch_version():
     global version
-    try:
-        commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B'], text=True).strip()
-        version_pattern = r"^\d+\.\d+\.\d+\.\d+$"
-        match = re.match(version_pattern, commit_message)
-
-        if match:
-            version = match.group()
-        else:
-            version = APP_MINOR_VERSION
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error occurred while getting commit message: {e}")
-        version = APP_MAJOR_VERSION
+    # development
+    if os.getenv('USE_GIT_VERSION', '0') == '1':
+        try:
+            commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B'], text=True).strip()
+            version_pattern = r"^\d+\.\d+\.\d+\.\d+$"
+            match = re.match(version_pattern, commit_message)
+            if match:
+                version = match.group()
+            else:
+                version = APP_MINOR_VERSION
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error occurred while getting commit message: {e}")
+            version = APP_MAJOR_VERSION
+    else:
+        # production
+        version = APP_MINOR_VERSION
 
 if __name__ == "__main__":
     logger = logging.getLogger(__name__)

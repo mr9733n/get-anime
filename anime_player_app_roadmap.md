@@ -169,9 +169,14 @@
 - [x] max size for log file then rotate
 - [x] fixed search by keywords in local db 
 
-### 8.13 REFACTORING custom vlc player
+### 8.13 REFACTORING 
 - [x] refactoring skip credits
 - [x] refactoring episode skip credits data sending
+- [x] fix fetching version for production version
+- [x] fix bug with logging file rotation
+- [x] removed 2.x version
+- [x] add creating archive module with production version
+- [x] small optimizations for build
 - [ ] add additional feature to seek bar: sliding toggle with click to position  
 - [ ] ...
 

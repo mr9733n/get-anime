@@ -8,6 +8,8 @@ import shutil
 import hashlib
 import re
 
+os.environ["USE_GIT_VERSION"] = "0"
+
 # Compile the files in the 'app' directory
 compileall.compile_dir('app', force=True)
 
@@ -281,10 +283,15 @@ shutil.copyfile(binary_file1, binary_file_path1)
 shutil.copyfile(binary_file2, binary_file_path2)
 shutil.copyfile(binary_file3, binary_file_path3)
 
-for_delete2 = os.path.join(compiled_dir1, 'importlib_metadata-8.0.0.dist-info')
-for_delete3 = os.path.join(compiled_dir1, 'MarkupSafe-3.0.2.dist-info')
+folders_to_delete = [
+    "importlib_metadata-8.0.0.dist-info",
+    "MarkupSafe-3.0.2.dist-info",
+    "cryptography-44.0.0.dist-info",
+    "h2-3.2.0.dist-info"
+]
 
-for path in [for_delete2, for_delete3]:
-    if os.path.exists(path):
-        shutil.rmtree(path)
-        print(f"Deleted: {path}")
+for folder in folders_to_delete:
+    folder_path = os.path.join(compiled_dir1, folder)
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+        print(f"Deleted: {folder_path}")

@@ -3,6 +3,7 @@
 import os
 import logging
 import datetime
+import time
 
 from logging.handlers import TimedRotatingFileHandler
 
@@ -43,7 +44,6 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         """
         Переопределяем метод ротации, чтобы использовать наше имя файла с полным временным штампом.
         """
-        import os
         if self.stream:
             self.stream.close()
             self.stream = None
@@ -60,3 +60,12 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
                 os.remove(s)
         self.mode = "a"
         self.stream = self._open()
+
+        # Обновляем время следующего rollover
+
+        current_time_sec = time.time()
+        new_rollover_at = self.computeRollover(current_time_sec)
+        # Если по какой-то причине новое время меньше текущего, корректируем
+        while new_rollover_at <= current_time_sec:
+            new_rollover_at += self.interval
+        self.rolloverAt = new_rollover_at

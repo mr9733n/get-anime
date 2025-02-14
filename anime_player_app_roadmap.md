@@ -178,10 +178,9 @@
 - [x] add creating archive module with production version
 - [x] small optimizations for build
 - [x] AnimePlayerLite from app version 1.9 added
-- [ ] add additional feature to seek bar: sliding toggle with click to position  
-- [ ] ...
 
 ### 8.14. Some fixes
+- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time

@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+# For python version 3.12.x
 
 
 # ---
 # main.spec
-
 
 import os
 import re
@@ -409,17 +409,17 @@ def delete_folders(target_dir, folders):
 
 folders_to_delete = {
     compiled_dir1: [
-        "importlib_metadata-8.0.0.dist-info",
-        "MarkupSafe-3.0.2.dist-info",
-        "numpy-2.2.3.dist-info",
-        "h2-4.2.0.dist-info",
-        "cryptography-44.0.1.dist-info",
+        "importlib_metadata-*.dist-info",
+        "MarkupSafe-*.dist-info",
+        "numpy-*.dist-info",
+        "h2-*.dist-info",
+        "cryptography-*.dist-info",
         "cryptography",  # security vendor flagged this file as malicious by VirusTotal
         "charset_normalizer",  # security vendor flagged this file as malicious by VirusTotal
         "markupsafe",  # security vendor flagged this file as malicious by VirusTotal
     ],
     compiled_dir3: [
-        "h2-4.2.0.dist-info",
+        "h2-*.dist-info",
         "charset_normalizer"  # security vendor flagged this file as malicious by VirusTotal
     ]
 }

@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+# For python version 3.12.x
 
 
 # ---
 # main.spec
-
 
 import os
 import re
@@ -219,7 +219,7 @@ exe = EXE(
 	upx_exclude=[],
 	runtime_tmpdir=None,
 	console=True,
-	onefile=False,  # Important for imports to set to False to keep everything in the same folder
+	onefile=False,  # Important for imports to set False to keep everything in the same folder
 )
 
 coll = COLLECT(
@@ -412,18 +412,18 @@ def delete_folders(target_dir, folders):
 
 folders_to_delete = {
     compiled_dir1_1: [
-        "setuptools/_vendor/importlib_metadata-8.0.0.dist-info",
-        "setuptools/_vendor/wheel-0.43.0.dist-info",
-        "MarkupSafe-3.0.2.dist-info",
-        "cryptography-44.0.1.dist-info",
-        "numpy-2.2.3.dist-info",
+        "setuptools/_vendor/importlib_metadata-*.dist-info",
+        "setuptools/_vendor/wheel-*.dist-info",
+        "MarkupSafe-*.dist-info",
+        "cryptography-*.dist-info",
+        "numpy-*dist-info",
         "cryptography", # security vendor flagged this file as malicious
-        "h2-4.2.0.dist-info",
+        "h2-*.dist-info",
         "markupsafe", # security vendor flagged this file as malicious
         "charset_normalizer" # security vendor flagged this file as malicious
     ],
     compiled_dir3_1: [
-        "h2-4.2.0.dist-info",
+        "h2-*.dist-info",
         "charset_normalizer" # security vendor flagged this file as malicious
     ]
 }

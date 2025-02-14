@@ -14,7 +14,6 @@ import tempfile
 import compileall
 
 from pathlib import Path
-
 from PyInstaller.building.api import PYZ, COLLECT, EXE
 from PyInstaller.building.build_main import Analysis
 
@@ -169,7 +168,7 @@ exe = EXE(
 	upx_exclude=[],
 	runtime_tmpdir=None,
 	console=True,
-	onefile=False,  # Important for imports to set to False to keep everything in the same folder
+	onefile=False,  # Important for imports to set False to keep everything in the same folder
 	)
 
 coll = COLLECT(
@@ -245,7 +244,7 @@ with open('merge_utility.py', 'r', encoding='utf-8') as f:
 
 new_content = re.sub(
     r'^DB_FOLDER\s*=.*$',
-    'DB_FOLDER = "db"',
+    'DB_FOLDER = os.path.join("_internal", "db")',
     content,
     flags=re.MULTILINE
 )
@@ -254,6 +253,7 @@ with open('merge_utility.py', 'w', encoding='utf-8') as f:
     f.write(new_content)
 
 print(f"File {merge_utility_path} updated successfully.")
+
 
 a = Analysis(['merge_utility.py'],
              pathex=[
@@ -388,13 +388,16 @@ coll = COLLECT(exe,
                name='sync')
 
 compiled_dir2 = os.path.join(dist_dir, 'sync')
+compiled_dir1_1 = os.path.join(compiled_dir1, '_internal')
+compiled_dir2_1 = os.path.join(compiled_dir2, '_internal')
 compiled_dir3 = os.path.join(dist_dir, 'AnimePlayerLite')
+compiled_dir3_1 = os.path.join(compiled_dir3, '_internal')
 binary_file1 = os.path.join(compiled_dir2, 'sync.exe')
 binary_file_path1 = os.path.join(compiled_dir1, 'sync.exe')
-binary_file2 = os.path.join(compiled_dir2, 'libiconv.dll')
-binary_file_path2 = os.path.join(compiled_dir1, 'libiconv.dll')
-binary_file3 = os.path.join(compiled_dir2, 'libzbar-64.dll')
-binary_file_path3 = os.path.join(compiled_dir1, 'libzbar-64.dll')
+binary_file2 = os.path.join(compiled_dir2_1, 'libiconv.dll')
+binary_file_path2 = os.path.join(compiled_dir1_1, 'libiconv.dll')
+binary_file3 = os.path.join(compiled_dir2_1, 'libzbar-64.dll')
+binary_file_path3 = os.path.join(compiled_dir1_1, 'libzbar-64.dll')
 
 shutil.copyfile(binary_file1, binary_file_path1)
 shutil.copyfile(binary_file2, binary_file_path2)
@@ -408,24 +411,81 @@ def delete_folders(target_dir, folders):
             print(f"Deleted: {folder_path}")
 
 folders_to_delete = {
-    compiled_dir1: [
-        "importlib_metadata-8.0.0.dist-info",
+    compiled_dir1_1: [
+        "setuptools/_vendor/importlib_metadata-8.0.0.dist-info",
+        "setuptools/_vendor/wheel-0.43.0.dist-info",
         "MarkupSafe-3.0.2.dist-info",
-        "numpy-2.2.3.dist-info",
-        "h2-4.2.0.dist-info",
         "cryptography-44.0.1.dist-info",
-        "cryptography",  # security vendor flagged this file as malicious by VirusTotal
-        "charset_normalizer",  # security vendor flagged this file as malicious by VirusTotal
-        "markupsafe",  # security vendor flagged this file as malicious by VirusTotal
-    ],
-    compiled_dir3: [
+        "numpy-2.2.3.dist-info",
+        "cryptography", # security vendor flagged this file as malicious
         "h2-4.2.0.dist-info",
-        "charset_normalizer"  # security vendor flagged this file as malicious by VirusTotal
+        "markupsafe", # security vendor flagged this file as malicious
+        "charset_normalizer" # security vendor flagged this file as malicious
+    ],
+    compiled_dir3_1: [
+        "h2-4.2.0.dist-info",
+        "charset_normalizer" # security vendor flagged this file as malicious
     ]
 }
 
 for target_dir, folders in folders_to_delete.items():
     delete_folders(target_dir, folders)
+
+def move_folders(source_dir, target_dir, folders):
+    for folder in folders:
+        source_path = os.path.join(source_dir, folder)
+        target_path = os.path.join(target_dir, folder)
+        if os.path.exists(source_path):
+            shutil.move(source_path, target_path)
+            print(f"Moved: {source_path} -> {target_path}")
+        else:
+            print(f"Source folder not found: {source_path}")
+
+folders_to_move = {
+    compiled_dir1_1: [
+        "app",
+        "config",
+        "core",
+        "static",
+        "templates",
+        "utils"
+    ],
+    compiled_dir3_1: [
+        "config"
+    ]
+}
+
+target_dirs = {
+    compiled_dir1_1: compiled_dir1,
+    compiled_dir3_1: compiled_dir3
+}
+
+for src_dir, folders in folders_to_move.items():
+    tgt_dir = target_dirs[src_dir]
+    move_folders(src_dir, tgt_dir, folders)
+
+def move_files(file_tuples, target_dir):
+    for src, rel_dest in file_tuples:
+        destination_dir = os.path.join(target_dir, rel_dest)
+        if not os.path.exists(destination_dir):
+            os.makedirs(destination_dir)
+        file_name = os.path.basename(src)
+        destination = os.path.join(destination_dir, file_name)
+        if os.path.exists(src):
+            shutil.move(src, destination)
+            print(f"Moved file: {src} -> {destination}")
+        else:
+            print(f"File not found: {src}")
+
+files_to_move = [
+    (os.path.join(compiled_dir1_1, '.env'), '.'),
+    (os.path.join(compiled_dir1_1, 'anime_player_app_roadmap.md'), '.'),
+    (os.path.join(compiled_dir1_1, 'LICENSE.md'), '.'),
+    (os.path.join(compiled_dir1_1, 'README.md'), '.'),
+    (os.path.join(compiled_dir1_1, 'sql_commands.md'), '.'),
+]
+
+move_files(files_to_move, compiled_dir1)
 
 import glob
 
@@ -443,7 +503,7 @@ def delete_files(target_dir, file_patterns):
                 print(f"Skipping non-file: {file_path}")
 
 
-target_folder = os.path.join(compiled_dir1, "PIL")
+target_folder = os.path.join(compiled_dir1_1, "PIL")
 files_to_delete = [
     "_imagingtk.cp312-win_amd64.pyd", # security vendor flagged this file as malicious by VirusTotal
     "_webp.cp312-win_amd64.pyd", # security vendor flagged this file as malicious by VirusTotal

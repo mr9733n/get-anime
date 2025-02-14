@@ -181,6 +181,8 @@
 
 ### 8.14. Some fixes
 - [x] some fixes for build
+- [ ] fix uploading db
+- [ ] fix downloading db 
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload

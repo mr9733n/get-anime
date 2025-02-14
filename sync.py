@@ -6,6 +6,7 @@ import ctypes
 import logging
 import platform
 import subprocess
+import hashlib
 import sys
 import time
 import requests
@@ -149,7 +150,7 @@ def run_merge_utility():
     """Runs merge_utility.exe."""
     if not os.path.exists(MERGE_UTILITY_NAME):
         raise FileNotFoundError(f"Merge utility {MERGE_UTILITY_NAME} not found.")
-    expected_hash = "41985da573b2b822c5061c5219eb31b8602fd27445f28b64d02590c3eed4ad08"
+    expected_hash = "e9e997e658a42812aca40bc683a55d391eace275f8f38248c109e2cbb2485d27"
     status = verify_file_hash(MERGE_UTILITY_NAME, expected_hash)
     print(f"Running {MERGE_UTILITY_NAME}. Verified: {status}.")
     logger.info(f"Running {MERGE_UTILITY_NAME}.")
@@ -175,8 +176,6 @@ def validate_args(args):
         if not os.path.exists(qr_path):
             raise FileNotFoundError(f"QR code file {qr_path} not found.")
     logger.info("Arguments validated successfully.")
-
-import hashlib
 
 def verify_file_hash(file_path, expected_hash):
     """Проверяет, совпадает ли хэш файла с ожидаемым."""

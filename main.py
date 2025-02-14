@@ -8,7 +8,6 @@ import threading
 from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
-from PyQt5.uic.Compiler.qobjectcreator import logger
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
 from dotenv import load_dotenv

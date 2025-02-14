@@ -386,9 +386,9 @@ class UIGenerator:
                     continue
 
                 if link:
-                    episode_ids.append(episode.episode_number)
+                    episode_ids.append(episode.episode_id)
                     # Сохраняем кортеж, где дополнительно передаём закодированные данные пропусков для данного эпизода
-                    episode_links.append((episode.episode_number, episode_name, link, episode_skip_data_encoded))
+                    episode_links.append((episode.episode_id, episode_name, link, episode_skip_data_encoded))
                 else:
                     self.logger.warning(
                         f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'"
@@ -403,8 +403,8 @@ class UIGenerator:
                     f'Episodes:{blank_space * 6}{play_all_html}</p><ul>'
                 )
 
-                for episode_number, episode_name, link, episode_skip_data_encoded in episode_links:
-                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_number)
+                for episode_id, episode_name, link, episode_skip_data_encoded in episode_links:
+                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
                     episodes_html += (

@@ -21,15 +21,35 @@ env_path = Path(project_dir) / '.env'
 temp_env_dir = Path(tempfile.mkdtemp(prefix="build_env_"))
 build_env_path = temp_env_dir / '.env'
 
+your_file_io_key = "your_file_io_key_value"
+your_postmark_api_key = "your_postmark_api_key_value"
+your_email = "your_email@example.com"
+
+replacements = {
+    "FILEIO_API_KEY": your_file_io_key,
+    "POSTMARK_API_KEY": your_postmark_api_key,
+    "FROM_EMAIL": your_email,
+    "TO_EMAIL": your_email,
+}
+
 if env_path.exists():
     shutil.copy(env_path, build_env_path)
     with open(build_env_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     with open(build_env_path, 'w', encoding='utf-8') as f:
         for line in lines:
-            if "USE_GIT_VERSION=1" in line:
+            if line.startswith("USE_GIT_VERSION="):
                 continue
-            f.write(line)
+
+            replaced = False
+            for key, new_value in replacements.items():
+                if line.startswith(key + "="):
+                    f.write(f"{key}={new_value}\n")
+                    replaced = True
+                    break
+            if not replaced:
+                f.write(line)
+
         prod_key = str(uuid.uuid4())
         f.write(f"PROD_KEY={prod_key}\n")
         os.environ["PROD_KEY"] = prod_key

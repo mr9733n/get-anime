@@ -180,6 +180,7 @@
 - [x] AnimePlayerLite from app version 1.9 added
 
 ### 8.14. Some fixes
+- [x] some fixes for build
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload

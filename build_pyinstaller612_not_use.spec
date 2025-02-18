@@ -8,6 +8,7 @@
 import os
 import re
 import uuid
+import glob
 import shutil
 import hashlib
 import tempfile
@@ -403,12 +404,13 @@ shutil.copyfile(binary_file1, binary_file_path1)
 shutil.copyfile(binary_file2, binary_file_path2)
 shutil.copyfile(binary_file3, binary_file_path3)
 
-def delete_folders(target_dir, folders):
-    for folder in folders:
-        folder_path = os.path.join(target_dir, folder)
-        if os.path.exists(folder_path):
-            shutil.rmtree(folder_path)
-            print(f"Deleted: {folder_path}")
+def delete_folders(target_dir, folder_patterns):
+    for pattern in folder_patterns:
+        full_pattern = os.path.join(target_dir, pattern)
+        for folder_path in glob.glob(full_pattern):
+            if os.path.isdir(folder_path):
+                shutil.rmtree(folder_path)
+                print(f"Deleted: {folder_path}")
 
 folders_to_delete = {
     compiled_dir1_1: [
@@ -428,8 +430,8 @@ folders_to_delete = {
     ]
 }
 
-for target_dir, folders in folders_to_delete.items():
-    delete_folders(target_dir, folders)
+for target_dir, patterns in folders_to_delete.items():
+    delete_folders(target_dir, patterns)
 
 def move_folders(source_dir, target_dir, folders):
     for folder in folders:
@@ -486,8 +488,6 @@ files_to_move = [
 ]
 
 move_files(files_to_move, compiled_dir1)
-
-import glob
 
 def delete_files(target_dir, file_patterns):
     for pattern in file_patterns:

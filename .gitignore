@@ -40,3 +40,4 @@ merged_log.txt
 .env
 libs/libvlc.dll
 screenshots/*
+title_ids.txt

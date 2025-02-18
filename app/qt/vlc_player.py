@@ -179,6 +179,12 @@ class VLCPlayer(QWidget):
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.update_ui)
 
+        self.sleep_timer = QTimer(self)
+        self.sleep_timer.setInterval(30000)  # обновлять каждые 30 секунд
+        self.sleep_timer.timeout.connect(self.prevent_sleep)
+        self.sleep_timer.start()
+
+
     def toggle_repeat(self):
         """Переключает режим повторения."""
         self.is_repeat = not self.is_repeat
@@ -353,11 +359,13 @@ class VLCPlayer(QWidget):
             self.media_player.pause()
             self.play_button.setText("PLAY")
             self.timer.stop()
+            self.sleep_timer.stop()  # Останавливаем обновление состояния сна
             self.allow_sleep()
         else:
             self.media_player.play()
             self.play_button.setText("PAUSE")
             self.timer.start()
+            self.sleep_timer.start()
             self.prevent_sleep()
 
     def stop_media(self):

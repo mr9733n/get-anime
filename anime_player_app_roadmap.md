@@ -93,7 +93,7 @@
 ### 8.8. DB REFACTORING ^-^
 - [x] move logic to new files and create proxy methods
 ```commandline
-	core/
+            core/
 		├── save.py
 		├── process.py
 		├── get.py
@@ -182,15 +182,24 @@
 ### 8.14. Some fixes
 - [x] some fixes for build pyInstaller 5.x
 - [x] .spec for pyInstaller 6.x
+```bash
+python create_archive.py
+```
 
-### 8.15. Add Title scrapper & compare
+### 8.15. Add title scrapper & compare
 - [x] add title_id scrapper
+```bash
+python scrapper.py
+```
 - [x] add comparing scrapping result file with local db
+```bash
+python compare_titles.py
+```
 
 ### 8.16. Some fixes
 - [x] fix get multiply titles in api client 
-- [ ] fix uploading db
-- [ ] fix downloading db 
+- [x] fix uploading db
+- [x] fix downloading db 
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload

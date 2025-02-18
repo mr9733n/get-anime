@@ -32,9 +32,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Получение текущего списка тайтлов с сайта:
+```bash
+python scrapper.py
+```
+
+## Сравнить полученный список тайтлов с локальной базой данных:
+```bash
+python compare_titles.py
+```
+
 ## Собрать приложение
 ```bash
 pyinstller build.spec --noconfirm
+```
+
+## Создать архив скомпилированных production версий
+```bash
+python create_archive.py
 ```
 
 ## Использование приложения:

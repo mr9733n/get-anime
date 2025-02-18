@@ -188,6 +188,7 @@
 - [x] add comparing scrapping result file with local db
 
 ### 8.16. Some fixes
+- [x] fix get multiply titles in api client 
 - [ ] fix uploading db
 - [ ] fix downloading db 
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position

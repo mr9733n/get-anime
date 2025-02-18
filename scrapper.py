@@ -24,7 +24,6 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
     "Referer": "https://anilibria.tv/pages/catalog.php"
 }
-
 SEARCH_PARAM = '{"year":"","genre":"","season":""}'
 FILE_PATH = "title_ids.txt"
 
@@ -59,22 +58,38 @@ def get_total_and_pages():
         return None, None
 
 
-def is_file_complete(file_path, total):
+def read_title_ids(file_path):
     """
-    Проверяет, существует ли файл и содержит ли он нужное число записей (total).
+    Читает файл и возвращает список title_id в виде чисел.
+    Ожидается, что каждая строка имеет формат: "URL -> title_id"
     """
-    if os.path.exists(file_path) and total is not None:
-        with open(file_path, "r", encoding="utf-8") as file:
-            lines = [line.strip() for line in file if line.strip()]
-        return len(lines) == total
-    return False
+    title_ids = []
+    if not os.path.exists(file_path):
+        return title_ids
+    with open(file_path, "r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            if "->" in line:
+                parts = line.split("->")
+                if len(parts) == 2:
+                    tid_str = parts[1].strip()
+                    try:
+                        title_ids.append(int(tid_str))
+                    except ValueError:
+                        print(f"Не удалось преобразовать {tid_str} в число")
+    return title_ids
 
 
-def scrape_title_ids(num_pages, file_path):
+def scrape_title_ids(existing_ids, num_pages, file_path):
     """
-    Проходит по страницам каталога, извлекает title_id для каждого релиза и записывает данные в файл.
+    Проходит по страницам каталога, извлекает title_id для каждого релиза и записывает в файл только
+    те записи, которых нет в existing_ids. Возвращает список новых title_id.
     """
-    with open(file_path, "w", encoding="utf-8") as outfile:
+    new_title_ids = []
+    # Открываем файл в режиме добавления (append)
+    with open(file_path, "a", encoding="utf-8") as outfile:
         for page in range(1, num_pages + 1):
             print(f"Обработка страницы {page}...")
             data = {
@@ -102,43 +117,25 @@ def scrape_title_ids(num_pages, file_path):
             for link in release_links:
                 release_href = link.get("href")
                 release_url = urljoin(BASE_URL, release_href)
-
-                # Ищем внутри ссылки тег <img> с классом "torrent_pic"
                 img_tag = link.find("img", class_="torrent_pic")
                 if img_tag:
                     img_src = img_tag.get("src")
-                    # Извлекаем title_id – число между /storage/releases/posters/ и следующим слэшем
                     match = re.search(r"/storage/releases/posters/(\d+)/", img_src)
                     if match:
                         title_id = match.group(1)
-                        print(f"Релиз: {release_url}, title_id: {title_id}")
-                        outfile.write(f"{release_url} -> {title_id}\n")
+                        title_id_int = int(title_id)
+                        # Записываем в файл только, если такого title_id еще нет
+                        if title_id_int not in existing_ids:
+                            print(f"Новый релиз: {release_url}, title_id: {title_id}")
+                            outfile.write(f"{release_url} -> {title_id}\n")
+                            new_title_ids.append(title_id_int)
+                            existing_ids.add(title_id_int)
                     else:
                         print(f"Не удалось извлечь title_id из: {img_src}")
                 else:
                     print(f"Изображение не найдено для: {release_url}")
             time.sleep(0.5)
-
-
-def read_title_ids(file_path):
-    """
-    Читает файл и возвращает список title_id в виде чисел.
-    """
-    title_ids = []
-    with open(file_path, "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                continue
-            if "->" in line:
-                parts = line.split("->")
-                if len(parts) == 2:
-                    tid_str = parts[1].strip()
-                    try:
-                        title_ids.append(int(tid_str))
-                    except ValueError:
-                        print(f"Не удалось преобразовать {tid_str} в число")
-    return title_ids
+    return new_title_ids
 
 
 def main():
@@ -150,14 +147,21 @@ def main():
         print("Общее количество релизов неизвестно, продолжаем скрапинг")
         num_pages = 1
 
-    if is_file_complete(FILE_PATH, total):
-        print("Файл содержит полное количество записей, скрапинг не требуется")
-    else:
-        print("Файл не содержит полного количества записей, запускаем скрапинг")
-        scrape_title_ids(num_pages, FILE_PATH)
+    # Читаем уже имеющиеся title_id (если файл существует)
+    existing_ids = set(read_title_ids(FILE_PATH))
+    print("Найдено записей в файле:", len(existing_ids))
 
-    title_ids = read_title_ids(FILE_PATH)
-    print("Title IDs:", title_ids)
+    # Если файл уже содержит полное количество записей, скрапинг не требуется
+    if total is not None and len(existing_ids) == total:
+        print("Файл содержит полное количество записей, скрапинг не требуется")
+        new_title_ids = []
+    else:
+        print("Запускаем скрапинг для получения новых данных...")
+        new_title_ids = scrape_title_ids(existing_ids, num_pages, FILE_PATH)
+
+    print("Новые Title IDs:", new_title_ids)
+    all_title_ids = read_title_ids(FILE_PATH)
+    print("Все Title IDs:", all_title_ids)
 
 
 if __name__ == "__main__":

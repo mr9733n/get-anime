@@ -182,6 +182,12 @@
 ### 8.14. Some fixes
 - [x] some fixes for build pyInstaller 5.x
 - [x] .spec for pyInstaller 6.x
+
+### 8.15. Add Title scrapper & compare
+- [x] add title_id scrapper
+- [x] add comparing scrapping result file with local db
+
+### 8.16. Some fixes
 - [ ] fix uploading db
 - [ ] fix downloading db 
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
@@ -190,16 +196,16 @@
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] ...
 
-### 8.15. redesign system browser 2
+### 8.17. redesign system browser 2
 - [ ] add/update table data
 - [ ] template name add
 
-### 8.16. change one title view
+### 8.18. change one title view
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 
-### 8.17. something for db
+### 8.19. something for db
 - [ ] remove schedule view logic from get_titles
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition

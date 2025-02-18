@@ -265,7 +265,7 @@ a = Analysis(['merge_utility.py'],
              ],
 		 	 datas=[(os.path.join(project_dir, 'core/'), 'core'), (os.path.join(project_dir, '.env'), '.')],
              hiddenimports=[
-                 'dotenv', 'sqlalchemy', 'pyzbar.pyzbar', 'PIL.Image', 'importlib.util', 'sqlite3', 'base64', 'qrcode'
+                 'dotenv', 'sqlalchemy', 'pyzbar.pyzbar', 'PIL.Image', 'importlib.util', 'sqlite3', 'base64', 'qrcode', 'pyzipper'
              ],
              hookspath=[],
              runtime_hooks=[],
@@ -354,7 +354,7 @@ a = Analysis(
 	],
     datas=[],
  	hiddenimports=[
-                 'dotenv',
+                 'dotenv', 'pyzipper',
              ],
     hookspath=[],
     hooksconfig={},

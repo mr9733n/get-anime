@@ -9,6 +9,8 @@ import subprocess
 import hashlib
 import sys
 import time
+
+import pyzipper
 import requests
 import argparse
 
@@ -22,6 +24,7 @@ from PIL import Image
 ORIG_DB_NAME = "anime_player.db"
 QRCODE_FILE_NAME = "qrcode.png"
 DOWNLOAD_DB_NAME = "downloaded.db"
+DOWNLOAD_DB_ARCHIVE = "downloaded_archive.zip"
 MERGE_UTILITY_NAME = "merge_utility.exe"
 TEMP_FOLDER_NAME = "temp"
 DYLD_NAME = "DYLD_LIBRARY_PATH"
@@ -75,22 +78,27 @@ def configure_platform():
         raise ImportError(f"Cannot load library for {platform_name}: {e}")
     return platform_name
 
-def download_file_with_progress(import_url, output_path, import_file_size=None, timeout=600, retries=3):
-    """Download a file from a URL with a progress bar and retries."""
+def download_file_with_progress(download_url, download_path, output_path, password=None, import_file_size=None, retries=3, timeout=60):
+    """
+    Скачивает файл по download_url с индикатором прогресса и сохраняет его по download_path.
+    Если передан параметр password, пытается извлечь из зашифрованного архива базу данных и сохранить её как output_path.
+
+    Если пароль не передан, функция выводит сообщение, что архив скачан, но не был распакован.
+    """
+    logger = logging.getLogger(__name__)
+
+    # Попытка скачать файл с указанным количеством повторов
     for attempt in range(retries):
         try:
-            logger.info(f"Attempt {attempt + 1} to download file from {import_url}.")
+            response = requests.get(download_url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            if import_file_size:
+                total_size = import_file_size
+            else:
+                total_size = int(response.headers.get("Content-Length", 0))
 
-            response = requests.get(import_url, stream=True, timeout=timeout)
-            if response.status_code != 200:
-                logger.error(f"Failed to download file: {response.status_code} - {response.reason}")
-                raise ValueError(f"Cannot access URL: {import_url}")
-
-            total_size = import_file_size or int(response.headers.get('content-length', 0))
-            logger.info(f"Total file size: {total_size} bytes.")
-
-            with open(output_path, 'wb') as f, tqdm(
-                desc=f"Downloading {os.path.basename(output_path)}",
+            with open(download_path, 'wb') as f, tqdm(
+                desc=f"Downloading {os.path.basename(download_path)}",
                 total=total_size,
                 unit="B",
                 unit_scale=True,
@@ -101,28 +109,56 @@ def download_file_with_progress(import_url, output_path, import_file_size=None, 
                         f.write(chunk)
                         bar.update(len(chunk))
 
-            downloaded_file_size = os.path.getsize(output_path)
-            if 0 < total_size != downloaded_file_size:
+            downloaded_file_size = os.path.getsize(download_path)
+            if total_size and total_size != downloaded_file_size:
                 logger.error(f"Incomplete download: {downloaded_file_size}/{total_size} bytes downloaded.")
                 raise ValueError("Downloaded file is incomplete.")
 
-            logger.info(f"File successfully downloaded to {output_path} [{downloaded_file_size} bytes].")
-            return  # Exit the function after a successful download
-
+            logger.info(f"File successfully downloaded to {download_path} [{downloaded_file_size} bytes].")
+            break  # Выходим из цикла, если загрузка успешна.
         except (requests.exceptions.RequestException, ValueError) as e:
             logger.error(f"Error during file download: {e}")
             if attempt < retries - 1:
                 logger.info("Retrying download in 5 seconds...")
                 time.sleep(5)
             else:
-                raise
+                raise RuntimeError("Maximum retry attempts exceeded.")
 
-    logger.error(f"Failed to download file after {retries} attempts.")
-    raise RuntimeError("Maximum retry attempts exceeded.")
+    # Если передан пароль, пытаемся распаковать архив.
+    if password:
+        try:
+            with pyzipper.AESZipFile(download_path, 'r') as zf:
+                zf.setpassword(password.encode('utf-8'))
+                namelist = zf.namelist()
+                if not namelist:
+                    logger.error("No files found in the archive.")
+                    raise ValueError("Archive is empty.")
+                # Предполагаем, что архив содержит один файл – базу данных.
+                internal_file = namelist[0]
+                extract_dir = os.path.dirname(output_path)
+                zf.extract(member=internal_file, path=extract_dir)
+                extracted_file_path = os.path.join(extract_dir, internal_file)
+                # Переименовываем извлечённый файл в output_path, если имена отличаются.
+                if extracted_file_path != output_path:
+                    os.rename(extracted_file_path, output_path)
+                logger.info(f"Archive successfully extracted to {output_path}")
+        except Exception as e:
+            logger.error(f"Error extracting archive: {e}")
+            logger.info("Archive downloaded but extraction failed.")
+        try:
+            os.remove(download_path)
+            logger.info(f"Temporary archive {download_path} removed.")
+        except Exception as e:
+            logger.error(f"Error removing temporary archive {download_path}: {e}")
+            return
+    else:
+        logger.info("No password provided; archive downloaded but not extracted.")
 
 
 def decode_qr_code(file_path):
-    """Reads a QR code from an image and returns the decoded JSON object."""
+    """Reads a QR code from an image and returns the decoded data.
+       If the QR code contains a URL, returns the URL as a string.
+       Otherwise, attempts to parse it as a Python dictionary."""
     try:
         image = Image.open(file_path)
         decoded_objects = decode(image)
@@ -132,19 +168,25 @@ def decode_qr_code(file_path):
         data = decoded_objects[0].data.decode('utf-8')
         logger.info(f"Decoded QR code data: {data}")
 
-        # Attempt to parse as a Python dictionary
-        try:
-            python_data = ast.literal_eval(data)
-            json_data = json.loads(json.dumps(python_data))  # Convert to JSON-compatible dict
-            logger.info("Successfully decoded data from QR code.")
-            return json_data
-        except (SyntaxError, ValueError) as e:
-            logger.error(f"QR code does not contain valid data: {e}")
-            logger.debug(f"Decoded data that failed parsing: {data}")
-            raise ValueError("QR code does not contain valid data.")
+        # Если данные начинаются с "http", возвращаем их как URL
+        if data.startswith("http"):
+            logger.info("QR code contains a URL.")
+            return data
+        else:
+            # Иначе пытаемся разобрать данные как словарь
+            try:
+                python_data = ast.literal_eval(data)
+                json_data = json.loads(json.dumps(python_data))  # Приводим к JSON-совместимому dict
+                logger.info("Successfully decoded data from QR code.")
+                return json_data
+            except (SyntaxError, ValueError) as e:
+                logger.error(f"QR code does not contain valid data: {e}")
+                logger.debug(f"Decoded data that failed parsing: {data}")
+                raise ValueError("QR code does not contain valid data.")
     except Exception as e:
         logger.error(f"Error reading QR code: {e}")
         raise
+
 
 def run_merge_utility():
     """Runs merge_utility.exe."""
@@ -205,8 +247,10 @@ if __name__ == "__main__":
 
     try:
         print("Anime Player Sync App version 0.0.0.1")
+        download_path = os.path.join(temp_dir, DOWNLOAD_DB_ARCHIVE)
         output_file = os.path.join(temp_dir, DOWNLOAD_DB_NAME)
         print(f"This utility downloads a temporary database to the folder: '{output_file}'")
+
         print(f"After downloading, it automatically launches the Merge Utility '{MERGE_UTILITY_NAME}' to merge the downloaded database into the main database.")
         print(f"Logs: {LOG_FILE}")
         print(f"Base folder: {BASE_DIR}")
@@ -218,20 +262,25 @@ if __name__ == "__main__":
 
         if args.url:
             url = args.url
-            download_file_with_progress(url, output_file)
+            download_file_with_progress(url, download_path, output_file)
         else:
-            json_data = decode_qr_code(qr_code_path)
-            if json_data:
-                url = json_data.get('link')
+            data = decode_qr_code(qr_code_path)
+
+            if data:
+                url = data.get('link')
                 if not url:
                     raise ValueError("The QR code does not contain a valid download link.")
-                file_size_bytes = json_data.get('size', 0)
+                file_size_bytes = data.get('size', 0)
                 file_size_mb = file_size_bytes / (1024 * 1024)
-                print(f"Extracted QR code URL: {url}")
+                password = data.get('password', None)
+
                 print(f"File size: {file_size_mb:.2f} MB")
+                print(f"Extracted QR code URL: {url}")
+                print(f"Extracted QR code archive password: {password}")
+                download_file_with_progress(url, download_path, output_file, password=password, import_file_size=file_size_bytes)
             else:
                 raise ValueError("Failed to decode QR code.")
-            download_file_with_progress(url, output_file, import_file_size=file_size_bytes)
+
         print(f"Finished.")
         end_time = time.time()
         elapsed_time = end_time - start_time

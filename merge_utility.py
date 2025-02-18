@@ -1,11 +1,15 @@
 import argparse
 import os
+import random
 import shutil
 import importlib.util
 import sqlite3
+import string
 import subprocess
 import sys
 import time
+
+import pyzipper
 import qrcode
 import requests
 import logging
@@ -46,7 +50,7 @@ RETRIES = 3
 DELAY = 5
 TIMEOUT_UPLOAD = 600
 TIMEOUT_DB_CONN = 30
-EXPIRES = "1h"
+EXPIRES = 1
 MAX_DOWNLOADS = 1
 AUTO_DELETE = True
 QRCODE_VER = 1
@@ -358,39 +362,72 @@ def inspect_db(engine):
 
 def upload_to_nullpointer_with_retries(db_path, retries=RETRIES, delay=DELAY, timeout=TIMEOUT_UPLOAD):
     """
-    Загружает файл на сервис Null Pointer с указанными параметрами, используя несколько попыток.
+    Загружает запароленный архив (AES-256) с исходного файла db_path на сервис Null Pointer.
 
-    Valid fields:
-      - file: данные файла (передаются через multipart форму)
-      - expires: задаёт время жизни файла (например, "1h")
-      - secret: (опционально) если указан, генерируется более сложный URL.
+    Шаги:
+      1. Берётся исходный файл и формируется имя архива (.zip) на основе его имени.
+      2. Генерируется случайный пароль.
+      3. Создаётся зашифрованный архив с использованием AES-256.
+      4. Архив загружается на сервер.
 
     Возвращает:
-        tuple: (True, download_link, response_data) при успешной загрузке,
-               иначе (False, None, None)
+        tuple: (True, download_link, password, response_json) при успешной загрузке,
+               где response_json имеет вид:
+               {
+                   "url": <response_text>,
+                   "file_size": <archive_size>,
+                   "password": <password>
+               }
+               иначе (False, None, None, response_data)
     """
-    file_size = os.path.getsize(db_path)
-    logger.info(f"Starting upload of {db_path} ({file_size} bytes)")
+    original_file_size = os.path.getsize(db_path)
+    logging.info(f"Starting upload of {db_path} ({original_file_size} bytes)")
+    print(f"Starting upload of {db_path} ({original_file_size} bytes)")
 
-    # Убедитесь, что FILE_API_URL содержит корректный URL, например:
-    # FILE_API_URL = "https://nullpointer.example/upload"
+    # Формируем имя архива: используем только имя файла и добавляем ".zip"
+    base_name = os.path.splitext(db_path)[0]
+    archive_path = base_name + ".zip"
+
+    # Генерируем случайный пароль (например, 12 символов)
+    password = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
+
+    # Создаём зашифрованный архив с AES-256 с помощью pyzipper
+    try:
+        with pyzipper.AESZipFile(archive_path, 'w',
+                                 compression=pyzipper.ZIP_DEFLATED,
+                                 encryption=pyzipper.WZ_AES) as zf:
+            zf.setpassword(password.encode('utf-8'))
+            # Сохраняем в архиве исходный файл с его оригинальным именем
+            zf.write(db_path, arcname=os.path.basename(db_path))
+        logging.info(f"Encrypted archive created: {archive_path} with password: {password}")
+        print(f"Encrypted archive created: {archive_path} with password: {password}")
+    except Exception as e:
+        logging.error(f"Error creating encrypted archive: {e}")
+        return False, None, None, None
+
+    # Получаем размер архива
+    archive_size = os.path.getsize(archive_path)
+    logging.info(f"Starting upload of {archive_path} ({archive_size} bytes)")
+    print(f"Starting upload of {archive_path} ({archive_size} bytes)")
+
     headers = {}  # Если авторизация не требуется
 
     try:
-        file_stream = open(db_path, 'rb')
+        file_stream = open(archive_path, 'rb')
     except Exception as e:
-        logger.error(f"Cannot open file {db_path}: {e}")
-        return False, None, None
+        logging.error(f"Cannot open file {archive_path}: {e}")
+        return False, None, None, None
 
-    # Передаем файл через параметр files – requests сформирует нужное multipart-сообщение
+    original_filename = os.path.basename(archive_path)
+    print(f"Uploading file with name: {original_filename}")
+
     files = {
-        "file": (os.path.basename(db_path), file_stream, "application/octet-stream")
+        "file": (original_filename, file_stream, "application/zip")
     }
 
-    # Передаем дополнительные параметры в data
     data = {
-        "expires": EXPIRES,  # Убедитесь, что EXPIRES имеет корректное значение, например "1h"
-        # "secret": "optional_secret_value"  # Если нужно
+        "expires": EXPIRES,  # например, "24" для 24 часов или "1h"
+        "secret": ""  # пустая строка, чтобы сгенерировать сложный URL
     }
 
     for attempt in range(retries):
@@ -402,53 +439,39 @@ def upload_to_nullpointer_with_retries(db_path, retries=RETRIES, delay=DELAY, ti
                 data=data,
                 timeout=timeout
             )
-            if response.status_code == 200:
-                logger.info("File successfully uploaded.")
-                try:
-                    response_data = response.json()
-                except Exception as e:
-                    logger.error(f"Error parsing response as JSON: {e}")
-                    response_data = {}
-                logger.info(f"Response JSON: {response_data}")
-                link = response_data.get('link')
-                if not link:
-                    logger.error("Link not found in server response.")
-                    return False, None, response_data
-                return True, link, response_data
-            else:
-                logger.error(f"Upload error: {response.status_code} - {response.text}")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error during file upload: {e}")
+            logging.info(f"Response status: {response.status_code}")
+            response_text = response.text.strip()
+            logging.info(f"Response text: {response_text}")
+            print(f"Response text: {response_text}")
 
-        logger.warning(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
+            if response.status_code == 200:
+                logging.info("File successfully uploaded.")
+                # Формируем итоговый словарь с данными
+                response_json = {
+                    "link": response_text,
+                    "size": archive_size,
+                    "password": password
+                }
+                file_stream.close()
+
+                # If uploaded -> try to remove archive
+                try:
+                    os.remove(archive_path)
+                    logger.info(f"Temporary archive {archive_path} removed.")
+                except Exception as e:
+                    logger.error(f"Error removing temporary archive {archive_path}: {e}")
+
+                return True, response_text, password, response_json
+            else:
+                logging.error(f"Upload error: {response.status_code} - {response_text}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error during file upload: {e}")
+
+        logging.warning(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
         time.sleep(delay)
 
-    file_stream.close()  # Закрываем файл после завершения попыток
-    return False, None, None
-
-def upload_to_transfersh_via_curl(db_path, timeout=TIMEOUT_UPLOAD):
-    file_name = os.path.basename(db_path)
-    file_size = os.path.getsize(db_path)
-    logger.info(f"{db_path}")
-    logger.info(f"Starting upload: {file_name} [{file_size}]")
-
-    url = f"{FILE_API_URL}/{file_name}"
-    try:
-        result = subprocess.run(
-            ["curl", "--upload-file", db_path, url],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=True
-        )
-        download_link = result.stdout.decode().strip()
-        logger.info(f"File successfully uploaded. Download link: {download_link}")
-        return True, download_link, {"link": download_link}
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Curl error: {e.stderr.decode()}")
-    except Exception as e:
-        logger.error(f"Error during curl upload: {e}")
-    return False, None, None
+    file_stream.close()
+    return False, None, None, None
 
 def generate_qr_code(link, qr_code_path):
     try:
@@ -466,7 +489,7 @@ def generate_qr_code(link, qr_code_path):
     except Exception as e:
         logger.error(f"Error generating QR code: {e}")
 
-def send_email_with_postmarkapp(api_url, api_key, from_email, to_email, download_link, qrcode_path, response_json):
+def send_email_with_postmarkapp(api_url, api_key, from_email, to_email, download_link, password, qrcode_path, response_json):
     """
     Sends an email with the QR code image embedded using Postmark.
     """
@@ -479,6 +502,7 @@ def send_email_with_postmarkapp(api_url, api_key, from_email, to_email, download
         subject = "Your Download Link"
         body = f"""
         <p>Please download the database from the following link: <a href="{download_link}">{download_link}</a></p>
+        <p>Password: {password}</p>
         <p>Response JSON Data: {response_json}</p>
         <p>Or scan the QR code below:</p>
         <img src="data:image/png;base64,{img_data}">
@@ -683,15 +707,16 @@ def main():
 
     if not args.skip_upload_email:
         # Upload the merged database to the cloud
-        #success, download_link, response_json = upload_to_transfersh_via_curl(merged_db_path)
-        #success, download_link, response_json = upload_to_fileio_with_retries(fileio_api_key, merged_db_path)
-        success, download_link, response_json = upload_to_nullpointer_with_retries(merged_db_path)
+        success, download_link, password, response_json = upload_to_nullpointer_with_retries(merged_db_path)
 
         if success and download_link:
             # Generate QR code for the download link
             qr_code_path = os.path.join(TEMP_FOLDER, QRCODE_FILE_NAME)
             os.makedirs(os.path.dirname(qr_code_path), exist_ok=True)
-            generate_qr_code(response_json, qr_code_path)
+            if response_json == {}:
+                generate_qr_code(download_link, qr_code_path)
+            else:
+                generate_qr_code(response_json, qr_code_path)
 
             if not args.skip_email:
                 # Send the QR code via email
@@ -702,6 +727,7 @@ def main():
                         from_email=from_email,
                         to_email=to_email,
                         download_link=download_link,
+                        password = password,
                         qrcode_path=qr_code_path,
                         response_json=response_json
                     )

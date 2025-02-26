@@ -9,7 +9,6 @@ import subprocess
 import hashlib
 import sys
 import time
-
 import pyzipper
 import requests
 import argparse
@@ -49,7 +48,7 @@ file_handler.setFormatter(formatter)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
-logger.info(f"Anime Player Sync App version 0.0.0.1")
+logger.info(f"Anime Player Sync App version 0.0.0.2")
 
 def configure_platform():
     """Настраивает окружение в зависимости от операционной системы."""

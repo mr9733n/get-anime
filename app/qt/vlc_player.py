@@ -255,7 +255,7 @@ class VLCPlayer(QWidget):
             else:
                 self.load_playlist_from_file(path)
         except Exception as e:
-            self.logger.error(f"!!! Error playing playlist file: {e}")
+            self.logger.error(f"!!! Error playing playlist file: {e}", exc_info=True)
 
     def extract_from_link(self, url):
         try:
@@ -329,7 +329,7 @@ class VLCPlayer(QWidget):
             self.list_player.play()
             self.logger.info(f"Playlist playing from file: {file_path}")
         except Exception as e:
-            self.logger.error(f"!!! Error playing playlist file: {e}")
+            self.logger.error(f"!!! Error playing playlist file: {e}", exc_info=True)
 
     def play_selected_item(self, item):
         """Воспроизводит выбранную серию."""
@@ -444,6 +444,7 @@ class VLCPlayer(QWidget):
         self.media_player.release()
         self.instance.release()
         event.accept()
+        self.logger.info("Custom VLC player is closed.")
 
     def resizeEvent(self, event):
         """Ограничивает размер окна при попытке изменения."""
@@ -474,7 +475,7 @@ class VLCPlayer(QWidget):
             self.time_label.setText(f"{self.format_time(current_time)} / {self.format_time(length)}")
         except Exception as e:
             error_message = f"An error occurred while updating UI: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(error_message, exc_info=True)
 
     def update_playlist_highlight(self):
         """Подсвечивает текущую серию в плейлисте."""

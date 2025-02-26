@@ -25,12 +25,10 @@ env_path = Path(project_dir) / '.env'
 temp_env_dir = Path(tempfile.mkdtemp(prefix="build_env_"))
 build_env_path = temp_env_dir / '.env'
 
-your_file_io_key = "your_file_io_key_value"
 your_postmark_api_key = "your_postmark_api_key_value"
 your_email = "your_email@example.com"
 
 replacements = {
-    "FILEIO_API_KEY": your_file_io_key,
     "POSTMARK_API_KEY": your_postmark_api_key,
     "FROM_EMAIL": your_email,
     "TO_EMAIL": your_email,

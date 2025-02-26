@@ -203,6 +203,8 @@ python compare_titles.py
 - [x] add logic for logging app closing
 - [x] add logic for logging app crash
 - [x] add additional logic for handling Qt errors
+- [x] fixed creating the fault.log on app start
+- [x] utils excluded from the build were moving to the midnight folder
 
 ### 8.17. REFACTORING
 - [ ] refactoring app.py

@@ -4,11 +4,13 @@ import shutil
 import zipfile
 from pathlib import Path
 
-OUTPUT_DIR = r"F:\9834758345hf7A\Anime4.1\get-anime\dist"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+OUTPUT_DIR = os.path.join(ROOT_DIR, "dist")
 EXCLUSIONS = {"*.py", "logs", "*.db", "*.cpython-311.pyc", "*.cpython-313.pyc"}
 ARCHIVES = {
-    "AnimePlayer": r"F:\9834758345hf7A\Anime4.1\get-anime\dist\AnimePlayer",
-    "AnimePlayerLite": r"F:\9834758345hf7A\Anime4.1\get-anime\dist\AnimePlayerLite"
+    "AnimePlayer": os.path.join(OUTPUT_DIR, "AnimePlayer"),
+    "AnimePlayerLite": os.path.join(OUTPUT_DIR, "AnimePlayerLite"),
 }
 
 def should_exclude(path: Path):

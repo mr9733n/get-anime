@@ -7,7 +7,9 @@ import vlc
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-LIB_DIR = "libs"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+LIB_DIR = os.path.join(ROOT_DIR, "libs")
 LIB_NAME = "libvlc.dll"
 
 def load_library(lib_name, lib_dir=LIB_DIR):

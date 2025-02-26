@@ -1,4 +1,5 @@
 # main.py
+import ctypes
 import logging.config
 import os
 import re
@@ -19,6 +20,13 @@ from utils.library_loader import verify_library, load_library
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
+
+# Construct the path to the database in the main directory
+base_dir = os.path.dirname(os.path.abspath(__file__))
+log_dir = os.path.join(base_dir, 'logs')
+db_dir = os.path.join(base_dir, 'db')
+icon_dir = os.path.join(base_dir, 'static')
+lib_dir = os.path.join(base_dir, 'libs')
 
 load_dotenv()
 prod_key = os.getenv("PROD_KEY")
@@ -50,11 +58,19 @@ def fetch_version():
         logger.info(f"Production version: {version}")
 
 def log_exception(exc_type, exc_value, exc_traceback):
-    """Логирует необработанные исключения."""
+    """Logging unexpected exceptions.
+       Enable faulthandler when it needed."""
+
+    fault_log_path = os.path.join(log_dir, 'fault.log')
+
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logger.critical("Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+    with open(fault_log_path, 'a') as fault_log:
+        faulthandler.enable(file=fault_log)
+        faulthandler.dump_traceback(file=fault_log)
 
 def qt_message_handler(mode, context, message):
     if mode == QtCore.QtMsgType.QtInfoMsg:
@@ -68,31 +84,24 @@ def qt_message_handler(mode, context, message):
     else:
         logger.debug(f"Qt: {message}")
 
+def test_exception():
+    ctypes.string_at(0)
+    raise Exception("TEST EXCEPTION...")
+
 def on_app_quit():
     logger.info(f"AnimePlayerApp Version {version} is closed.")
-    # Add logic to save app current state
+    # TODO: Add logic to save app current state
+
 
 if __name__ == "__main__":
-    faulthandler.enable()
-
     logger = logging.getLogger(__name__)
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
-    fault_log_path = os.path.join(log_dir, 'fault.log')
-    fault_log = open(fault_log_path, 'a')
-    faulthandler.enable(file=fault_log)
 
     logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
 
     sys.excepthook = log_exception
-
-    # Construct the path to the database in the main directory
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(base_dir, 'db')
-    icon_dir = os.path.join(base_dir, 'static')
-    lib_dir = os.path.join(base_dir, 'libs')
 
     # Create object with unique key
     if not DEVELOPMENT_MODE:
@@ -141,5 +150,7 @@ if __name__ == "__main__":
     window_pyqt.show()
 
     app_pyqt.aboutToQuit.connect(on_app_quit)
+    # Test handling critical & fatal error
+    # app_pyqt.aboutToQuit.connect(test_exception)
 
     sys.exit(app_pyqt.exec_())

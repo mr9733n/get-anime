@@ -34,11 +34,13 @@ python main.py
 
 ## Получение текущего списка тайтлов с сайта:
 ```bash
+cd midnight
 python scrapper.py
 ```
 
 ## Сравнить полученный список тайтлов с локальной базой данных:
 ```bash
+cd midnight
 python compare_titles.py
 ```
 
@@ -49,6 +51,7 @@ pyinstller build.spec --noconfirm
 
 ## Создать архив скомпилированных production версий
 ```bash
+cd midnight
 python create_archive.py
 ```
 

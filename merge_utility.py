@@ -8,7 +8,6 @@ import string
 import subprocess
 import sys
 import time
-
 import pyzipper
 import qrcode
 import requests
@@ -127,7 +126,6 @@ logger.addHandler(file_handler)
 load_dotenv(dotenv_path='.env')
 
 # Set your API keys and other sensitive information via environment variables
-FILEIO_API_KEY = os.environ.get('FILEIO_API_KEY', '')  # Replace with your file.io API key or leave empty if not needed
 POSTMARK_API_KEY = os.environ.get('POSTMARK_API_KEY')  # Replace with your Postmark API key
 FROM_EMAIL = os.environ.get('FROM_EMAIL')  # Your verified sender email address
 TO_EMAIL = os.environ.get('TO_EMAIL')  # Recipient email address
@@ -136,8 +134,7 @@ POSTMARK_API_URL = os.environ.get('POSTMARK_API_URL')
 
 # Base = declarative_base()
 logger.info(f"*****4jk45h6-j54h-jk54hjkH-jk54-6Gj5654jk*****")
-logger.info(f"Anime Player Merge Utility App version 0.0.0.1")
-logger.info(f"Loaded FILEIO_API_KEY: {'True' if FILEIO_API_KEY else 'False'}")
+logger.info(f"Anime Player Merge Utility App version 0.0.0.2")
 logger.info(f"Loaded POSTMARK_API_KEY: {'True' if POSTMARK_API_KEY else 'False'}")
 logger.info(f"Loaded FROM_EMAIL: {'True' if FROM_EMAIL else 'False'}")
 logger.info(f"Loaded TO_EMAIL: {'True' if TO_EMAIL else 'False'}")
@@ -566,7 +563,7 @@ def main():
     start_time = time.time()
 
     # Set up argument parsing
-    parser = argparse.ArgumentParser(description='Anime Player Merge Utility App version 0.0.0.1')
+    parser = argparse.ArgumentParser(description='Anime Player Merge Utility App version 0.0.0.2')
     parser.add_argument('--skip-merge', action='store_true', help='Skip the merging process')
     parser.add_argument('--merge-error-ignore', action='store_true', help='Start unstable merging process')
     parser.add_argument('--skip-upload-email', action='store_true', help='Skip uploading and sending email')
@@ -601,7 +598,7 @@ def main():
 
     logger.info(f"Valid databases: {valid_temp_dbs}")
 
-    print("Anime Player Merge Utility App version 0.0.0.1")
+    print("Anime Player Merge Utility App version 0.0.0.2")
     print(f"This utility merges temporary databases from the {TEMP_FOLDER}")
     print(f"The merged database will then be uploaded to the cloud.")
     print(f"Original database: '{original_db}'")
@@ -609,11 +606,10 @@ def main():
     print(f"Logs: {LOG_FILE}")
     print(f"Please wait until the process is complete. The timeout for this operation is 5 minutes.")
 
-    if POSTMARK_API_KEY and FROM_EMAIL and TO_EMAIL and FILEIO_API_KEY:
+    if POSTMARK_API_KEY and FROM_EMAIL and TO_EMAIL:
         postmark_api_key = POSTMARK_API_KEY
         from_email = FROM_EMAIL
         to_email = TO_EMAIL
-        fileio_api_key = FILEIO_API_KEY
 
     # TODO: Fix this
     if args.skip_merge and args.skip_email:
@@ -684,8 +680,11 @@ def main():
                try:
                    os.remove(temp_db)
                    logger.info(f"Temporary database {temp_db} deleted after merging.")
+                   #os.remove(backup_db)
+                   #logger.info(f"Backup database {backup_db} deleted after merging.")
                except Exception as e:
                    logger.error(f"Error deleting temporary database {temp_db}: {e}")
+                   logger.error(f"Error deleting backup database {backup_db}: {e}")
            else:
                logger.info(f"Merging orig->temp: {status1}, Merging temp->orig: {status2}"
                            f"\nTemporary database {temp_db} cannot be deleted.")

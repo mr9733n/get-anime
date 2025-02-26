@@ -1,12 +1,13 @@
 # main.py
-
 import logging.config
 import os
 import re
 import subprocess
 import sys
 import threading
+import faulthandler
 
+from PyQt5 import QtCore
 from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
@@ -48,13 +49,44 @@ def fetch_version():
         version = APP_MINOR_VERSION
         logger.info(f"Production version: {version}")
 
+def log_exception(exc_type, exc_value, exc_traceback):
+    """Логирует необработанные исключения."""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.critical("Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+def qt_message_handler(mode, context, message):
+    if mode == QtCore.QtMsgType.QtInfoMsg:
+        logger.info(f"Qt: {message}")
+    elif mode == QtCore.QtMsgType.QtWarningMsg:
+        logger.warning(f"Qt: {message}")
+    elif mode == QtCore.QtMsgType.QtCriticalMsg:
+        logger.critical(f"Qt: {message}")
+    elif mode == QtCore.QtMsgType.QtFatalMsg:
+        logger.critical(f"Qt FATAL: {message}")
+    else:
+        logger.debug(f"Qt: {message}")
+
+def on_app_quit():
+    logger.info(f"AnimePlayerApp Version {version} is closed.")
+    # Add logic to save app current state
+
 if __name__ == "__main__":
+    faulthandler.enable()
+
     logger = logging.getLogger(__name__)
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
+    fault_log_path = os.path.join(log_dir, 'fault.log')
+    fault_log = open(fault_log_path, 'a')
+    faulthandler.enable(file=fault_log)
+
     logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
+
+    sys.excepthook = log_exception
 
     # Construct the path to the database in the main directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -78,7 +110,7 @@ if __name__ == "__main__":
         lib_file_path = load_library(lib_dir, 'libvlc.dll')
         verify_library(lib_file_path, expected_hash)
     except Exception as e:
-        logger.error(f"Failed to initialize library: {e}")
+        logger.error(f"Failed to initialize library: {e}", exc_info=True)
         exit(1)
 
     # Ensure the database directory exists
@@ -101,8 +133,13 @@ if __name__ == "__main__":
     # Starting application window
     app_pyqt = QApplication(sys.argv)
 
+    QtCore.qInstallMessageHandler(qt_message_handler)
+
     icon_path = os.path.join(icon_dir, 'icon.png')
     app_pyqt.setWindowIcon(QIcon(icon_path))
     window_pyqt = AnimePlayerAppVer3(db_manager, version)
     window_pyqt.show()
+
+    app_pyqt.aboutToQuit.connect(on_app_quit)
+
     sys.exit(app_pyqt.exec_())

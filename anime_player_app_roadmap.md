@@ -200,22 +200,32 @@ python compare_titles.py
 - [x] fix get multiply titles in api client 
 - [x] fix uploading db
 - [x] fix downloading db 
+- [x] add logic for logging app closing
+- [x] add logic for logging app crash
+- [x] add additional logic for handling Qt errors
+
+### 8.17. REFACTORING
+- [ ] refactoring app.py
+- [ ] add logic to save app current state on exit
+- [ ] add logic to load saved app state
+
+### 8.18. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] ...
 
-### 8.17. redesign system browser 2
+### 8.19. redesign system browser 2
 - [ ] add/update table data
 - [ ] template name add
 
-### 8.18. change one title view
+### 8.20. change one title view
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 
-### 8.19. something for db
+### 8.21. something for db
 - [ ] remove schedule view logic from get_titles
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition
@@ -232,10 +242,7 @@ python compare_titles.py
 ### 9.3. add watch history bulk selection
 - [ ] select many >_< 
 
-### 9.4. APP REFACTORING
-- [ ] get titles list without episodes
-
-### 9.5. need to think how to merge data from other devices
+### 9.4. need to think how to merge data from other devices
 - [ ] Need to add refreshing title when loaded from db by api request 
 - [ ] Merge algorithm is unstable
 - [ ] ..

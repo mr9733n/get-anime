@@ -147,14 +147,12 @@ if __name__ == "__main__":
 
     QtCore.qInstallMessageHandler(qt_message_handler)
 
-    # После инициализации db_manager
     state_manager = AppStateManager(db_manager)
 
     icon_path = os.path.join(icon_dir, 'icon.png')
     app_pyqt.setWindowIcon(QIcon(icon_path))
     window_pyqt = AnimePlayerAppVer3(db_manager, version)
 
-    # При запуске приложения (после создания window_pyqt)
     app_state = state_manager.load_state()
     if app_state:
         window_pyqt.restore_state(app_state)

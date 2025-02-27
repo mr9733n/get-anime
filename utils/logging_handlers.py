@@ -1,7 +1,5 @@
 # logging_handlers.py
-
 import os
-import logging
 import datetime
 import time
 

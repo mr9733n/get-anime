@@ -1,16 +1,10 @@
 # get.py
-import ast
-import json
 import logging
-import os
 import sqlalchemy
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_, SmallInteger, PrimaryKeyConstraint
+from sqlalchemy import or_, and_
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
-from datetime import datetime, timezone
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, TitleGenreRelation, \
     Template
 

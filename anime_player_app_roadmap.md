@@ -209,7 +209,9 @@ python compare_titles.py
 ### 8.17. Saving app current state on exit
 - [x] add logic to save app current state on exit
 - [x] add logic to load saved app state on start
-- [ ] fixes
+- [x] fixes restoring logic
+- [x] add loader for hard tasks
+- [x] remove unused imports
 
 ### 8.18. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position

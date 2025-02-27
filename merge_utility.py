@@ -5,7 +5,6 @@ import shutil
 import importlib.util
 import sqlite3
 import string
-import subprocess
 import sys
 import time
 import pyzipper
@@ -15,16 +14,11 @@ import logging
 import base64
 
 from logging.handlers import RotatingFileHandler
-from tempfile import tempdir
 from dotenv import load_dotenv
-from tqdm import tqdm
-from sqlalchemy import create_engine, Column, Integer, String, select, update, inspect, MetaData, Table, NullPool, \
-    UniqueConstraint
+from sqlalchemy import create_engine, select, inspect, MetaData, Table, NullPool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.types import DateTime
-from datetime import datetime
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 
 STATUS = False

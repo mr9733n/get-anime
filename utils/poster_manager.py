@@ -1,6 +1,4 @@
 # utils/poster_manager.py
-import os
-import queue
 import threading
 import time
 import requests

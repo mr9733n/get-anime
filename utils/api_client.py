@@ -1,5 +1,4 @@
 # api_client.py
-import json
 import os
 import time
 import requests

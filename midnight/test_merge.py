@@ -1,6 +1,5 @@
 import pytest
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, DateTime
-from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from merge_utility import compare_and_merge
 

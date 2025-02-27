@@ -46,7 +46,7 @@ python compare_titles.py
 
 ## Собрать приложение
 ```bash
-pyinstller build.spec --noconfirm
+pyinstaller build.spec --noconfirm
 ```
 
 ## Создать архив скомпилированных production версий

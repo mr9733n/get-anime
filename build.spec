@@ -414,6 +414,7 @@ folders_to_delete = {
         "numpy-*.dist-info",
         "h2-*.dist-info",
         "cryptography-*.dist-info",
+        "attrs-*.dist-info",
         "cryptography",  # security vendor flagged this file as malicious by VirusTotal
         "charset_normalizer",  # security vendor flagged this file as malicious by VirusTotal
         "markupsafe",  # security vendor flagged this file as malicious by VirusTotal

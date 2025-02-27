@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from core.save import SaveManager
 from core.process import ProcessManager
 from core.get import GetManager
-from core.utils import PlaceholderManager, TemplateManager
+from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History
 
 
@@ -26,6 +26,7 @@ class DatabaseManager:
         self.save_manager = SaveManager(self.engine)
         self.process_manager = ProcessManager(self.save_manager)
         self.get_manager = GetManager(self.engine)
+        self.state_manager = StateManager(self.engine)
 
     def initialize_tables(self):
         # Создаем таблицы, если они еще не существуют

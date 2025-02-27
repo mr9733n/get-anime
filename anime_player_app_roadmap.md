@@ -206,16 +206,17 @@ python compare_titles.py
 - [x] fixed creating the fault.log on app start
 - [x] utils excluded from the build were moving to the midnight folder
 
-### 8.17. REFACTORING
-- [ ] refactoring app.py
-- [ ] add logic to save app current state on exit
-- [ ] add logic to load saved app state
+### 8.17. Saving app current state on exit
+- [x] add logic to save app current state on exit
+- [x] add logic to load saved app state on start
+- [ ] fixes
 
 ### 8.18. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
+- [ ] refactoring app.py
 - [ ] ...
 
 ### 8.19. redesign system browser 2

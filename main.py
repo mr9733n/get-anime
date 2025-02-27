@@ -17,6 +17,7 @@ from app.qt.app import AnimePlayerAppVer3
 from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 
+from app.qt.app_state_manager import AppStateManager
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
@@ -90,7 +91,9 @@ def test_exception():
 
 def on_app_quit():
     logger.info(f"AnimePlayerApp Version {version} is closed.")
-    # TODO: Add logic to save app current state
+    # Save app current state
+    app_state = window_pyqt.get_current_state()
+    state_manager.save_state(app_state)
 
 
 if __name__ == "__main__":
@@ -144,9 +147,22 @@ if __name__ == "__main__":
 
     QtCore.qInstallMessageHandler(qt_message_handler)
 
+    # После инициализации db_manager
+    state_manager = AppStateManager(db_manager)
+
     icon_path = os.path.join(icon_dir, 'icon.png')
     app_pyqt.setWindowIcon(QIcon(icon_path))
     window_pyqt = AnimePlayerAppVer3(db_manager, version)
+
+    # При запуске приложения (после создания window_pyqt)
+    app_state = state_manager.load_state()
+    if app_state:
+        window_pyqt.restore_state(app_state)
+        state_manager.clear_state_in_db()
+    else:
+        # Load 2 titles on start from DB
+        window_pyqt.display_titles(start=True)
+
     window_pyqt.show()
 
     app_pyqt.aboutToQuit.connect(on_app_quit)

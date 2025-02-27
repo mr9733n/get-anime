@@ -417,8 +417,9 @@ folders_to_delete = {
         "MarkupSafe-*.dist-info",
         "cryptography-*.dist-info",
         "numpy-*dist-info",
-        "cryptography", # security vendor flagged this file as malicious
+        "attrs-*.dist-info",
         "h2-*.dist-info",
+        "cryptography", # security vendor flagged this file as malicious
         "markupsafe", # security vendor flagged this file as malicious
         "charset_normalizer" # security vendor flagged this file as malicious
     ],

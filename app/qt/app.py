@@ -50,13 +50,14 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version):
         super().__init__()
-        self.vlc_window = None
-        self.day_of_week = None
-        self.quality_dropdown = None
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
+        self.current_title_id = None
+        self.vlc_window = None
+        self.day_of_week = None
+        self.quality_dropdown = None
         self.playlist_filename = None
         self.current_data = None
         self.current_link = None
@@ -123,7 +124,6 @@ class AnimePlayerAppVer3(QWidget):
         for i, day in enumerate(days_of_week):
             self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i)
 
-
         self.init_ui()
 
     @pyqtSlot(QTextBrowser, int, int)
@@ -154,9 +154,6 @@ class AnimePlayerAppVer3(QWidget):
         # Сохранение ссылок на виджеты после их создания
         self.title_search_entry = self.ui_manager.parent_widgets.get("title_input")
         self.quality_dropdown = self.ui_manager.parent_widgets.get("quality_dropdown")
-
-        # Load 4 titles on start from DB
-        self.display_titles(start=True)
 
     def refresh_display(self):
         """Обработчик кнопки REFRESH, выполняющий обновление текущего экрана."""
@@ -308,6 +305,50 @@ class AnimePlayerAppVer3(QWidget):
 
         return simple_callback
 
+    def get_current_state(self):
+        """Получает текущее состояние приложения"""
+        if isinstance(self.total_titles, set):
+            current_title_id = None  # Используем None вместо "null"
+        else:
+            current_title_id = self.total_titles[0].title_id if hasattr(self,
+                                                                        'total_titles') and self.total_titles else None
+
+        state = {
+            'current_title_id': current_title_id,
+            'current_day': int(self.day_of_week) if hasattr(self,
+                                                            'day_of_week') and self.day_of_week is not None else None,
+            'player_offset': self.current_offset,
+        }
+        return state
+
+    def restore_state(self, state):
+        """Восстанавливает состояние приложения"""
+        try:
+            current_title_id = state.get('current_title_id')
+            current_day = state.get('current_day')
+
+            # Если current_title_id = "null" и есть current_day → показываем расписание
+            if current_title_id == "null" and current_day != "null":
+                self.logger.info(f"Было открыто расписание, загружаем расписание на день {current_day}")
+                self.display_titles_for_day(current_day)
+
+            # Если есть конкретный тайтл, загружаем его
+            elif current_title_id and current_title_id != "null":
+                if hasattr(self, 'display_info'):
+                    self.display_info(current_title_id)
+                else:
+                    self.logger.warning("Метод 'display_info' отсутствует в AnimePlayerAppVer3")
+
+            # Если ничего не сохранено, загружаем по player_offset
+            else:
+                self.logger.info("current_title_id и current_day отсутствуют, загружаем тайтлы по player_offset")
+                if 'player_offset' in state:
+                    self.current_offset = int(state['player_offset'])
+                self.display_titles(start=True)
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при восстановлении состояния: {e}")
+
     def display_titles(self, title_ids=None, batch_size=None, show_mode='default', show_previous=False, show_next=False,
                        start=False):
         try:
@@ -401,6 +442,8 @@ class AnimePlayerAppVer3(QWidget):
 
         self.total_titles = titles
 
+        self.current_title_id = title_id
+
         self.display_titles_in_ui(titles)
 
     def display_titles_for_day(self, day_of_week):
@@ -440,6 +483,7 @@ class AnimePlayerAppVer3(QWidget):
                     self.total_titles = titles
                     self.display_titles_in_ui(titles)
                     self.day_of_week = day_of_week
+
         except Exception as e:
             self.logger.error(f"Error fetching titles from schedule: {e}")
 

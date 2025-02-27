@@ -1,8 +1,11 @@
 # utils.py
+import json
 import logging
 import os
 
 from datetime import datetime
+
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 from core.tables import Poster, Template
 
@@ -125,3 +128,47 @@ class TemplateManager:
             self.logger.error(f"Error reading file '{file_name}': {e}")
             return ""
 
+class StateManager:
+    def __init__(self, engine):
+        self.logger = logging.getLogger(__name__)
+        self.Session = sessionmaker(bind=engine)
+
+    def save_app_state(self, state_items):
+        """Сохраняет состояние приложения в БД"""
+        with self.Session() as session:
+            try:
+                session.execute(text("DELETE FROM app_state"))  # Очищаем перед записью
+                for key, value in state_items:
+                    session.execute(
+                        text("INSERT INTO app_state (key, value) VALUES (:key, :value)"),
+                        {"key": key, "value": json.dumps(value, ensure_ascii=False)},
+
+                    )
+                session.commit()
+                self.logger.info("Состояние приложения сохранено в БД")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сохранении состояния: {e}")
+
+    def load_app_state(self):
+        """Загружает состояние приложения из БД"""
+        with self.Session() as session:
+            try:
+                result = session.execute(text("SELECT key, value FROM app_state")).fetchall()
+                state = {row[0]: json.loads(row[1]) for row in result}
+                self.logger.info("Состояние приложения загружено из БД")
+                return state
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке состояния: {e}")
+                return {}
+
+    def clear_app_state(self):
+        """Очищает сохраненное состояние в БД"""
+        with self.Session() as session:
+            try:
+                session.execute(text("DELETE FROM app_state"))
+                session.commit()
+                self.logger.info("Сохраненный state в БД сброшен")
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Ошибка при сбросе состояния: {e}")

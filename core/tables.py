@@ -246,3 +246,10 @@ class Template(Base):
     text_list_html = Column(Text, nullable=False)
     styles_css = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class AppState(Base):
+    __tablename__ = 'app_state'
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

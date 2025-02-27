@@ -1,4 +1,3 @@
-import ast
 import json
 import logging
 import logging.config
@@ -6,21 +5,14 @@ import os
 import platform
 import re
 import subprocess
-import sys
 import base64
 import datetime
 
-from datetime import datetime, timezone
+from datetime import datetime
 from app.qt.vlc_player import VLCPlayer
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLineEdit, QLabel, QComboBox, QGridLayout, QScrollArea, QTextBrowser, QSizePolicy, QGraphicsDropShadowEffect,
-    QMessageBox
-)
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QUrl, QTimer, QRunnable, QThreadPool, pyqtSlot, QObject, pyqtSignal
-from PyQt5.QtGui import QPixmap
-from core import database_manager
-from core.database_manager import DatabaseManager
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser
+from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal
+
 from app.qt.ui_manger import UIManager
 from app.qt.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
@@ -50,10 +42,13 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version):
         super().__init__()
+
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
+        self.current_title_ids = None
+        self.current_day_of_week = None
         self.current_title_id = None
         self.vlc_window = None
         self.day_of_week = None
@@ -307,16 +302,10 @@ class AnimePlayerAppVer3(QWidget):
 
     def get_current_state(self):
         """Получает текущее состояние приложения"""
-        if isinstance(self.total_titles, set):
-            current_title_id = None  # Используем None вместо "null"
-        else:
-            current_title_id = self.total_titles[0].title_id if hasattr(self,
-                                                                        'total_titles') and self.total_titles else None
-
         state = {
-            'current_title_id': current_title_id,
-            'current_day': int(self.day_of_week) if hasattr(self,
-                                                            'day_of_week') and self.day_of_week is not None else None,
+            'current_title_id': self.current_title_id,
+            'current_title_ids': self.current_title_ids,
+            'current_day': self.current_day_of_week,
             'player_offset': self.current_offset,
         }
         return state
@@ -325,33 +314,51 @@ class AnimePlayerAppVer3(QWidget):
         """Восстанавливает состояние приложения"""
         try:
             current_title_id = state.get('current_title_id')
+            current_title_ids = state.get('current_title_ids')
             current_day = state.get('current_day')
 
+            if 'player_offset' in state:
+                self.current_offset = int(state['player_offset'])
+                self.logger.info(f"Offset restored from db: {self.current_offset}")
+
             # Если current_title_id = "null" и есть current_day → показываем расписание
-            if current_title_id == "null" and current_day != "null":
-                self.logger.info(f"Было открыто расписание, загружаем расписание на день {current_day}")
+            if current_title_id == "null" and current_title_ids != "null" and current_day != "null":
+                self.logger.info(f"Restoring schedule for {current_day}")
                 self.display_titles_for_day(current_day)
 
             # Если есть конкретный тайтл, загружаем его
             elif current_title_id and current_title_id != "null":
-                if hasattr(self, 'display_info'):
-                    self.display_info(current_title_id)
-                else:
-                    self.logger.warning("Метод 'display_info' отсутствует в AnimePlayerAppVer3")
+                self.logger.info(f"Restoring title {current_title_id}")
+                self.display_info(current_title_id)
+
+            # Если есть список тайтлов, загружаем его
+            elif current_title_ids and current_title_ids != "null":
+                # Если current_title_ids - это строка JSON, преобразуем её в Python список
+                if isinstance(current_title_ids, str):
+                    try:
+                        self.logger.info(f"Restoring titles {current_title_ids}")
+                        current_title_ids = json.loads(current_title_ids)
+                    except json.JSONDecodeError:
+                        self.logger.error(f"Decoding JSON error: {current_title_ids}")
+                        current_title_ids = []
+                self.display_titles(title_ids=current_title_ids)
 
             # Если ничего не сохранено, загружаем по player_offset
             else:
-                self.logger.info("current_title_id и current_day отсутствуют, загружаем тайтлы по player_offset")
-                if 'player_offset' in state:
-                    self.current_offset = int(state['player_offset'])
+                self.logger.info("Restoring by player_offset")
                 self.display_titles(start=True)
 
         except Exception as e:
-            self.logger.error(f"Ошибка при восстановлении состояния: {e}")
+            self.logger.error(f"Restoring app state error: {e}")
 
     def display_titles(self, title_ids=None, batch_size=None, show_mode='default', show_previous=False, show_next=False,
                        start=False):
         try:
+            self.ui_manager.show_loader("Loading titles...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            self.current_title_id = None
+            self.current_day_of_week = None
             # Логика определения offset
             if start:
                 self.logger.debug(
@@ -395,8 +402,12 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
 
             self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
+
         except Exception as e:
             self.logger.error(f"Ошибка display_titles: {e}")
+        finally:
+            self.ui_manager.hide_loader()  # Скрываем лоадер
+            self.ui_manager.set_buttons_enabled(True)  # Разблокируем кнопки
 
     def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:
@@ -431,27 +442,44 @@ class AnimePlayerAppVer3(QWidget):
 
     def display_info(self, title_id):
         """Отображает информацию о конкретном тайтле."""
-        self.clear_previous_posters()
+        try:
+            self.ui_manager.show_loader("Loading title...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
-        # Получаем тайтл из базы данных по его идентификатору
-        titles = self.db_manager.get_titles_from_db(title_id=title_id)
+            self.clear_previous_posters()
 
-        if not titles or titles[0] is None:
-            self.logger.error(f"Title with title_id {title_id} not found in the database.")
-            return
+            # Получаем тайтл из базы данных по его идентификатору
+            titles = self.db_manager.get_titles_from_db(title_id=title_id)
 
-        self.total_titles = titles
+            if not titles or titles[0] is None:
+                self.logger.error(f"Title with title_id {title_id} not found in the database.")
+                return
 
-        self.current_title_id = title_id
+            self.total_titles = titles
 
-        self.display_titles_in_ui(titles)
+            self.current_title_id = title_id
+            self.current_day_of_week = None
+
+            self.display_titles_in_ui(titles)
+        except Exception as e:
+            self.logger.error(f"Error display_info: {e}")
+
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def display_titles_for_day(self, day_of_week):
         try:
+            self.ui_manager.show_loader("Loading schedule...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
             # Очистка предыдущих постеров
             self.clear_previous_posters()
             titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
             self.day_of_week = day_of_week
+            self.current_day_of_week = self.day_of_week
+            self.current_title_id = None
+
             self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
             if titles:
                 # Сохраняем текущие тайтлы для последующего использования
@@ -482,10 +510,12 @@ class AnimePlayerAppVer3(QWidget):
                     titles = self.db_manager.get_titles_from_db(day_of_week)
                     self.total_titles = titles
                     self.display_titles_in_ui(titles)
-                    self.day_of_week = day_of_week
 
         except Exception as e:
             self.logger.error(f"Error fetching titles from schedule: {e}")
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def _save_parsed_data(self, parsed_data):
         for i, item in enumerate(parsed_data):
@@ -515,6 +545,9 @@ class AnimePlayerAppVer3(QWidget):
             tuple: (bool, set) Успешность операции и список новых титулов.
         """
         try:
+            self.ui_manager.show_loader("Reload schedule...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
             titles_list = []
             data = self.get_schedule(day_of_week)
 
@@ -549,6 +582,9 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as e:
             self.logger.error(f"Error while checking or updating schedule: {e}")
             return False, None
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def clear_previous_posters(self):
         """Удаляет все предыдущие виджеты из сетки постеров."""
@@ -602,26 +638,37 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.warning(f"Failed to process {process_name}")
 
     def get_random_title(self):
-        data = self.api_client.get_random_title()
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        # TODO: fix this. need to count as dict
-        self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
-        # Получаем список тайтлов из ответа
-        title_list = data.get('list', [])
-        if not title_list:
-            self.logger.error("No titles found in the response.")
-            return
-        # Извлекаем первый элемент из списка и получаем его ID
-        title_data = title_list[0]
-        title_id = title_data.get('id')
-        self.invoke_database_save(title_list)
-        if title_id is None:
-            self.logger.error("Title ID not found in response.")
-            return
-        self.display_info(title_id)
-        self.current_data = data
+        try:
+            self.ui_manager.show_loader("Fetching random title...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            data = self.api_client.get_random_title()
+            if 'error' in data:
+                self.logger.error(data['error'])
+                return
+            # TODO: fix this. need to count as dict
+            self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
+            # Получаем список тайтлов из ответа
+            title_list = data.get('list', [])
+            if not title_list:
+                self.logger.error("No titles found in the response.")
+                return
+            # Извлекаем первый элемент из списка и получаем его ID
+            title_data = title_list[0]
+            title_id = title_data.get('id')
+            self.invoke_database_save(title_list)
+            if title_id is None:
+                self.logger.error("Title ID not found in response.")
+                return
+            self.display_info(title_id)
+            self.current_data = data
+
+        except Exception as e:
+            self.logger.error(f"Error while fetching random title: {e}")
+            return False, None
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def get_schedule(self, day):
         """
@@ -678,16 +725,26 @@ class AnimePlayerAppVer3(QWidget):
         return parsed_data
 
     def get_search_by_title(self):
-        search_text = self.title_search_entry.text()
-        self.title_search_entry.clear()
-        if not search_text:
-            return
-        self.logger.debug(f"keywords: {search_text}")
-        title_ids = self.db_manager.get_titles_by_keywords(search_text)
-        if title_ids:
-            self._handle_found_titles(title_ids, search_text)
-        else:
-            self._handle_no_titles_found(search_text)
+        try:
+            self.ui_manager.show_loader("Fetching by title...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            search_text = self.title_search_entry.text()
+            self.title_search_entry.clear()
+            if not search_text:
+                return
+            self.logger.debug(f"keywords: {search_text}")
+            title_ids = self.db_manager.get_titles_by_keywords(search_text)
+            if title_ids:
+                self._handle_found_titles(title_ids, search_text)
+            else:
+                self._handle_no_titles_found(search_text)
+        except Exception as e:
+            self.logger.error(f"Error while fetching get_search_by_title: {e}")
+            return False, None
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def _handle_found_titles(self, title_ids, search_text):
         if len(title_ids) == 1:
@@ -696,6 +753,7 @@ class AnimePlayerAppVer3(QWidget):
         else:
             # If multiple titles are found, extract all title_ids for display_titles
             self.logger.debug(f"Get titles from DB with title_ids: {title_ids} by keyword {search_text}")
+            self.current_title_ids = title_ids
             self.display_titles(title_ids)
 
     def _handle_no_titles_found(self, search_text):

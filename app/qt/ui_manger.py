@@ -1,11 +1,13 @@
 # ui_manager.py
+from PyQt5.QtCore import QEventLoop
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
-    QLabel, QLineEdit, QPushButton
+    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication
+
 
 class UIManager:
     def __init__(self, parent):
-
         self.parent = parent
+        self.loading_dialog = LoadingDialog(self.parent)
         self.parent_widgets = {}
         self.button_style_template = """
             QPushButton {{
@@ -180,3 +182,39 @@ class UIManager:
         shadow_effect.setOffset(2, 2)
         for widget in widgets:
             widget.setGraphicsEffect(shadow_effect)
+
+    def show_loader(self, message="Loading..."):
+        """Показывает анимированный лоадер"""
+        self.loading_dialog.label.setText(message)
+        self.loading_dialog.start()
+
+    def hide_loader(self):
+        """Скрывает лоадер"""
+        self.loading_dialog.stop()
+
+    def set_buttons_enabled(self, enabled):
+        """Включает или выключает все кнопки в UI"""
+        for widget in self.parent.findChildren(QPushButton):
+            widget.setEnabled(enabled)
+
+
+class LoadingDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Load...")
+        self.setModal(True)
+        self.setFixedSize(160, 40)
+
+        layout = QVBoxLayout()
+        self.label = QLabel("Loading...", self)
+        layout.addWidget(self.label)
+        self.setLayout(layout)
+
+    def start(self):
+        """Запускает лоадер"""
+        self.show()
+        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)  # Обновляем UI
+
+    def stop(self):
+        """Останавливает лоадер"""
+        self.hide()

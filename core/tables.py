@@ -1,8 +1,8 @@
 # tables.py
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_, SmallInteger, PrimaryKeyConstraint
-from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
-from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, \
+    SmallInteger, PrimaryKeyConstraint
+from sqlalchemy.orm import relationship, validates
+from datetime import datetime
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()

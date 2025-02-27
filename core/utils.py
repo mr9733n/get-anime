@@ -140,9 +140,8 @@ class StateManager:
                 session.execute(text("DELETE FROM app_state"))  # Очищаем перед записью
                 for key, value in state_items:
                     session.execute(
-                        text("INSERT INTO app_state (key, value) VALUES (:key, :value)"),
-                        {"key": key, "value": json.dumps(value, ensure_ascii=False)},
-
+                        text("INSERT INTO app_state (key, value, created_at) VALUES (:key, :value, :created_at)"),
+                        {"key": key, "value": json.dumps(value, ensure_ascii=False), "created_at": datetime.utcnow()},
                     )
                 session.commit()
                 self.logger.info("Состояние приложения сохранено в БД")
@@ -151,12 +150,16 @@ class StateManager:
                 self.logger.error(f"Ошибка при сохранении состояния: {e}")
 
     def load_app_state(self):
-        """Загружает состояние приложения из БД"""
+        """Загружает состояние из базы данных"""
         with self.Session() as session:
             try:
-                result = session.execute(text("SELECT key, value FROM app_state")).fetchall()
-                state = {row[0]: json.loads(row[1]) for row in result}
-                self.logger.info("Состояние приложения загружено из БД")
+                result = session.execute(text("SELECT key, value, created_at FROM app_state")).fetchall()
+                state = {row[0]: json.loads(row[1]) for row in result if row[1] is not None}
+
+                if result:
+                    last_saved_at = result[0][2]  # Берём дату из первой записи
+                    self.logger.info(f"Состояние загружено. Последнее сохранение: {last_saved_at}")
+
                 return state
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке состояния: {e}")

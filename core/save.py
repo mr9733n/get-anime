@@ -1,15 +1,9 @@
 # save.py
 import ast
-import json
 import logging
-import os
-import sqlalchemy
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, or_, \
-    and_, SmallInteger, PrimaryKeyConstraint
-from sqlalchemy.orm import sessionmaker, declarative_base, session, relationship, validates, joinedload, load_only
-from datetime import datetime, timezone
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import or_
+from datetime import datetime
 from sqlalchemy.orm import sessionmaker
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \

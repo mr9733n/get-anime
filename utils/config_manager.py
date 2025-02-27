@@ -1,6 +1,6 @@
 # config_manager.py
 import configparser
-import os
+
 
 class ConfigManager:
     def __init__(self, config_file):

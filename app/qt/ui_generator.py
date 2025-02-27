@@ -1,13 +1,10 @@
 import json
-import re
-import subprocess
 import base64
 import logging
 
-from urllib.parse import quote
-from PyQt5.QtWidgets import QTextBrowser, QLabel, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QTimer
+from PyQt5.QtCore import QByteArray, QBuffer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 
 

@@ -113,14 +113,94 @@ class UISGenerator:
         button.clicked.connect(callback)
         return button
 
+    def get_current_template(self):
+        """Возвращает текущий шаблон из состояния приложения или из текущего атрибута self.app."""
+        try:
+            if hasattr(self.app, "db_manager") and hasattr(self.app.db_manager, "app_state_manager"):
+                current_state = self.app.db_manager.app_state_manager.load_state()
+
+                # Если стейт пуст, пробуем взять из self.app
+                if not current_state:
+                    self.logger.warning("Состояние приложения пустое, используем self.app.current_template")
+                    return getattr(self.app, "current_template", "default"), {}
+
+                # Проверяем, есть ли ключ template_name
+                template_name = current_state.get("template_name", "default")
+
+                # Убираем лишние кавычки, если есть
+                if isinstance(template_name, str) and template_name.startswith('"') and template_name.endswith('"'):
+                    template_name = template_name.strip('"')
+
+                return template_name, current_state
+
+        except Exception as e:
+            self.logger.error(f"Error in get_current_template: {e}")
+
+        return "default", {}  # Если ошибка, возвращаем шаблон по умолчанию и пустой state
+
     def create_template_selector(self, parent):
-        """Создает выпадающий список с доступными шаблонами."""
-        combo_box = QComboBox(parent)
-        combo_box.setMaximumWidth(200)
-        combo_box.setStyleSheet(COMBOBOX_STYLE)
-        combo_box.addItems(self.db_manager.get_available_templates())  # Добавляем имена папок с шаблонами
-        # combo_box.currentTextChanged.connect(self.switch_template)  # Подключаем обработчик выбора
-        return combo_box
+        """Создает выпадающий список с доступными шаблонами и устанавливает текущий."""
+        try:
+            combo_box = QComboBox(parent)
+            combo_box.setMaximumWidth(200)
+            combo_box.setStyleSheet(COMBOBOX_STYLE)
+
+            # Загружаем список шаблонов
+            templates = self.db_manager.get_available_templates()
+
+            # Получаем текущий шаблон
+            current_template, _ = self.get_current_template()
+
+            # Очистка пробелов и приведение к одному регистру
+            templates = [t.strip() for t in templates]
+            current_template = current_template.strip()
+
+            # Сортируем так, чтобы default был первым (если есть)
+            if "default" in templates:
+                templates.remove("default")
+                templates.insert(0, "default")
+
+            # Добавляем шаблоны в QComboBox
+            combo_box.addItems(templates)
+
+            # Устанавливаем текущий шаблон
+            if current_template in templates:
+                index = templates.index(current_template)
+                combo_box.setCurrentIndex(index)
+                self.logger.info(f"Выбран текущий шаблон: {current_template} (index: {index})")
+            else:
+                self.logger.warning(f"Текущий шаблон '{current_template}' отсутствует в списке!")
+
+            return combo_box
+        except Exception as e:
+            self.logger.error(f"Ошибка в create_template_selector: {e}")
+            return None
+
+    def switch_template(self):
+        """Переключает текущий шаблон, сохраняя в state и перезапуская приложение."""
+        try:
+            template_name = self.template_selector.currentText()
+
+            # Загружаем текущее состояние
+            _, current_state = self.get_current_template()
+
+            # Гарантируем, что current_state — это dict
+            if not isinstance(current_state, dict):
+                current_state = {}
+
+            # Обновляем только template_name
+            current_state["template_name"] = template_name
+
+            # Сохраняем обновленный state
+            self.app.db_manager.app_state_manager.save_state(current_state)
+            self.logger.info(f"Шаблон сохранен в state: {template_name}")
+
+            # Перезапускаем приложение
+            self.logger.info("Перезапуск приложения для применения шаблона...")
+            restart_application()
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
@@ -187,31 +267,6 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Error create_system_browser: {e}")
             return None
-
-    def switch_template(self, template_name):
-        """Переключает текущий шаблон, сохраняя в state и перезапуская приложение."""
-        try:
-            template_name = self.template_selector.currentText()
-
-            if hasattr(self.app, "db_manager") and hasattr(self.app.db_manager, "app_state_manager"):
-                # Загружаем текущее состояние
-                current_state = self.app.db_manager.app_state_manager.load_state()
-
-                # Обновляем только template_name
-                current_state["template_name"] = template_name
-
-                # Сохраняем обновленный state
-                self.app.db_manager.app_state_manager.save_state(current_state)
-                self.logger.info(f"Шаблон сохранен в state: {template_name}")
-
-                # Перезапускаем приложение
-                self.logger.info("Перезапуск приложения для применения шаблона...")
-                restart_application()
-            else:
-                self.logger.error("Ошибка: app_state_manager не найден в db_manager")
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():

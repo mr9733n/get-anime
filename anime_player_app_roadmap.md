@@ -214,6 +214,9 @@ python compare_titles.py
 - [x] remove unused imports
 
 ### 8.18. Some fixes
+- [x] add window for logs in system browser
+- [x] disable console
+- [ ] add saving template name in system browser
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] add night theme
 - [ ] CHECK fix deleting titles from schedule table after reload
@@ -223,7 +226,6 @@ python compare_titles.py
 
 ### 8.19. redesign system browser 2
 - [ ] add/update table data
-- [ ] template name add
 
 ### 8.20. change one title view
 - [ ] show production studio

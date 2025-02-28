@@ -16,7 +16,6 @@ from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
 from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
-
 from app.qt.app_state_manager import AppStateManager
 
 APP_MINOR_VERSION = '0.3.8'
@@ -134,7 +133,7 @@ if __name__ == "__main__":
     # Create database on first start
     db_manager = DatabaseManager(db_path)
     db_manager.initialize_tables()
-    db_manager.save_template(template_name='default')
+    db_manager.initialize_templates()
     db_manager.save_placeholders()
 
     # Check version
@@ -149,11 +148,13 @@ if __name__ == "__main__":
 
     state_manager = AppStateManager(db_manager)
 
+    app_state = state_manager.load_state()
+    template_name = app_state.get("template_name", "default")
+
     icon_path = os.path.join(icon_dir, 'icon.png')
     app_pyqt.setWindowIcon(QIcon(icon_path))
-    window_pyqt = AnimePlayerAppVer3(db_manager, version)
+    window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name)
 
-    app_state = state_manager.load_state()
     if app_state:
         window_pyqt.restore_state(app_state)
         state_manager.clear_state_in_db()

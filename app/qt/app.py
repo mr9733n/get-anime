@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal
 
 from app.qt.ui_manger import UIManager
+from app.qt.app_state_manager import AppStateManager
 from app.qt.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
@@ -40,13 +41,12 @@ class APIClientError(Exception):
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
 
-    def __init__(self, db_manager, version):
+    def __init__(self, db_manager, version, template_name):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
-        self.current_template = None
         self.current_title_ids = None
         self.current_day_of_week = None
         self.current_title_id = None
@@ -69,6 +69,9 @@ class AnimePlayerAppVer3(QWidget):
         self.title_names = []
         self.total_titles = []
         self.playlists = {}
+
+        self.current_template = template_name
+        self.logger.info(f"Используется шаблон: {self.current_template}")
         self.app_version = version
         self.logger.debug(f"Starting AnimePlayerApp Version {self.app_version}..")
         self.row_start = 0
@@ -110,6 +113,7 @@ class AnimePlayerAppVer3(QWidget):
         )
 
         self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
+        self.state_manager = AppStateManager(self.db_manager)
 
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
@@ -140,6 +144,26 @@ class AnimePlayerAppVer3(QWidget):
 
         self.setGeometry(APP_X_POS, APP_Y_POS, APP_WIDTH, APP_HEIGHT)
         self.setMinimumSize(APP_WIDTH, APP_HEIGHT)
+
+        # Устанавливаем темный фон в зависимости от шаблона
+        if self.current_template == "default":
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(240, 240, 240, 1.0);
+                }
+            """)
+        elif self.current_template == "no_background_night":
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(140, 140, 140, 1.0);
+                }
+            """)
+        elif self.current_template == "no_background":
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(220, 220, 220, 1.0);
+                }
+            """)
 
         # Основной вертикальный layout
         main_layout = QVBoxLayout()
@@ -318,7 +342,7 @@ class AnimePlayerAppVer3(QWidget):
             current_title_id = state.get('current_title_id')
             current_title_ids = state.get('current_title_ids')
             current_day = state.get('current_day')
-            template_name = state.get('template_name', 'default')
+            template_name = state.get('template_name', 'default')  # Загружаем имя шаблона
 
             self.current_template = template_name
             self.logger.info(f"Restored template: {self.current_template}")
@@ -327,32 +351,29 @@ class AnimePlayerAppVer3(QWidget):
                 self.current_offset = int(state['player_offset'])
                 self.logger.info(f"Offset restored from db: {self.current_offset}")
 
-            # Если current_title_id = "null" и есть current_day → показываем расписание
-            if current_title_id == "null" and current_title_ids != "null" and current_day != "null":
-                self.logger.info(f"Restoring schedule for {current_day}")
-                self.display_titles_for_day(current_day)
+            # Загружаем контент в зависимости от состояния
+            match (current_day, current_title_id, current_title_ids):
+                case (day, None, None) if day:
+                    self.logger.info(f"Restoring schedule for {day}")
+                    self.display_titles_for_day(day)
 
-            # Если есть конкретный тайтл, загружаем его
-            elif current_title_id and current_title_id != "null":
-                self.logger.info(f"Restoring title {current_title_id}")
-                self.display_info(current_title_id)
+                case (None, current_title_id, None) if current_title_id:
+                    self.logger.info(f"Restoring title {current_title_id}")
+                    self.display_info(current_title_id)
 
-            # Если есть список тайтлов, загружаем его
-            elif current_title_ids and current_title_ids != "null":
-                # Если current_title_ids - это строка JSON, преобразуем её в Python список
-                if isinstance(current_title_ids, str):
-                    try:
-                        self.logger.info(f"Restoring titles {current_title_ids}")
-                        current_title_ids = json.loads(current_title_ids)
-                    except json.JSONDecodeError:
-                        self.logger.error(f"Decoding JSON error: {current_title_ids}")
-                        current_title_ids = []
-                self.display_titles(title_ids=current_title_ids)
+                case (None, None, current_title_ids) if current_title_ids:
+                    if isinstance(current_title_ids, str):
+                        try:
+                            self.logger.info(f"Restoring titles {current_title_ids}")
+                            current_title_ids = json.loads(current_title_ids)
+                        except json.JSONDecodeError:
+                            self.logger.error(f"Decoding JSON error: {current_title_ids}")
+                            current_title_ids = []
+                    self.display_titles(title_ids=current_title_ids)
 
-            # Если ничего не сохранено, загружаем по player_offset
-            else:
-                self.logger.info("Restoring by player_offset")
-                self.display_titles(start=True)
+                case _:
+                    self.logger.info("Restoring by player_offset")
+                    self.display_titles(start=True)
 
         except Exception as e:
             self.logger.error(f"Restoring app state error: {e}")

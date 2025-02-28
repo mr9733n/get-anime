@@ -1,8 +1,8 @@
 # ui_s_generator.py
 import logging
 
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QTextEdit
-
+from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QTextEdit, \
+    QComboBox
 
 # Константы для стилей
 LINE_EDIT_STYLE = """
@@ -40,6 +40,30 @@ BUTTON_STYLE = """
     }
 """
 
+COMBOBOX_STYLE = """
+    QComboBox {
+        background: rgba(255, 255, 255, 1.0);
+        border: 1px solid #dcdcdc;
+        border-radius: 6px;
+        padding: 6px;
+        font-size: 14px;
+        color: #000;
+    }
+    QComboBox:hover {
+        border: 1px solid #0078d4;
+    }
+    QComboBox::drop-down {
+        border: none;
+        width: 20px;
+        background: #e0e0e0;
+    }
+    QComboBox::down-arrow {
+        image: url(down_arrow.png); /* Можно заменить на иконку, если нужно */
+        width: 16px;
+        height: 16px;
+    }
+"""
+
 
 class LogWindow(QWidget):
     def __init__(self, log_file):
@@ -60,13 +84,10 @@ class LogWindow(QWidget):
 
 class UISGenerator:
     def __init__(self, app, db_manager):
-
-
         self.logger = logging.getLogger(__name__)
         self.app = app
         self.db_manager = db_manager
-        self.save_template_button = None
-        self.template_input = None
+        self.template_selector = None
         self.log_window = None
         self.log_button = None
         self.add_studio_button = None
@@ -81,13 +102,31 @@ class UISGenerator:
         line_edit.setMaximumWidth(max_width)
         return line_edit
 
-    def create_button(self, text, parent, callback):
+    def create_button(self, text, parent, callback, max_width=150):
         """Создает QPushButton с предустановленным стилем и обработчиком событий."""
         button = QPushButton(text, parent)
-        button.setMaximumWidth(150)
+        button.setMaximumWidth(max_width)
         button.setStyleSheet(BUTTON_STYLE)
         button.clicked.connect(callback)
         return button
+
+    def create_template_selector(self, parent):
+        """Создает выпадающий список с доступными шаблонами."""
+        combo_box = QComboBox(parent)
+        combo_box.setMaximumWidth(200)
+        combo_box.setStyleSheet(COMBOBOX_STYLE)
+        combo_box.addItems(self.db_manager.get_available_templates())  # Добавляем имена папок с шаблонами
+        combo_box.currentTextChanged.connect(self.switch_template)  # Подключаем обработчик выбора
+        return combo_box
+
+    def switch_template(self, template_name):
+        """Переключает текущий шаблон, загружая его из БД."""
+        template_data = self.db_manager.get_template(template_name)
+        if template_data:
+            self.app.load_template(template_data)  # Передаём данные в метод приложения
+            self.logger.info(f"Шаблон переключен на: {template_name}")
+        else:
+            self.logger.warning(f"Не удалось загрузить шаблон: {template_name}")
 
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
@@ -122,36 +161,27 @@ class UISGenerator:
             # Добавляем system_browser в layout контейнера
             container_layout.addWidget(system_browser)
 
-            # Поля ввода
-            self.studio_input = self.create_line_edit("STUDIO NAME", container_widget)
-            self.title_ids_input = self.create_line_edit("TITLE ID", container_widget)
+            bottom_layout = QHBoxLayout()
 
-            # Кнопка для добавления студии
-            self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db)
+            self.studio_input = self.create_line_edit("STUDIO NAME", container_widget, max_width=180)
+            self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
+            self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db, max_width=100)
 
-            studio_input = QHBoxLayout()
-            studio_input.addWidget(self.studio_input)
-            studio_input.addWidget(self.title_ids_input)
-            studio_input.addWidget(self.add_studio_button)
-            container_layout.addLayout(studio_input)
+            self.template_selector = self.create_template_selector(container_widget)
 
-            template_input_layout = QHBoxLayout()
-            self.template_input = self.create_line_edit("TEMPLATE NAME", container_widget)
+            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
 
-            self.save_template_button = self.create_button("Save template", container_widget, self.add_template_to_db)
+            bottom_layout.addStretch()
 
-            template_input_layout.addWidget(self.template_input)
-            template_input_layout.addWidget(self.save_template_button)
+            bottom_layout.addWidget(self.studio_input)
+            bottom_layout.addWidget(self.title_ids_input)
+            bottom_layout.addWidget(self.add_studio_button)
 
-            container_layout.addLayout(template_input_layout)
+            bottom_layout.addWidget(self.template_selector)
 
-            # Кнопка для открытия логов
-            log_button_layout = QHBoxLayout()
-            log_button_layout.addStretch()  # Вставляем пространство перед кнопкой
-            self.log_button = self.create_button("Show logs", container_widget, self.show_log_window)
-            log_button_layout.addWidget(self.log_button)
+            bottom_layout.addWidget(self.log_button)
 
-            container_layout.addLayout(log_button_layout)
+            container_layout.addLayout(bottom_layout)
 
             # Добавляем контейнерный виджет в основной layout
             system_layout.addWidget(container_widget)
@@ -170,7 +200,11 @@ class UISGenerator:
             self.log_window.activateWindow()
 
     def add_template_to_db(self):
-        ...
+        template_name = self.template_input.text().strip()
+        try:
+            ...
+        except Exception as e:
+            self.logger.error(f"Ошибка при добавлении template в базу данных: {e}")
 
     def add_studio_to_db(self):
         """Функция для добавления новой студии в базу данных."""

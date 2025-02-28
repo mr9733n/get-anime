@@ -183,6 +183,12 @@ class DatabaseManager:
         """
         return self.get_manager.get_template(name)
 
+    def get_available_templates(self):
+        """
+        Возвращает список доступных шаблонов из базы данных.
+        """
+        return self.get_manager.get_available_templates()
+
     def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """

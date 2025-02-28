@@ -91,9 +91,10 @@ class TitleDataFactory:
             return ""
 
 class TitleHtmlFactory:
-    def __init__(self, app):
+    def __init__(self, app, template_name):
         self.logger = logging.getLogger(__name__)
         self.app = app
+        self.current_template = template_name
 
     def generate_html(self, title, show_mode):
         """Генерирует HTML для отображения информации о тайтле в зависимости от show_mode."""
@@ -134,7 +135,7 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            titles_html, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template()
+            titles_html, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             poster_html = self.app.ui_generator.generate_poster_html(title, need_placeholder=True)
             template = Template(one_title_html)
             html_content = template.render(
@@ -161,7 +162,7 @@ class TitleHtmlFactory:
         """Генерирует HTML для отображения списка тайтлов."""
         try:
             year_html = self.app.ui_generator.generate_year_html(title, show_text_list=True)
-            _, _, show_text_list_html, styles_css = self.app.ui_generator.db_manager.get_template()
+            _, _, show_text_list_html, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             template = Template(show_text_list_html)
             html_content = template.render(
                 title=title,
@@ -188,7 +189,7 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            titles_html, _, _, styles_css = self.app.ui_generator.db_manager.get_template()
+            titles_html, _, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             poster_html = self.app.ui_generator.generate_poster_html(title, need_background=True)
             show_more_html = self.app.ui_generator.generate_show_more_html(title.title_id)
 

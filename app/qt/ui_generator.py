@@ -1,3 +1,4 @@
+# ui_generator.py
 import json
 import base64
 import logging
@@ -9,12 +10,13 @@ from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 
 
 class UIGenerator:
-    def __init__(self, app, db_manager):
+    def __init__(self, app, db_manager, template_name):
         self.logger = logging.getLogger(__name__)
-        self.title_html_factory = TitleHtmlFactory(app)
-        self.title_browser_factory = TitleBrowserFactory(app)
         self.app = app
         self.db_manager = db_manager
+        self.current_template = template_name
+        self.title_html_factory = TitleHtmlFactory(app, self.current_template)
+        self.title_browser_factory = TitleBrowserFactory(app)
         self.blank_spase = '&nbsp;'
         # TODO: fix this rating system
         self.rating_name = 'CMERS'

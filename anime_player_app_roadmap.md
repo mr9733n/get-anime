@@ -217,6 +217,9 @@ python compare_titles.py
 - [x] add window for logs in system browser
 - [x] disable console
 - [x] add switching template in system browser
+- [x] prepare to save current template
+- [ ] add saving current template on app exit
+- [ ] load saved template on app start
 - [ ] add night theme
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload

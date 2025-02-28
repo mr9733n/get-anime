@@ -42,11 +42,11 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version):
         super().__init__()
-
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
+        self.current_template = None
         self.current_title_ids = None
         self.current_day_of_week = None
         self.current_title_id = None
@@ -109,7 +109,8 @@ class AnimePlayerAppVer3(QWidget):
             save_callback=self.db_manager.save_poster,
         )
 
-        self.ui_generator = UIGenerator(self, self.db_manager)
+        self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
+
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.ui_manager = UIManager(self)
@@ -307,6 +308,7 @@ class AnimePlayerAppVer3(QWidget):
             'current_title_ids': self.current_title_ids,
             'current_day': self.current_day_of_week,
             'player_offset': self.current_offset,
+            'template_name': getattr(self, 'current_template', 'default')
         }
         return state
 
@@ -316,6 +318,10 @@ class AnimePlayerAppVer3(QWidget):
             current_title_id = state.get('current_title_id')
             current_title_ids = state.get('current_title_ids')
             current_day = state.get('current_day')
+            template_name = state.get('template_name', 'default')
+
+            self.current_template = template_name
+            self.logger.info(f"Restored template: {self.current_template}")
 
             if 'player_offset' in state:
                 self.current_offset = int(state['player_offset'])

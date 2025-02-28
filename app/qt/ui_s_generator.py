@@ -119,15 +119,6 @@ class UISGenerator:
         combo_box.currentTextChanged.connect(self.switch_template)  # Подключаем обработчик выбора
         return combo_box
 
-    def switch_template(self, template_name):
-        """Переключает текущий шаблон, загружая его из БД."""
-        template_data = self.db_manager.get_template(template_name)
-        if template_data:
-            self.app.load_template(template_data)  # Передаём данные в метод приложения
-            self.logger.info(f"Шаблон переключен на: {template_name}")
-        else:
-            self.logger.warning(f"Не удалось загрузить шаблон: {template_name}")
-
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         try:
@@ -163,21 +154,22 @@ class UISGenerator:
 
             bottom_layout = QHBoxLayout()
 
+            self.template_selector = self.create_template_selector(container_widget)
+
             self.studio_input = self.create_line_edit("STUDIO NAME", container_widget, max_width=180)
             self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
             self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db, max_width=100)
 
-            self.template_selector = self.create_template_selector(container_widget)
-
             self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
 
-            bottom_layout.addStretch()
+            # TODO: Disabled for a wile
+            # bottom_layout.addStretch()
+
+            bottom_layout.addWidget(self.template_selector)
 
             bottom_layout.addWidget(self.studio_input)
             bottom_layout.addWidget(self.title_ids_input)
             bottom_layout.addWidget(self.add_studio_button)
-
-            bottom_layout.addWidget(self.template_selector)
 
             bottom_layout.addWidget(self.log_button)
 
@@ -191,20 +183,24 @@ class UISGenerator:
             self.logger.error(f"Error create_system_browser: {e}")
             return None
 
+    def switch_template(self, template_name):
+        """Переключает текущий шаблон, загружая его из БД."""
+        template_data = self.db_manager.get_template(template_name)
+        if template_data:
+            self.app.load_template(template_data)  # Передаём данные в метод приложения
+            self.logger.info(f"Шаблон переключен на: {template_name}")
+        else:
+            self.logger.warning(f"Не удалось загрузить шаблон: {template_name}")
+
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():
             self.log_window = LogWindow("logs/debug_log.txt")
             self.log_window.show()
+            self.log_button.setText("HIDE LOGS")  # Меняем текст кнопки
         else:
-            self.log_window.raise_()
-            self.log_window.activateWindow()
-
-    def add_template_to_db(self):
-        template_name = self.template_input.text().strip()
-        try:
-            ...
-        except Exception as e:
-            self.logger.error(f"Ошибка при добавлении template в базу данных: {e}")
+            self.log_window.close()
+            self.log_window = None  # Сбрасываем переменную
+            self.log_button.setText("SHOW LOGS")  # Возвращаем текст кнопки
 
     def add_studio_to_db(self):
         """Функция для добавления новой студии в базу данных."""

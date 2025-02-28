@@ -292,6 +292,18 @@ class GetManager:
                 self.logger.error(f"Error loading template '{name}': {e}")
                 return None, None, None, None
 
+    def get_available_templates(self):
+        """
+        Возвращает список доступных шаблонов из базы данных.
+        """
+        with self.Session as session:
+            try:
+                templates = session.query(Template.name).all()
+                return [t[0] for t in templates]  # Преобразуем в список строк
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке списка шаблонов: {e}")
+                return []
+
     def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
         """Получает все тайтлы вместе с информацией о франшизах."""
         with self.Session as session:

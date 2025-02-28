@@ -216,9 +216,9 @@ python compare_titles.py
 ### 8.18. Some fixes
 - [x] add window for logs in system browser
 - [x] disable console
-- [ ] add saving template name in system browser
-- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
+- [x] add switching template in system browser
 - [ ] add night theme
+- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py

@@ -159,14 +159,29 @@ class UIManager:
         self.parent.poster_container = QWidget()
         self.parent.posters_layout = QGridLayout()
         self.parent.poster_container.setLayout(self.parent.posters_layout)
-        self.parent.poster_container.setStyleSheet("""
-            QWidget {
-                background-image: url('static/background.png');
-                background-position: center;
-                background-attachment: fixed;
-                background-color: rgba(240, 240, 240, 0.5);
-            }
-        """)
+
+        if self.parent.current_template == "default":
+            self.parent.poster_container.setStyleSheet("""
+                QWidget {
+                    background-image: url('static/background.png');
+                    background-position: center;
+                    background-attachment: fixed;
+                    background-color: rgba(240, 240, 240, 0.5);
+                }
+            """)
+        elif self.parent.current_template == "no_background_night":
+            self.parent.poster_container.setStyleSheet("""
+                QWidget {
+                    background-color: rgba(140, 140, 140, 0.5);
+                }
+            """)
+        elif self.parent.current_template == "no_background":
+            self.parent.poster_container.setStyleSheet("""
+                    QWidget {
+                        background-color: rgba(240, 240, 240, 1.0);
+                    }
+                """)
+
         self.parent.scroll_area.setWidget(self.parent.poster_container)
 
         # Добавляем скролл-область (основной контент)

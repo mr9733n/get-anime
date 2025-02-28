@@ -4,7 +4,6 @@ import logging
 import os
 
 from datetime import datetime
-
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 from core.tables import Poster, Template
@@ -139,9 +138,17 @@ class StateManager:
             try:
                 session.execute(text("DELETE FROM app_state"))  # Очищаем перед записью
                 for key, value in state_items:
+                    # Если строка уже сериализована (обнаружены лишние кавычки), удаляем их
+                    if isinstance(value, str) and value.startswith('"') and value.endswith('"'):
+                        stored_value = value.strip('"')  # Убираем кавычки
+                    elif isinstance(value, str):
+                        stored_value = value  # Обычная строка, сохраняем как есть
+                    else:
+                        stored_value = json.dumps(value, ensure_ascii=False)  # JSON
+
                     session.execute(
                         text("INSERT INTO app_state (key, value, created_at) VALUES (:key, :value, :created_at)"),
-                        {"key": key, "value": json.dumps(value, ensure_ascii=False), "created_at": datetime.utcnow()},
+                        {"key": key, "value": stored_value, "created_at": datetime.utcnow()},
                     )
                 session.commit()
                 self.logger.info("Состояние приложения сохранено в БД")
@@ -154,7 +161,23 @@ class StateManager:
         with self.Session() as session:
             try:
                 result = session.execute(text("SELECT key, value, created_at FROM app_state")).fetchall()
-                state = {row[0]: json.loads(row[1]) for row in result if row[1] is not None}
+                state = {}
+
+                for row in result:
+                    key, value, _ = row
+                    try:
+                        # Если строка содержит лишние кавычки, убираем их
+                        if isinstance(value, str) and value.startswith('"') and value.endswith('"'):
+                            value = value.strip('"')
+
+                        # Если значение — JSON, загружаем его, иначе оставляем строкой
+                        if value.startswith("{") or value.startswith("["):
+                            state[key] = json.loads(value)
+                        else:
+                            state[key] = value
+                    except json.JSONDecodeError:
+                        self.logger.error(f"Ошибка JSON при загрузке ключа {key}: {value}")
+                        state[key] = value
 
                 if result:
                     last_saved_at = result[0][2]  # Берём дату из первой записи

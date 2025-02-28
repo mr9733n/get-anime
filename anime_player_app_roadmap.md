@@ -213,29 +213,33 @@ python compare_titles.py
 - [x] add loader for hard tasks
 - [x] remove unused imports
 
-### 8.18. Some fixes
-- [x] add window for logs in system browser
+### 8.18. New templates
 - [x] disable console
+- [x] add window for logs in system browser
 - [x] add switching template in system browser
 - [x] prepare to save current template
-- [ ] add saving current template on app exit
-- [ ] load saved template on app start
-- [ ] add night theme
+- [x] fix saving state for the list of title_ids 
+- [x] add saving current template on app exit
+- [x] load saved template on app start
+- [x] add night theme
+
+### 8.19. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py
 - [ ] ...
 
-### 8.19. redesign system browser 2
+### 8.20. redesign system browser 2
+- [ ] show current template in select box 
 - [ ] add/update table data
 
-### 8.20. change one title view
+### 8.21. change one title view
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 
-### 8.21. something for db
+### 8.22. something for db
 - [ ] remove schedule view logic from get_titles
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition

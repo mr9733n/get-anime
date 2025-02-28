@@ -1,8 +1,10 @@
 # ui_s_generator.py
 import logging
 
+
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QTextEdit, \
     QComboBox
+from utils.utils import restart_application
 
 # Константы для стилей
 LINE_EDIT_STYLE = """
@@ -87,6 +89,7 @@ class UISGenerator:
         self.logger = logging.getLogger(__name__)
         self.app = app
         self.db_manager = db_manager
+        self.template_apply_button = None
         self.template_selector = None
         self.log_window = None
         self.log_button = None
@@ -116,7 +119,7 @@ class UISGenerator:
         combo_box.setMaximumWidth(200)
         combo_box.setStyleSheet(COMBOBOX_STYLE)
         combo_box.addItems(self.db_manager.get_available_templates())  # Добавляем имена папок с шаблонами
-        combo_box.currentTextChanged.connect(self.switch_template)  # Подключаем обработчик выбора
+        # combo_box.currentTextChanged.connect(self.switch_template)  # Подключаем обработчик выбора
         return combo_box
 
     def create_system_browser(self, statistics):
@@ -155,6 +158,7 @@ class UISGenerator:
             bottom_layout = QHBoxLayout()
 
             self.template_selector = self.create_template_selector(container_widget)
+            self.template_apply_button = self.create_button("APPLY", container_widget, self.switch_template, max_width=100)
 
             self.studio_input = self.create_line_edit("STUDIO NAME", container_widget, max_width=180)
             self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
@@ -166,6 +170,7 @@ class UISGenerator:
             # bottom_layout.addStretch()
 
             bottom_layout.addWidget(self.template_selector)
+            bottom_layout.addWidget(self.template_apply_button)
 
             bottom_layout.addWidget(self.studio_input)
             bottom_layout.addWidget(self.title_ids_input)
@@ -184,13 +189,29 @@ class UISGenerator:
             return None
 
     def switch_template(self, template_name):
-        """Переключает текущий шаблон, загружая его из БД."""
-        template_data = self.db_manager.get_template(template_name)
-        if template_data:
-            self.app.load_template(template_data)  # Передаём данные в метод приложения
-            self.logger.info(f"Шаблон переключен на: {template_name}")
-        else:
-            self.logger.warning(f"Не удалось загрузить шаблон: {template_name}")
+        """Переключает текущий шаблон, сохраняя в state и перезапуская приложение."""
+        try:
+            template_name = self.template_selector.currentText()
+
+            if hasattr(self.app, "db_manager") and hasattr(self.app.db_manager, "app_state_manager"):
+                # Загружаем текущее состояние
+                current_state = self.app.db_manager.app_state_manager.load_state()
+
+                # Обновляем только template_name
+                current_state["template_name"] = template_name
+
+                # Сохраняем обновленный state
+                self.app.db_manager.app_state_manager.save_state(current_state)
+                self.logger.info(f"Шаблон сохранен в state: {template_name}")
+
+                # Перезапускаем приложение
+                self.logger.info("Перезапуск приложения для применения шаблона...")
+                restart_application()
+            else:
+                self.logger.error("Ошибка: app_state_manager не найден в db_manager")
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():

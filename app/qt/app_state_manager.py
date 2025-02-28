@@ -34,7 +34,10 @@ class AppStateManager:
     def save_state_to_db(self, app_state):
         """Сохраняет состояние в базу данных"""
         try:
-            state_items = [(key, json.dumps(value, ensure_ascii=False)) for key, value in app_state.items()]
+            state_items = [
+                (key, json.dumps(value, ensure_ascii=False) if value is not None else None)
+                for key, value in app_state.items()
+            ]
             self.db_manager.state_manager.save_app_state(state_items)
             return True
         except Exception as e:
@@ -42,9 +45,16 @@ class AppStateManager:
             return False
 
     def load_state_from_db(self):
-        """Загружает состояние из базы данных"""
+        """Загружает состояние из базы данных, преобразуя 'null' обратно в None"""
         try:
-            return self.db_manager.state_manager.load_app_state()
+            state = self.db_manager.state_manager.load_app_state()
+
+            # TODO: Конвертируем строки "null" в None
+            for key, value in state.items():
+                if isinstance(value, str) and value.lower() == "null":
+                    state[key] = None
+
+            return state
         except Exception as e:
             self.logger.error(f"Ошибка при загрузке состояния из БД: {e}")
             return {}

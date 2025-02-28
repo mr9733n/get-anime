@@ -1,4 +1,5 @@
 import logging
+import os
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
@@ -7,7 +8,7 @@ from core.process import ProcessManager
 from core.get import GetManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History
-
+from app.qt.app_state_manager import AppStateManager
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -16,6 +17,7 @@ class DatabaseManager:
         self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
 
+        self.app_state_manager = AppStateManager(self)
         # Инициализация менеджеров
         self.template_manager = TemplateManager(self.engine)
         self.placeholder_manager = PlaceholderManager(self.engine)
@@ -52,6 +54,21 @@ class DatabaseManager:
                 except Exception as e:
                     session.rollback()
                     self.logger.error(f"Error initializing '{days}' image in posters table: {e}")
+
+    def initialize_templates(self):
+        """Автоматически загружает все папки из 'templates/' как шаблоны в БД, если их там ещё нет."""
+        templates_dir = "templates"
+        if not os.path.exists(templates_dir):
+            self.logger.warning("Папка с шаблонами не найдена. Пропускаем загрузку шаблонов.")
+            return
+
+        available_templates = self.get_manager.get_available_templates()
+        template_folders = [d for d in os.listdir(templates_dir) if os.path.isdir(os.path.join(templates_dir, d))]
+
+        for template_name in template_folders:
+            if template_name not in available_templates:
+                self.logger.info(f"Добавление нового шаблона в БД: {template_name}")
+                self.save_template(template_name)
 
     def save_placeholders(self):
         # Добавляем заглушки изображений, если они не добавлены

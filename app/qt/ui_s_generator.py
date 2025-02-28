@@ -1,17 +1,93 @@
 # ui_s_generator.py
 import logging
 
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout
+from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QTextEdit
+
+
+# Константы для стилей
+LINE_EDIT_STYLE = """
+    QLineEdit {
+        background: rgba(255, 255, 255, 1.0);
+        border: 1px solid #dcdcdc;
+        border-radius: 6px;
+        padding: 6px;
+        font-size: 14px;
+        color: #000;
+    }
+    QLineEdit:focus {
+        border: 1px solid #0078d4;  /* синий цвет при фокусе */
+    }
+"""
+
+BUTTON_STYLE = """
+    QPushButton {
+        color: #fff;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        background: rgba(74, 74, 74, 1.0);
+        width: 100px;
+    }
+    QPushButton:hover {
+        background-color: #5c5c5c;
+        border: 1px solid #888;
+    }
+    QPushButton:pressed {
+        background-color: #000;
+        border: 1px solid #555;
+    }
+"""
+
+
+class LogWindow(QWidget):
+    def __init__(self, log_file):
+        super().__init__()
+        self.setWindowTitle("Логи приложения")
+        self.setGeometry(100, 100, 800, 600)
+
+        layout = QVBoxLayout()
+        self.log_view = QTextEdit(self)
+        self.log_view.setReadOnly(True)
+
+        with open(log_file, "r", encoding="utf-8") as f:
+            self.log_view.setText(f.read())
+
+        layout.addWidget(self.log_view)
+        self.setLayout(layout)
 
 
 class UISGenerator:
     def __init__(self, app, db_manager):
-        self.add_studio_button = None
-        self.title_ids_input = None
-        self.studio_input = None
+
+
         self.logger = logging.getLogger(__name__)
         self.app = app
         self.db_manager = db_manager
+        self.save_template_button = None
+        self.template_input = None
+        self.log_window = None
+        self.log_button = None
+        self.add_studio_button = None
+        self.title_ids_input = None
+        self.studio_input = None
+
+    def create_line_edit(self, placeholder_text, parent, max_width=150):
+        """Создает QLineEdit с предустановленным стилем."""
+        line_edit = QLineEdit(parent)
+        line_edit.setPlaceholderText(placeholder_text)
+        line_edit.setStyleSheet(LINE_EDIT_STYLE)
+        line_edit.setMaximumWidth(max_width)
+        return line_edit
+
+    def create_button(self, text, parent, callback):
+        """Создает QPushButton с предустановленным стилем и обработчиком событий."""
+        button = QPushButton(text, parent)
+        button.setMaximumWidth(150)
+        button.setStyleSheet(BUTTON_STYLE)
+        button.clicked.connect(callback)
+        return button
 
     def create_system_browser(self, statistics):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
@@ -46,67 +122,36 @@ class UISGenerator:
             # Добавляем system_browser в layout контейнера
             container_layout.addWidget(system_browser)
 
-            input_layout = QHBoxLayout()
-            # Поле ввода для добавления новой студии
-            self.studio_input = QLineEdit(container_widget)
-            self.studio_input.setPlaceholderText("STUDIO NAME")
-            self.title_ids_input = QLineEdit(container_widget)
-            self.title_ids_input.setPlaceholderText("TITLE ID")
-            # Установка стилей для полей ввода
-            line_edit_style = """
-                    QLineEdit {
-                        background: rgba(255, 255, 255, 1.0);
-                        border: 1px solid #dcdcdc;
-                        border-radius: 6px;
-                        padding: 6px;
-                        font-size: 14px;
-                        color: #000;
-                    }
-                    QLineEdit:focus {
-                        border: 1px solid #0078d4;  /* синий цвет при фокусе */
-                        }
-                """
-            self.title_ids_input.setStyleSheet(line_edit_style)
-            self.studio_input.setStyleSheet(line_edit_style)
+            # Поля ввода
+            self.studio_input = self.create_line_edit("STUDIO NAME", container_widget)
+            self.title_ids_input = self.create_line_edit("TITLE ID", container_widget)
 
-            # Установка минимальных и максимальных размеров для полей ввода
-            self.title_ids_input.setMaximumWidth(150)
-            self.studio_input.setMaximumWidth(150)
+            # Кнопка для добавления студии
+            self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db)
 
-            # Кнопка для сохранения новой студии
-            self.add_studio_button = QPushButton("ADD", container_widget)
-            self.add_studio_button.setMaximumWidth(150)
-            # Установка стилей для кнопки "#4a4a4a", "#5c5c5c", "#000"
-            self.add_studio_button.setStyleSheet("""
-                QPushButton {
-                    color: #fff;
-                    padding: 8px 16px;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    background: rgba(74, 74 , 74, 1.0);
+            studio_input = QHBoxLayout()
+            studio_input.addWidget(self.studio_input)
+            studio_input.addWidget(self.title_ids_input)
+            studio_input.addWidget(self.add_studio_button)
+            container_layout.addLayout(studio_input)
 
-                    width = 100px;
-                }
-                QPushButton:hover {
-                    background-color: #5c5c5c;
-                    border: 1px solid #888;
-                }
-                QPushButton:pressed {
-                    background-color: #000;
-                    border: 1px solid #555;
-                }
-                """)
-            # Добавляем обработчик клика для кнопки
-            self.add_studio_button.clicked.connect(self.add_studio_to_db)
+            template_input_layout = QHBoxLayout()
+            self.template_input = self.create_line_edit("TEMPLATE NAME", container_widget)
 
-            input_layout.addWidget(self.studio_input)
-            input_layout.addWidget(self.title_ids_input)
-            input_layout.addWidget(self.add_studio_button)
+            self.save_template_button = self.create_button("Save template", container_widget, self.add_template_to_db)
 
-            # Добавляем input_layout в контейнерный layout
-            container_layout.addLayout(input_layout)
+            template_input_layout.addWidget(self.template_input)
+            template_input_layout.addWidget(self.save_template_button)
+
+            container_layout.addLayout(template_input_layout)
+
+            # Кнопка для открытия логов
+            log_button_layout = QHBoxLayout()
+            log_button_layout.addStretch()  # Вставляем пространство перед кнопкой
+            self.log_button = self.create_button("Show logs", container_widget, self.show_log_window)
+            log_button_layout.addWidget(self.log_button)
+
+            container_layout.addLayout(log_button_layout)
 
             # Добавляем контейнерный виджет в основной layout
             system_layout.addWidget(container_widget)
@@ -115,6 +160,17 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Error create_system_browser: {e}")
             return None
+
+    def show_log_window(self):
+        if self.log_window is None or not self.log_window.isVisible():
+            self.log_window = LogWindow("logs/debug_log.txt")
+            self.log_window.show()
+        else:
+            self.log_window.raise_()
+            self.log_window.activateWindow()
+
+    def add_template_to_db(self):
+        ...
 
     def add_studio_to_db(self):
         """Функция для добавления новой студии в базу данных."""

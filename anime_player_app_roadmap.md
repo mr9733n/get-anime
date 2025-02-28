@@ -222,6 +222,8 @@ python compare_titles.py
 - [x] add saving current template on app exit
 - [x] load saved template on app start
 - [x] add night theme
+- [x] show current template in select box 
+- [ ] change background-color in no_background & no_background_night template 
 
 ### 8.19. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
@@ -231,8 +233,8 @@ python compare_titles.py
 - [ ] ...
 
 ### 8.20. redesign system browser 2
-- [ ] show current template in select box 
 - [ ] add/update table data
+- [ ] ...
 
 ### 8.21. change one title view
 - [ ] show production studio

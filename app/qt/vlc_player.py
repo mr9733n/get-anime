@@ -34,8 +34,9 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, current_template="default"):
         super().__init__(parent)
+        self.current_template = current_template
         self.skip_data_cache = None
         self.current_episode = None
         self.skip_opening = None
@@ -113,52 +114,8 @@ class VLCPlayer(QWidget):
         main_layout.addLayout(control_layout)
         main_layout.addWidget(self.playlist_widget)
         self.setLayout(main_layout)
-
-        # Стили (остались без изменения pressed-состояния для кнопки SKIP CREDITS)
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #4a4a4a;
-                color: white;
-                border: none;
-                font-size: 14px;
-                border-radius: 5px;
-                font-weight: bold;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #5c5c5c;
-            }
-            QSlider::groove:horizontal {
-                background: #bdc3c7;
-                height: 25px;
-                border-radius: 5px;
-            }
-            QSlider::handle:horizontal {
-                background: #4a4a4a;
-                width: 50px;
-                height: 25px;
-                margin: -1px 0;
-                border-radius: 5px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #7f7f7f;
-                border-radius: 5px;
-            }
-            QSlider::add-page:horizontal {
-                background: #ecf0f1;
-                border-radius: 5px;
-            }
-            QLabel {
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QListWidget {
-                background-color: #ecf0f1;
-                border: 1px solid #bdc3c7;
-                font-size: 14px;
-            }
-        """)
+        # Применяем стили в зависимости от шаблона
+        self.apply_theme()
 
         # Сигналы
         self.progress_slider.sliderReleased.connect(self.seek_position)
@@ -184,6 +141,65 @@ class VLCPlayer(QWidget):
         self.sleep_timer.timeout.connect(self.prevent_sleep)
         self.sleep_timer.start()
 
+    def apply_theme(self):
+        """Применяет стили к VLC Player с учетом текущего шаблона."""
+
+        # Определяем стиль фона
+        if self.current_template == "default":
+            background_style = "background-color: rgba(240, 240, 240, 1.0);"
+        elif self.current_template == "no_background_night":
+            background_style = "background-color: rgba(200, 200, 200, 0.5);"
+        elif self.current_template == "no_background":
+            background_style = "background-color: rgba(240, 240, 240, 1.0);"
+        else:
+            background_style = ""  # Если нет шаблона, ничего не меняем
+
+        # Стили контроллов (кнопки, слайдеры, метки и т.д.)
+        control_styles = """
+            QPushButton {
+                background-color: #4a4a4a;
+                color: white;
+                border: none;
+                font-size: 14px;
+                border-radius: 5px;
+                font-weight: bold;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #5c5c5c;
+            }
+            QSlider::groove:horizontal {
+                background: #bdc3c7;
+                height: 25px;
+                border-radius: 5px;
+            }
+            QSlider::handle:horizontal {
+                background: #4a4a4a;
+                width: 50px;
+                height: 25px;
+                margin: -1px 0;
+            }
+            QSlider::sub-page:horizontal {
+                background: #7f7f7f;
+            }
+            QSlider::add-page:horizontal {
+                background: #AAADAD;
+                border-radius: 5px;
+            }
+            QLabel {
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QListWidget {
+                background-color: #ecf0f1;
+                border: 1px solid #bdc3c7;
+                font-size: 14px;
+            }
+        """
+
+        # Объединяем стили перед установкой
+        self.setStyleSheet(f"QWidget {{ {background_style} }} {control_styles}")
 
     def toggle_repeat(self):
         """Переключает режим повторения."""

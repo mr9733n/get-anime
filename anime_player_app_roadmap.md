@@ -218,12 +218,17 @@ python compare_titles.py
 - [x] add window for logs in system browser
 - [x] add switching template in system browser
 - [x] prepare to save current template
-- [x] fix saving state for the list of title_ids 
 - [x] add saving current template on app exit
 - [x] load saved template on app start
 - [x] add night theme
 - [x] show current template in select box 
-- [ ] change background-color in no_background & no_background_night template 
+- [x] apply templates for log window
+- [x] update logs data while log window open
+- [x] close all child windows on main window closed 
+- [x] apply template to custom VLC window 
+- [x] fix saving state for the list of title_ids 
+- [x] add api error message
+- [ ] change background-color in no_background & no_background_night template for system, text_list
 
 ### 8.19. Some fixes
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position

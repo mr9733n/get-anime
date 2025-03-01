@@ -17,6 +17,7 @@ from app.qt.app import AnimePlayerAppVer3
 from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
+from utils.runtime_manager import test_exception
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
@@ -83,10 +84,6 @@ def qt_message_handler(mode, context, message):
         logger.critical(f"Qt FATAL: {message}")
     else:
         logger.debug(f"Qt: {message}")
-
-def test_exception():
-    ctypes.string_at(0)
-    raise Exception("TEST EXCEPTION...")
 
 def on_app_quit():
     logger.info(f"AnimePlayerApp Version {version} is closed.")
@@ -166,6 +163,7 @@ if __name__ == "__main__":
 
     app_pyqt.aboutToQuit.connect(on_app_quit)
     # Test handling critical & fatal error
-    # app_pyqt.aboutToQuit.connect(test_exception)
+    if DEVELOPMENT_MODE:
+        app_pyqt.aboutToQuit.connect(test_exception)
 
     sys.exit(app_pyqt.exec_())

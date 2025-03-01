@@ -10,8 +10,8 @@ import datetime
 
 from datetime import datetime
 from app.qt.vlc_player import VLCPlayer
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser
-from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
+from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
 
 from app.qt.ui_manger import UIManager
 from app.qt.app_state_manager import AppStateManager
@@ -43,6 +43,8 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version, template_name):
         super().__init__()
+        self.error_label = None
+        self.tray_icon = None
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
@@ -126,6 +128,9 @@ class AnimePlayerAppVer3(QWidget):
 
         self.init_ui()
 
+    def closeEvent(self, event):
+        QApplication.instance().quit()  # Завершает все окна приложения
+
     @pyqtSlot(QTextBrowser, int, int)
     def on_add_title_browser_to_layout(self, title_browser, row, column):
         self.posters_layout.addWidget(title_browser, row, column)
@@ -174,6 +179,35 @@ class AnimePlayerAppVer3(QWidget):
         # Сохранение ссылок на виджеты после их создания
         self.title_search_entry = self.ui_manager.parent_widgets.get("title_input")
         self.quality_dropdown = self.ui_manager.parent_widgets.get("quality_dropdown")
+
+    def show_error_notification(self, title, message):
+        """Показывает всплывающее уведомление об ошибке."""
+        # Сохраняем объект уведомления, чтобы он не удалился сборщиком мусора
+        self.error_label = QLabel(message, self)
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(255, 0, 0, 0.8);
+                color: white;
+                font-size: 14px;
+                padding: 6px;
+                border-radius: 4px;
+            }
+        """)
+        self.error_label.setAlignment(Qt.AlignJustify)
+        self.error_label.setGeometry(50, 50, 550, 100)
+
+        # Сохраняем tray icon как атрибут
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxWarning))
+
+        self.error_label.show()
+        self.tray_icon.show()
+
+        # Таймер для скрытия уведомления через 5 секунд
+        QTimer.singleShot(5000, self.error_label.hide)
+        QTimer.singleShot(5000, self.tray_icon.hide)
+        self.tray_icon.showMessage(title, message, QSystemTrayIcon.Warning, 5000)
 
     def refresh_display(self):
         """Обработчик кнопки REFRESH, выполняющий обновление текущего экрана."""
@@ -386,6 +420,7 @@ class AnimePlayerAppVer3(QWidget):
 
             self.current_title_id = None
             self.current_day_of_week = None
+            self.current_title_ids = title_ids
             # Логика определения offset
             if start:
                 self.logger.debug(
@@ -670,28 +705,44 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
             data = self.api_client.get_random_title()
+
+            # Проверяем, что data имеет тип dict
+            if not isinstance(data, dict):
+                self.logger.error(f"Unexpected response format: {type(data).__name__}")
+                self.show_error_notification("API Error", "Unexpected response format.")
+                return
+
+            # Если в ответе присутствует ошибка, логируем и уведомляем пользователя
             if 'error' in data:
                 self.logger.error(data['error'])
+                self.show_error_notification("API Error", data['error'])
                 return
-            # TODO: fix this. need to count as dict
+
+            # Теперь можно безопасно считать количество ключей в словаре
             self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
+
             # Получаем список тайтлов из ответа
             title_list = data.get('list', [])
             if not title_list:
                 self.logger.error("No titles found in the response.")
+                self.show_error_notification("Error", "No titles found in the response.")
                 return
+
             # Извлекаем первый элемент из списка и получаем его ID
             title_data = title_list[0]
             title_id = title_data.get('id')
             self.invoke_database_save(title_list)
             if title_id is None:
                 self.logger.error("Title ID not found in response.")
+                self.show_error_notification("Error", "Title ID not found in response.")
                 return
+
             self.display_info(title_id)
             self.current_data = data
 
         except Exception as e:
             self.logger.error(f"Error while fetching random title: {e}")
+            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
             return False, None
         finally:
             self.ui_manager.hide_loader()
@@ -721,9 +772,11 @@ class AnimePlayerAppVer3(QWidget):
             return data
         except APIClientError as api_error:
             self.logger.error(f"API Client Error: {api_error}")
+            self.show_error_notification("API Error", str(api_error)) # Показываем ошибку пользователю
             return None
         except Exception as e:
             self.logger.error(f"Unexpected error while fetching schedule: {e}")
+            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
             return None
 
     def parse_schedule_data(self, data):
@@ -766,6 +819,7 @@ class AnimePlayerAppVer3(QWidget):
                 self._handle_found_titles(title_ids, search_text)
             else:
                 self._handle_no_titles_found(search_text)
+
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title: {e}")
             return False, None
@@ -784,39 +838,54 @@ class AnimePlayerAppVer3(QWidget):
             self.display_titles(title_ids)
 
     def _handle_no_titles_found(self, search_text):
-        keywords = search_text.split(',')
-        keywords = [kw.strip() for kw in keywords]
-        if len(keywords) == 1 and keywords[0].isdigit():
-            title_id = int(keywords[0])
-            data = self.api_client.get_search_by_title_id(title_id)
-        elif all(kw.isdigit() for kw in keywords):
-            title_ids = [int(kw) for kw in keywords]
-            data = self.api_client.get_search_by_title_ids(title_ids)
-        else:
-            data = self.api_client.get_search_by_title(search_text)
-        if 'error' in data:
-            self.logger.error(data['error'])
-            return
-        # Проверяем тип данных в ответе
-        if isinstance(data, dict) and 'list' in data:
-            title_list = data['list']
-        elif isinstance(data, dict) and 'id' in data:
-            # Если это одиночный тайтл, оборачиваем его в список
-            title_list = [data]
-        elif isinstance(data, list):
-            title_list = data
-        else:
-            self.logger.error("No titles found in the response.")
-            return
-        if not title_list:
-            self.logger.error("No titles found in the response.")
-            return
-        self.logger.debug(f"Processing title data: {title_list}")
-        self.invoke_database_save(title_list)
-        title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
-        self._handle_found_titles(title_ids, search_text)
-        # Сохраняем текущие данные
-        self.current_data = data
+        try:
+            keywords = search_text.split(',')
+            keywords = [kw.strip() for kw in keywords]
+            if len(keywords) == 1 and keywords[0].isdigit():
+                title_id = int(keywords[0])
+                data = self.api_client.get_search_by_title_id(title_id)
+            elif all(kw.isdigit() for kw in keywords):
+                title_ids = [int(kw) for kw in keywords]
+                data = self.api_client.get_search_by_title_ids(title_ids)
+            else:
+                data = self.api_client.get_search_by_title(search_text)
+
+            if isinstance(data, dict) and 'error' in data:
+                self.logger.error(data['error'])
+                self.show_error_notification("API Error", data['error'])
+                return
+
+            # Проверяем тип данных в ответе
+            if isinstance(data, dict) and 'list' in data:
+                title_list = data['list']
+            elif isinstance(data, dict) and 'id' in data:
+                # Если это одиночный тайтл, оборачиваем его в список
+                title_list = [data]
+            elif isinstance(data, list):
+                title_list = data
+            else:
+                self.logger.error("No titles found in the response.")
+                self.show_error_notification("Error", "No titles found in the response.")
+                return
+
+            if not title_list:
+                self.logger.error("No titles found in the response.")
+                self.show_error_notification("Error", "No titles found in the response.")
+                return
+
+            self.logger.debug(f"Processing title data: {title_list}")
+            self.invoke_database_save(title_list)
+            title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
+            self._handle_found_titles(title_ids, search_text)
+            # Сохраняем текущие данные
+            self.current_data = data
+
+        except APIClientError as api_error:
+            self.logger.error(f"API Client Error: {api_error}")
+            self.show_error_notification("API Error", str(api_error))  # Показываем ошибку пользователю
+        except Exception as e:
+            self.logger.error(f"Error while fetching title: {e}")
+            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
 
     def save_playlist_wrapper(self):
         """
@@ -1056,7 +1125,7 @@ class AnimePlayerAppVer3(QWidget):
         return url.strip().split('?')[0]
 
     def open_vlc_player(self, playlist_path, title_id, skip_data=None):
-        self.vlc_window = VLCPlayer()
+        self.vlc_window = VLCPlayer(current_template=self.current_template)
         self.logger.debug(f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}")
         self.vlc_window.load_playlist(playlist_path, title_id, skip_data)
         self.vlc_window.show()

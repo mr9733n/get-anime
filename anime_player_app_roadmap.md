@@ -228,6 +228,7 @@ python compare_titles.py
 - [x] apply template to custom VLC window 
 - [x] fix saving state for the list of title_ids 
 - [x] add api error message
+- [x] some improvements for build.spec
 - [ ] change background-color in no_background & no_background_night template for system, text_list
 
 ### 8.19. Some fixes

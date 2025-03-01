@@ -1,10 +1,9 @@
 # ui_s_generator.py
 import logging
 
+from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
+from utils.runtime_manager import restart_application, LogWindow
 
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QTextEdit, \
-    QComboBox
-from utils.utils import restart_application
 
 # Константы для стилей
 LINE_EDIT_STYLE = """
@@ -67,28 +66,12 @@ COMBOBOX_STYLE = """
 """
 
 
-class LogWindow(QWidget):
-    def __init__(self, log_file):
-        super().__init__()
-        self.setWindowTitle("Логи приложения")
-        self.setGeometry(100, 100, 800, 600)
-
-        layout = QVBoxLayout()
-        self.log_view = QTextEdit(self)
-        self.log_view.setReadOnly(True)
-
-        with open(log_file, "r", encoding="utf-8") as f:
-            self.log_view.setText(f.read())
-
-        layout.addWidget(self.log_view)
-        self.setLayout(layout)
-
-
 class UISGenerator:
     def __init__(self, app, db_manager):
         self.logger = logging.getLogger(__name__)
         self.app = app
         self.db_manager = db_manager
+        self.current_template = getattr(self.app, "current_template", "default")
         self.template_apply_button = None
         self.template_selector = None
         self.log_window = None
@@ -122,7 +105,7 @@ class UISGenerator:
                 # Если стейт пуст, пробуем взять из self.app
                 if not current_state:
                     self.logger.warning("Состояние приложения пустое, используем self.app.current_template")
-                    return getattr(self.app, "current_template", "default"), {}
+                    return self.current_template, {}
 
                 # Проверяем, есть ли ключ template_name
                 template_name = current_state.get("template_name", "default")
@@ -270,7 +253,7 @@ class UISGenerator:
 
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():
-            self.log_window = LogWindow("logs/debug_log.txt")
+            self.log_window = LogWindow("logs/debug_log.txt", self.current_template)
             self.log_window.show()
             self.log_button.setText("HIDE LOGS")  # Меняем текст кнопки
         else:

@@ -167,7 +167,7 @@ exe = EXE(
 	upx=True,
 	upx_exclude=[],
 	runtime_tmpdir=None,
-	console=True,
+	console=False,
 	onefile=False,  # Important for imports to set to False to keep everything in the same folder
 	)
 

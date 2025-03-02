@@ -229,9 +229,12 @@ python compare_titles.py
 - [x] fix saving state for the list of title_ids 
 - [x] add api error message
 - [x] some improvements for build.spec
-- [ ] change background-color in no_background & no_background_night template for system, text_list
 
 ### 8.19. Some fixes
+- [x] ERROR | app.qt.app_state_manager.save_state_to_db | Ошибка при сохранении состояния в БД: Object of type set is not JSON serializable
+- [x] change text on log button when closed window
+- [ ] fix Database comparison after build
+- [ ] change background-color in no_background & no_background_night template for system, text_list
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time

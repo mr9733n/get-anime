@@ -302,16 +302,20 @@ class AnimePlayerAppVer3(QWidget):
 
     def reload_schedule(self):
         """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
-        day = self.day_of_week
-        titles = self.total_titles
-        if not day:
-            day = 0 # Monday
-        status, title_ids = self.check_and_update_schedule_after_display(day, titles)
-        if not title_ids:
-            self.display_titles_for_day(day)
-        if status:
-            self.display_titles(title_ids)
-
+        try:
+            day = self.day_of_week
+            titles = self.total_titles
+            if not day:
+                day = 0 # Monday
+            status, title_ids = self.check_and_update_schedule_after_display(day, titles)
+            self.current_day_of_week = self.day_of_week
+            self.current_title_id = None
+            if not title_ids:
+                self.display_titles_for_day(day)
+            if status:
+                self.display_titles(title_ids=title_ids)
+        except Exception as e:
+            self.logger.error(f"Ошибка при обновлении reload_schedule: {e}")
 
     def generate_callbacks(self):
         # Существующие статические колбеки
@@ -418,9 +422,16 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.show_loader("Loading titles...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
+            if not isinstance(title_ids, list):
+                try:
+                    title_ids = list(title_ids)
+                except TypeError:
+                    title_ids = title_ids
+
             self.current_title_id = None
             self.current_day_of_week = None
             self.current_title_ids = title_ids
+
             # Логика определения offset
             if start:
                 self.logger.debug(
@@ -541,6 +552,7 @@ class AnimePlayerAppVer3(QWidget):
             self.day_of_week = day_of_week
             self.current_day_of_week = self.day_of_week
             self.current_title_id = None
+            self.current_title_ids = None
 
             self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
             if titles:

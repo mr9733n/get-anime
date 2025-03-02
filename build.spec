@@ -515,8 +515,15 @@ def get_file_info(file_path):
     modified_time = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime("%Y-%m-%d %H:%M:%S")
     return size, modified_time
 
-pre_build_db = get_latest_backup(backup_folder)
+def restore_database(src, dst):
+    """Restores the database from a backup."""
+    try:
+        shutil.copy2(src, dst)
+        print(f"\n✅ The database has been successfully restored from:\n   {src} ➝ {dst}")
+    except Exception as e:
+        print(f"\n❌ Failed to restore database: {e}")
 
+pre_build_db = get_latest_backup(backup_folder)
 pre_size, pre_time = get_file_info(pre_build_db) if pre_build_db else (None, None)
 post_size, post_time = get_file_info(post_build_db)
 
@@ -530,16 +537,34 @@ else:
     print("❌ Backup before assembly not found.")
 
 if post_size:
-    print(f"\n🔹 DB after build {post_build_db}")
+    print(f"\n🔹 DB after build: {post_build_db}")
     print(f"   - Size: {post_size} byte")
     print(f"   - Last modified: {post_time}")
 else:
     print("\n❌ The database is missing after assembly.")
 
 if pre_size and post_size:
+    restore_needed = False
+
     if pre_time > post_time:
         print("\n⚠️ **ATTENTION: The backup is newer than the database after the build!**")
-    elif pre_time == post_time:
-        print("\n✅ **Databases match. No changes found.**")
+        restore_needed = True
+    elif pre_time < post_time:
+        if post_size < pre_size:
+            print("\n⚠️ **WARNING: The new database is smaller than the backup! Data loss is possible!**")
+            restore_needed = True
+        else:
+            print("\n✅ **The database after the build is newer than the backup.**")
     else:
-        print("\n✅ **The database after the build is newer than the backup.**")
+        if pre_size != post_size:
+            print("\n⚠️ **ATTENTION: The databases were modified at the same time, but the sizes are different!**")
+            restore_needed = True
+        else:
+            print("\n✅ **Databases match. No changes found.**")
+
+    if restore_needed:
+        user_input = input("\n🔥️ WARNING: The databases are different.\nDo you want to restore the database from the last backup? (y/N): ").strip().lower()
+        if user_input == 'y':
+            restore_database(pre_build_db, post_build_db)
+        else:
+            print("\n❌ Database restoration canceled.")

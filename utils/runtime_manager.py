@@ -48,6 +48,8 @@ class LogWorker(QRunnable):
             self.signals.logLoaded.emit(f"Ошибка загрузки логов: {e}")
 
 class LogWindow(QWidget):
+    closed = pyqtSignal()
+
     def __init__(self, log_file, theme="default"):
         super().__init__()
         self.log_file = log_file
@@ -173,3 +175,8 @@ class LogWindow(QWidget):
     def set_theme(self, new_theme):
         """Позволяет менять тему во время работы"""
         self.apply_theme(new_theme)
+
+    def closeEvent(self, event):
+        """Перехватываем закрытие окна и испускаем сигнал."""
+        self.closed.emit()  # Отправляем сигнал, что окно закрылось
+        event.accept()  # Закрываем окно

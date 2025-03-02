@@ -254,6 +254,7 @@ class UISGenerator:
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():
             self.log_window = LogWindow("logs/debug_log.txt", self.current_template)
+            self.log_window.closed.connect(lambda: self.log_button.setText("SHOW LOGS"))  # Подключаем сигнал
             self.log_window.show()
             self.log_button.setText("HIDE LOGS")  # Меняем текст кнопки
         else:

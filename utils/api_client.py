@@ -55,7 +55,7 @@ class APIClient:
 
     def get_search_by_title_id(self, title_id):
         endpoint = "title"
-        params = {'id_list': title_id}
+        params = {'id': title_id}
         return self.send_request(endpoint, params)
 
     def get_search_by_title_ids(self, title_ids):

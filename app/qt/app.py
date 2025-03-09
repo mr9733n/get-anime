@@ -529,8 +529,8 @@ class AnimePlayerAppVer3(QWidget):
                 return
 
             self.total_titles = titles
-
             self.current_title_id = title_id
+            self.current_title_ids = None
             self.current_day_of_week = None
 
             self.display_titles_in_ui(titles)

@@ -407,7 +407,15 @@ class AnimePlayerAppVer3(QWidget):
                         except json.JSONDecodeError:
                             self.logger.error(f"Decoding JSON error: {current_title_ids}")
                             current_title_ids = []
-                    self.display_titles(title_ids=current_title_ids)
+
+                    if len(current_title_ids) >= 12:
+                        # TODO: add batch size
+                        # self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=current_title_ids)
+                        self.logger.info(f"Using titles_list mode for {len(current_title_ids)} titles")
+                        self.display_titles(show_mode='titles_list', title_ids=current_title_ids)
+                    else:
+                        self.logger.info(f"Using default mode for {len(current_title_ids)} titles")
+                        self.display_titles(title_ids=current_title_ids)
 
                 case _:
                     self.logger.info("Restoring by player_offset")
@@ -960,15 +968,17 @@ class AnimePlayerAppVer3(QWidget):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
             elif link.startswith('filter_by_genre/'):
-                genre_name = link.split('/')[1]
-                self.logger.debug(f"Filtering by genre: {genre_name}")
+                genre_id = link.split('/')[1]
+                self.logger.debug(f"Filtering by genre: {genre_id}")
                 # Получаем список title_ids для данного жанра
-                title_ids = self.db_manager.get_titles_by_genre(genre_name)
+                title_ids = self.db_manager.get_titles_by_genre(genre_id)
                 if title_ids:
                     # Отображаем тайтлы с указанным жанром
-                    self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    # TODO: add batch size
+                    # self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    self.display_titles(show_mode='titles_list', title_ids=title_ids)
                 else:
-                    self.logger.warning(f"No titles found with genre '{genre_name}'")
+                    self.logger.warning(f"No titles found with genre '{genre_id}'")
                     # Можно показать пользователю сообщение, что тайтлы не найдены
             elif link.startswith('reload_template/'):
                 template_name = link.split('/')[1]

@@ -224,3 +224,7 @@ class DatabaseManager:
     def get_titles_by_genre(self, genre_name):
         """Titles by genre"""
         return self.get_manager.get_titles_by_genre(genre_name)
+
+    def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
+        """Titles count"""
+        return self.get_manager.get_total_titles_count(title_ids, batch_size, offset)

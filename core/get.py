@@ -383,6 +383,24 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
+    def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
+        """Возвращает общее количество тайтлов с учетом фильтров."""
+        with self.Session as session:
+            try:
+                query = session.query(Title)
+                if title_ids:
+                    query = query.filter(Title.title_id.in_(title_ids))
+                else:
+                    if batch_size:
+                        query = query.offset(offset).limit(batch_size)
+
+                count = query.count()
+                self.logger.debug(f"Total titles count: {count}")
+                return count
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                return 0
+
     def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
@@ -411,9 +429,15 @@ class GetManager:
 
                 titles = query.all()
 
-                # Создаем список жанров в виде строк для каждого тайтла и добавляем их в новое поле `genre_names`
+                # Создаем списки жанров и их ID
                 for title in titles:
-                    title.genre_names = [relation.genre.name for relation in title.genres if relation.genre]
+                    genre_data = [(relation.genre.name, relation.genre.genre_id)
+                                  for relation in title.genres if relation.genre]
+                    if genre_data:
+                        title.genre_names, title.genre_ids = zip(*genre_data)
+                    else:
+                        title.genre_names = []
+                        title.genre_ids = []
 
                 # self.logger.debug(f"Titles were found in database. QUERY: {str(query)}")
                 # self.logger.debug(f"Titles were found in database. titles: {titles}")
@@ -422,26 +446,14 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
-
-    def get_titles_by_genre(self, genre_name):
-        """Получает список title_id, связанных с указанным жанром."""
+    def get_titles_by_genre(self, genre_id):
+        """Получает список title_id, связанных с указанным жанром по его ID."""
         with self.Session as session:
             try:
-                # Получаем id жанра по имени
-                genre = session.query(Genre).filter_by(name=genre_name).first()
-                if not genre:
-                    self.logger.warning(f"Жанр '{genre_name}' не найден в базе данных.")
-                    return []
-
-                # Получаем все связи этого жанра с тайтлами
-                title_relations = session.query(TitleGenreRelation).filter_by(genre_id=genre.genre_id).all()
-
-                # Извлекаем title_ids из отношений
+                title_relations = session.query(TitleGenreRelation).filter_by(genre_id=genre_id).all()
                 title_ids = [relation.title_id for relation in title_relations]
-
-                self.logger.info(f"Найдено {len(title_ids)} тайтлов с жанром '{genre_name}'")
+                self.logger.info(f"Найдено {len(title_ids)} тайтлов с genre_id: {genre_id}")
                 return title_ids
-
             except Exception as e:
-                self.logger.error(f"Ошибка при поиске тайтлов по жанру '{genre_name}': {e}")
+                self.logger.error(f"Ошибка при поиске тайтлов по genre_id {genre_id}: {e}")
                 return []

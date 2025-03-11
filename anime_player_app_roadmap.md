@@ -241,6 +241,7 @@ python compare_titles.py
 
 ### 8.20. Improvements
 - [x] New feature: show titles by genre
+- [ ] New feature: add pagination info  
 
 ### 8.21. Some fixes
 - [ ] change background-color in no_background & no_background_night template for system, text_list

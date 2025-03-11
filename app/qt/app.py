@@ -959,6 +959,17 @@ class AnimePlayerAppVer3(QWidget):
             if link.startswith('display_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
+            elif link.startswith('filter_by_genre/'):
+                genre_name = link.split('/')[1]
+                self.logger.debug(f"Filtering by genre: {genre_name}")
+                # Получаем список title_ids для данного жанра
+                title_ids = self.db_manager.get_titles_by_genre(genre_name)
+                if title_ids:
+                    # Отображаем тайтлы с указанным жанром
+                    self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                else:
+                    self.logger.warning(f"No titles found with genre '{genre_name}'")
+                    # Можно показать пользователю сообщение, что тайтлы не найдены
             elif link.startswith('reload_template/'):
                 template_name = link.split('/')[1]
                 self.db_manager.save_template(template_name)

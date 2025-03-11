@@ -220,3 +220,7 @@ class DatabaseManager:
     def get_titles_list_from_db(self, title_ids=None, batch_size=None, offset=0):
         """Titles without episodes"""
         return self.get_manager.get_titles_list_from_db(title_ids, batch_size, offset)
+
+    def get_titles_by_genre(self, genre_name):
+        """Titles by genre"""
+        return self.get_manager.get_titles_by_genre(genre_name)

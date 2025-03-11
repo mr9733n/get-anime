@@ -262,13 +262,15 @@ class UIGenerator:
             return f"background-image: url('static/background.png');"
 
     def generate_genres_html(self, title):
-        """Генерирует HTML для отображения жанров."""
+        """Генерирует HTML для отображения жанров с поддержкой кликабельных ссылок."""
         try:
             if hasattr(title, 'genre_names') and title.genre_names:
                 try:
-                    # Используем жанры в виде списка строк
                     genres_list = title.genre_names
-                    genres = ', '.join(genres_list) if genres_list else "Жанры отсутствуют"
+                    linked_genres = []
+                    for genre in genres_list:
+                        linked_genres.append(f'<a href="filter_by_genre/{genre}">{genre}</a>')
+                    genres = ', '.join(linked_genres) if linked_genres else "Жанры отсутствуют"
                 except Exception as e:
                     self.logger.error(f"Ошибка при генерации HTML жанров: {e}")
                     genres = "Жанры отсутствуют"

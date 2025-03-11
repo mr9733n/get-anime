@@ -5,8 +5,9 @@ import sqlalchemy
 from sqlalchemy import or_, and_
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
-from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, TitleGenreRelation, \
-    Template
+from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
+    TitleGenreRelation, \
+    Template, Genre
 
 
 class GetManager:
@@ -421,3 +422,26 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
+
+    def get_titles_by_genre(self, genre_name):
+        """Получает список title_id, связанных с указанным жанром."""
+        with self.Session as session:
+            try:
+                # Получаем id жанра по имени
+                genre = session.query(Genre).filter_by(name=genre_name).first()
+                if not genre:
+                    self.logger.warning(f"Жанр '{genre_name}' не найден в базе данных.")
+                    return []
+
+                # Получаем все связи этого жанра с тайтлами
+                title_relations = session.query(TitleGenreRelation).filter_by(genre_id=genre.genre_id).all()
+
+                # Извлекаем title_ids из отношений
+                title_ids = [relation.title_id for relation in title_relations]
+
+                self.logger.info(f"Найдено {len(title_ids)} тайтлов с жанром '{genre_name}'")
+                return title_ids
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при поиске тайтлов по жанру '{genre_name}': {e}")
+                return []

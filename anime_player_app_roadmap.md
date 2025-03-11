@@ -205,6 +205,7 @@ python compare_titles.py
 - [x] add additional logic for handling Qt errors
 - [x] fixed creating the fault.log on app start
 - [x] utils excluded from the build were moving to the midnight folder
+- [x] Need to add refreshing title when loaded from db by api request 
 
 ### 8.17. Saving app current state on exit
 - [x] add logic to save app current state on exit
@@ -229,6 +230,7 @@ python compare_titles.py
 - [x] fix saving state for the list of title_ids 
 - [x] add api error message
 - [x] some improvements for build.spec
+- [x] fix Database comparison after build
 
 ### 8.19. Some fixes
 - [x] ERROR | app.qt.app_state_manager.save_state_to_db | Ошибка при сохранении состояния в БД: Object of type set is not JSON serializable
@@ -236,7 +238,11 @@ python compare_titles.py
 - [x] fix fetch title by id
 - [x] fix saving state for title_id
 - [x] add code stats script
-- [ ] fix Database comparison after build
+
+### 8.20. Improvements
+- [x] New feature: show titles by genre
+
+### 8.21. Some fixes
 - [ ] change background-color in no_background & no_background_night template for system, text_list
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
@@ -244,19 +250,15 @@ python compare_titles.py
 - [ ] refactoring app.py
 - [ ] ...
 
-### 8.20. redesign system browser 2
-- [ ] add/update table data
-- [ ] ...
-
-### 8.21. change one title view
+### 8.22. change one title view
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 
-### 8.22. something for db
-- [ ] remove schedule view logic from get_titles
-- [ ] Try to do migration for old big db
-- [ ] create job to inspect db tables for condition
+### 8.23. redesign system browser 2
+- [ ] add/update table data
+- [ ] ...
+
 
 ## 9. TECH DEBT
 ### 9.1. Использование Pydantic для Валидации
@@ -264,16 +266,15 @@ python compare_titles.py
 - [ ] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
 
 ### 9.2. Обработка Ошибок и Резервное Копирование
+- [ ] Merge algorithm is unstable
 - [ ] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
+- [ ] remove schedule view logic from get_titles
+- [ ] Try to do migration for old big db
+- [ ] create job to inspect db tables for condition
 
 ### 9.3. add watch history bulk selection
 - [ ] select many >_< 
-
-### 9.4. need to think how to merge data from other devices
-- [ ] Need to add refreshing title when loaded from db by api request 
-- [ ] Merge algorithm is unstable
-- [ ] ..
 
 ## Этап 10. Тестирование и Оптимизация
 ### 10.1. Тестирование Методов `DatabaseManager`

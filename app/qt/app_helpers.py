@@ -73,16 +73,16 @@ class TitleDataFactory:
 
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()
+            # Если show_mode — это режим, в котором требуются конкретные title_ids
+            elif title_ids:
+                # TODO: addd batch size
+                return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
             else:
                 # Получаем ссылку на метод из db_manager
                 data_fetcher = getattr(self.db_manager, data_fetcher_name, None)
                 if callable(data_fetcher):
                     # Вызываем метод, передавая необходимые параметры
                     return data_fetcher(batch_size=batch_size, offset=current_offset)
-
-            # Если show_mode — это режим, в котором требуются конкретные title_ids
-            if title_ids:
-                return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
 
             # В других случаях используем метод для получения всех тайтлов
             return self.db_manager.get_titles_from_db(show_all=True, batch_size=batch_size, offset=current_offset)

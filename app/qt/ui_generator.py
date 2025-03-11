@@ -127,7 +127,7 @@ class UIGenerator:
             blank_spase = self.blank_spase
             rating_value = ''.join(rating_star_images)
             watch_html = self.generate_watch_history_html(title.title_id)
-            need_to_see_html = self.generate_nee_to_see_html(title.title_id)
+            need_to_see_html = self.generate_need_to_see_html(title.title_id)
             return f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 4}{rating_name}:{blank_spase}{rating_value}'
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"
@@ -174,7 +174,7 @@ class UIGenerator:
             error_message = f"Error in generate_watch_all_episodes_html: {str(e)}"
             self.logger.error(error_message)
 
-    def generate_nee_to_see_html(self, title_id):
+    def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
         try:
             image_base64_green = self.prepare_generate_poster_html(11)
@@ -264,19 +264,17 @@ class UIGenerator:
     def generate_genres_html(self, title):
         """Генерирует HTML для отображения жанров с поддержкой кликабельных ссылок."""
         try:
-            if hasattr(title, 'genre_names') and title.genre_names:
+            if hasattr(title, 'genre_names') and title.genre_names and hasattr(title, 'genre_ids') and title.genre_ids:
                 try:
-                    genres_list = title.genre_names
                     linked_genres = []
-                    for genre in genres_list:
-                        linked_genres.append(f'<a href="filter_by_genre/{genre}">{genre}</a>')
+                    for genre_name, genre_id in zip(title.genre_names, title.genre_ids):
+                        linked_genres.append(f'<a href="filter_by_genre/{genre_id}">{genre_name}</a>')
                     genres = ', '.join(linked_genres) if linked_genres else "Жанры отсутствуют"
                 except Exception as e:
                     self.logger.error(f"Ошибка при генерации HTML жанров: {e}")
                     genres = "Жанры отсутствуют"
             else:
                 genres = "Жанры отсутствуют"
-
             return f"""<p>Жанры: {genres}</p>"""
 
         except Exception as e:

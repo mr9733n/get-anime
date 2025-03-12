@@ -241,13 +241,14 @@ class UIManager:
         # Скрываем пагинацию по умолчанию
         pagination_widget.setVisible(False)
 
+        # Добавляем нижний лейаут (дополнительные кнопки управления)
+        main_layout.addLayout(bottom_layout)
+
         # Добавляем в основной layout
         main_layout.addWidget(pagination_widget)
         self.parent_widgets["pagination_widget"] = pagination_widget
         self.parent_widgets["pagination_layout"] = pagination_widget_layout
 
-        # Добавляем нижний лейаут (дополнительные кнопки управления)
-        main_layout.addLayout(bottom_layout)
 
     @staticmethod
     def apply_shadow_effects(widgets):

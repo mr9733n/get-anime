@@ -1,5 +1,5 @@
 # ui_manager.py
-from PyQt5.QtCore import QEventLoop
+from PyQt5.QtCore import QEventLoop, Qt
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
     QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication
 
@@ -187,6 +187,65 @@ class UIManager:
         # Добавляем скролл-область (основной контент)
         main_layout.addWidget(self.parent.scroll_area)
 
+        # Добавляем лейаут пагинации под скролл-областью
+        pagination_widget = QWidget()
+        pagination_widget_layout = QHBoxLayout(pagination_widget)
+        pagination_widget_layout.setAlignment(Qt.AlignCenter)
+
+        # Создаем кнопки для пагинации с уникальными колбеками
+        prev_page_button = QPushButton("←", self.parent)
+        prev_page_button.setFixedWidth(50)
+        pagination_info = QLabel("0 .. 0", self.parent)
+        pagination_info.setAlignment(Qt.AlignCenter)
+        next_page_button = QPushButton("→", self.parent)
+        next_page_button.setFixedWidth(50)
+
+        # Добавляем стиль кнопкам
+        button_style = """
+            QPushButton {
+                background-color: #4a4a4a;
+                color: white;
+                padding: 6px 12px;
+                border: none;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #5c5c5c;
+            }
+            QPushButton:pressed {
+                background-color: #000;
+            }
+            QPushButton:disabled {
+                background-color: #aaa;
+                color: #ddd;
+            }
+        """
+        prev_page_button.setStyleSheet(button_style)
+        next_page_button.setStyleSheet(button_style)
+
+        # Сохраняем ссылки на виджеты в словаре
+        self.parent_widgets["pagination_prev"] = prev_page_button
+        self.parent_widgets["pagination_info"] = pagination_info
+        self.parent_widgets["pagination_next"] = next_page_button
+
+        # Подключаем новые обработчики для пагинации фильтрованных результатов
+        prev_page_button.clicked.connect(lambda: self.parent.navigate_pagination(go_forward=False))
+        next_page_button.clicked.connect(lambda: self.parent.navigate_pagination(go_forward=True))
+
+        # Добавляем виджеты в layout пагинации
+        pagination_widget_layout.addWidget(prev_page_button)
+        pagination_widget_layout.addWidget(pagination_info)
+        pagination_widget_layout.addWidget(next_page_button)
+
+        # Скрываем пагинацию по умолчанию
+        pagination_widget.setVisible(False)
+
+        # Добавляем в основной layout
+        main_layout.addWidget(pagination_widget)
+        self.parent_widgets["pagination_widget"] = pagination_widget
+        self.parent_widgets["pagination_layout"] = pagination_widget_layout
+
         # Добавляем нижний лейаут (дополнительные кнопки управления)
         main_layout.addLayout(bottom_layout)
 
@@ -212,6 +271,33 @@ class UIManager:
         for widget in self.parent.findChildren(QPushButton):
             widget.setEnabled(enabled)
 
+
+    def update_pagination_info(self, current_page, total_pages, total_items):
+        """Обновляет информацию о пагинации в UI."""
+        try:
+            # Обновляем информационный текст
+            pagination_info = self.parent_widgets.get("pagination_info")
+            if pagination_info:
+                info_text = f"Pages: {current_page} .. {total_pages} (Titles: {total_items})"
+                pagination_info.setText(info_text)
+
+            # Включаем/отключаем кнопки в зависимости от текущей страницы
+            prev_button = self.parent_widgets.get("pagination_prev")
+            next_button = self.parent_widgets.get("pagination_next")
+
+            if prev_button:
+                prev_button.setEnabled(current_page > 1)
+
+            if next_button:
+                next_button.setEnabled(current_page < total_pages)
+
+            # Показываем/скрываем виджет пагинации
+            pagination_widget = self.parent_widgets.get("pagination_widget")
+            if pagination_widget:
+                pagination_widget.setVisible(total_pages > 1)
+
+        except Exception as e:
+            self.parent.logger.error(f"Error updating pagination info: {e}")
 
 class LoadingDialog(QDialog):
     def __init__(self, parent=None):

@@ -43,6 +43,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version, template_name):
         super().__init__()
+        self.current_show_mode = None
         self.error_label = None
         self.tray_icon = None
         self.logger = logging.getLogger(__name__)
@@ -410,9 +411,10 @@ class AnimePlayerAppVer3(QWidget):
 
                     if len(current_title_ids) >= 12:
                         # TODO: add batch size
-                        # self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=current_title_ids)
                         self.logger.info(f"Using titles_list mode for {len(current_title_ids)} titles")
-                        self.display_titles(show_mode='titles_list', title_ids=current_title_ids)
+                        # self.display_titles(show_mode='titles_list', title_ids=current_title_ids)
+                        self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size,
+                                            title_ids=current_title_ids)
                     else:
                         self.logger.info(f"Using default mode for {len(current_title_ids)} titles")
                         self.display_titles(title_ids=current_title_ids)
@@ -423,6 +425,32 @@ class AnimePlayerAppVer3(QWidget):
 
         except Exception as e:
             self.logger.error(f"Restoring app state error: {e}")
+
+    def navigate_pagination(self, go_forward=True):
+        """
+        Навигация по страницам текущих результатов (любых списков тайтлов)
+        """
+        try:
+            if not self.current_title_ids:
+                self.logger.warning("No titles for navigation")
+                return
+            show_mode = getattr(self, 'current_show_mode', 'titles_list')
+            # TODO: default size = 12
+            batch_size = 12
+            total_count = len(self.current_title_ids)
+            if go_forward:
+                if self.current_offset + batch_size >= total_count:
+                    self.logger.info("End of the list, return to begining")
+                    self.current_offset = 0
+                else:
+                    self.current_offset += batch_size
+            else:
+                self.current_offset = max(0, self.current_offset - batch_size)
+            self.logger.debug(f"Navigation: offset={self.current_offset}, batch_size={batch_size}, total={total_count}")
+            self.display_titles(title_ids=self.current_title_ids, batch_size=batch_size,
+                                show_mode=show_mode)
+        except Exception as e:
+            self.logger.error(f"Ошибка при навигации по результатам: {e}")
 
     def display_titles(self, title_ids=None, batch_size=None, show_mode='default', show_previous=False, show_next=False,
                        start=False):
@@ -439,6 +467,7 @@ class AnimePlayerAppVer3(QWidget):
             self.current_title_id = None
             self.current_day_of_week = None
             self.current_title_ids = title_ids
+            self.current_show_mode = show_mode
 
             # Логика определения offset
             if start:
@@ -476,6 +505,30 @@ class AnimePlayerAppVer3(QWidget):
                 self.current_offset = 0
                 self.total_titles = 0
                 return
+
+            # Вычисляем информацию о пагинации, если есть список title_ids
+            if title_ids and len(title_ids) > 0:
+                if batch_size:
+                    total_pages = (len(title_ids) + batch_size - 1) // batch_size  # Округление вверх
+                    current_page = (self.current_offset // batch_size) + 1
+
+                    # Обновляем информацию о пагинации в UI
+                    self.ui_manager.update_pagination_info(current_page, total_pages, len(title_ids))
+
+                    # Показываем виджет пагинации только если страниц больше одной
+                    pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+                    if pagination_widget:
+                        pagination_widget.setVisible(total_pages > 1)
+                else:
+                    # Скрываем пагинацию, если batch_size не задан
+                    pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+                    if pagination_widget:
+                        pagination_widget.setVisible(False)
+            else:
+                # Скрываем пагинацию, если нет списка title_ids
+                pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+                if pagination_widget:
+                    pagination_widget.setVisible(False)
 
             # Передача данных в метод отображения
             self.display_titles_in_ui(titles, show_mode)
@@ -540,6 +593,9 @@ class AnimePlayerAppVer3(QWidget):
             self.current_title_id = title_id
             self.current_title_ids = None
             self.current_day_of_week = None
+            pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+            if pagination_widget:
+                pagination_widget.setVisible(False)
 
             self.display_titles_in_ui(titles)
         except Exception as e:
@@ -561,6 +617,9 @@ class AnimePlayerAppVer3(QWidget):
             self.current_day_of_week = self.day_of_week
             self.current_title_id = None
             self.current_title_ids = None
+            pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+            if pagination_widget:
+                pagination_widget.setVisible(False)
 
             self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
             if titles:
@@ -975,8 +1034,8 @@ class AnimePlayerAppVer3(QWidget):
                 if title_ids:
                     # Отображаем тайтлы с указанным жанром
                     # TODO: add batch size
-                    # self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
-                    self.display_titles(show_mode='titles_list', title_ids=title_ids)
+                    self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    # self.display_titles(show_mode='titles_list', title_ids=title_ids)
                 else:
                     self.logger.warning(f"No titles found with genre '{genre_id}'")
                     # Можно показать пользователю сообщение, что тайтлы не найдены

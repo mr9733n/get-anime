@@ -75,8 +75,22 @@ class TitleDataFactory:
                 return self.db_manager.get_statistics_from_db()
             # Если show_mode — это режим, в котором требуются конкретные title_ids
             elif title_ids:
-                # TODO: addd batch size
-                return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
+                if current_offset >= len(title_ids):
+                    self.logger.warning(
+                        f"Offset {current_offset} превышает количество доступных title_ids {len(title_ids)}. Сбрасываем offset.")
+                    current_offset = 0
+                # TODO: add batch size
+                if batch_size and len(title_ids) > batch_size:
+                    # Получаем подмножество title_ids для текущей страницы
+                    end_idx = min(current_offset + batch_size, len(title_ids))
+                    page_title_ids = title_ids[current_offset:end_idx]
+
+                    self.logger.debug(f"Применяем пагинацию: {current_offset}:{end_idx} из {len(title_ids)} title_ids")
+
+                    return self.db_manager.get_titles_from_db(show_all=False, title_ids=page_title_ids, offset=current_offset)
+                else:
+                    # Если title_ids меньше или равен размеру страницы, просто возвращаем все
+                    return self.db_manager.get_titles_from_db(show_all=False, title_ids=title_ids)
             else:
                 # Получаем ссылку на метод из db_manager
                 data_fetcher = getattr(self.db_manager, data_fetcher_name, None)

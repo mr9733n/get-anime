@@ -387,13 +387,12 @@ class GetManager:
         """Возвращает общее количество тайтлов с учетом фильтров."""
         with self.Session as session:
             try:
-                query = session.query(Title)
                 if title_ids:
-                    query = query.filter(Title.title_id.in_(title_ids))
+                    return len(title_ids)
                 else:
+                    query = session.query(Title)
                     if batch_size:
                         query = query.offset(offset).limit(batch_size)
-
                 count = query.count()
                 self.logger.debug(f"Total titles count: {count}")
                 return count

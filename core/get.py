@@ -165,8 +165,8 @@ class GetManager:
             try:
                 self.logger.debug(f"Processing poster link for title_id: {title_id}")
 
-                # Запрос для получения poster_path_small для конкретного title_id
-                poster_link = session.query(Title.poster_path_small).filter(Title.title_id == title_id).scalar()
+                # Запрос для получения poster_path_original для конкретного title_id
+                poster_link = session.query(Title.poster_path_original).filter(Title.title_id == title_id).scalar()
 
                 if poster_link:
                     self.logger.debug(f"Poster link found for title_id: {title_id}, link: {poster_link}")

@@ -242,7 +242,9 @@ python compare_titles.py
 ### 8.20. Improvements
 - [x] New feature: show titles by genre
 - [x] New feature: add pagination info
-- [ ] fix big offset in page count
+- [x] fix find more than 2 titles
+- [x] small fixes for compare_titles
+- [ ] fix pagination: shows wrong first page, large offset value 
 - [ ] do pretty pagination logic
 
 ### 8.21. Some fixes

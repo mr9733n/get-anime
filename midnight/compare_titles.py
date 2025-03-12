@@ -1,12 +1,15 @@
 import os
+import re
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from core.tables import Title  # предполагается, что модель Title определена в модуле core.tables
+from core.tables import Title
 
-FILE_PATH = "title_ids.txt"
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
-db_dir = os.path.join(base_dir, 'db')
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+base_dir = os.path.join(ROOT_DIR, "midnight")
+FILE_PATH = os.path.join(base_dir, "title_ids.txt")
+db_dir = os.path.join(ROOT_DIR, 'db')
 db_path = os.path.join(db_dir, 'anime_player.db')
 DATABASE_URL = f"sqlite:///{db_path}"
 
@@ -29,14 +32,25 @@ def read_file_title_ids(file_path):
             if not line:
                 continue
             if "->" in line:
+                # Разделяем строку по стрелке
                 parts = line.split("->")
-                if len(parts) == 2:
-                    tid_str = parts[1].strip()
-                    try:
-                        tid = int(tid_str)
-                        title_ids.add(tid)
-                    except ValueError:
-                        print(f"Не удалось преобразовать {tid_str} в число")
+                if len(parts) >= 2:  # Убедимся, что есть хотя бы две части
+                    # Извлекаем вторую часть (после первой стрелки)
+                    second_part = parts[1].strip()
+
+                    # Используем регулярное выражение для поиска числа
+                    # \d+ означает "одна или более цифр"
+                    match = re.search(r'\d+', second_part)
+                    if match:
+                        tid_str = match.group(0)  # Получаем найденное число
+                        try:
+                            tid = int(tid_str)
+                            title_ids.add(tid)
+                        except ValueError:
+                            print(f"Не удалось преобразовать {tid_str} в число")
+                    else:
+                        print(f"Не удалось найти числовой ID в строке: {line}")
+
     return title_ids
 
 

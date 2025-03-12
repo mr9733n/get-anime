@@ -87,6 +87,7 @@ show_mode_metadata = {
     'system': {"create_method": "create_system_widget", "description": "System View", "batch_size": None, "columns": None, "generator": "_generate_system_html", "data_fetcher": 'system'},
     'franchise_list': {"create_method": "create_list_widget", "description": "Franchise List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_franchises_from_db"},
     'titles_list': {"create_method": "create_list_widget", "description": "Titles List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_titles_list_from_db"},
+    'titles_genre_list': {"create_method": "create_list_widget", "description": "Titles Genre List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_titles_list_from_db"},
     'need_to_see_list': {"create_method": "create_list_widget", "description": "Need to See List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_need_to_see_from_db"},
     'one_title': {"create_method": "create_one_title_widget", "description": "One Title", "batch_size": None, "columns": None, "generator": "_generate_one_title_html", "data_fetcher": ''},
     'default': {"create_method": "create_default_widget", "description": "Default View", "batch_size": 2, "columns": 2, "generator": "_generate_default_html", "data_fetcher": ''}

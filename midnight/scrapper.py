@@ -25,7 +25,9 @@ HEADERS = {
     "Referer": "https://anilibria.tv/pages/catalog.php"
 }
 SEARCH_PARAM = '{"year":"","genre":"","season":""}'
-FILE_PATH = "title_ids.txt"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+base_dir = os.path.join(ROOT_DIR, "midnight")
+FILE_PATH = os.path.join(base_dir, "title_ids.txt")
 
 
 def get_total_and_pages():
@@ -73,22 +75,28 @@ def read_title_ids(file_path):
                 continue
             if "->" in line:
                 parts = line.split("->")
-                if len(parts) == 2:
+                if len(parts) == 3:
                     tid_str = parts[1].strip()
-                    try:
-                        title_ids.append(int(tid_str))
-                    except ValueError:
-                        print(f"Не удалось преобразовать {tid_str} в число")
+                    poster_path = parts[2].strip()
+                    # Находим числовой ID
+                    match = re.search(r'\d+', tid_str)
+                    if match:
+                        tid_str = match.group(0)
+                        try:
+                            title_ids.append(int(tid_str))
+                        except ValueError:
+                            print(f"Не удалось преобразовать {tid_str} в число")
+                    else:
+                        print(f"Не удалось найти числовой ID в строке: {line}")
     return title_ids
 
 
 def scrape_title_ids(existing_ids, num_pages, file_path):
     """
-    Проходит по страницам каталога, извлекает title_id для каждого релиза и записывает в файл только
-    те записи, которых нет в existing_ids. Возвращает список новых title_id.
+    Проходит по страницам каталога, извлекает title_id и путь постера для каждого релиза
+    и записывает в файл только те записи, которых нет в existing_ids.
     """
     new_title_ids = []
-    # Открываем файл в режиме добавления (append)
     with open(file_path, "a", encoding="utf-8") as outfile:
         for page in range(1, num_pages + 1):
             print(f"Обработка страницы {page}...")
@@ -120,14 +128,15 @@ def scrape_title_ids(existing_ids, num_pages, file_path):
                 img_tag = link.find("img", class_="torrent_pic")
                 if img_tag:
                     img_src = img_tag.get("src")
-                    match = re.search(r"/storage/releases/posters/(\d+)/", img_src)
+                    match = re.search(r"/storage/releases/posters/(\d+)/(.+)$", img_src)
                     if match:
                         title_id = match.group(1)
+                        poster_path = match.group(2)
                         title_id_int = int(title_id)
-                        # Записываем в файл только, если такого title_id еще нет
+
                         if title_id_int not in existing_ids:
-                            print(f"Новый релиз: {release_url}, title_id: {title_id}")
-                            outfile.write(f"{release_url} -> {title_id}\n")
+                            print(f"Новый релиз: {release_url}, title_id: {title_id}, poster: {poster_path}")
+                            outfile.write(f"{release_url} -> {title_id} -> {poster_path}\n")
                             new_title_ids.append(title_id_int)
                             existing_ids.add(title_id_int)
                     else:
@@ -144,19 +153,17 @@ def main():
         print("Total релизов:", total)
         print("Количество страниц:", num_pages)
     else:
-        print("Общее количество релизов неизвестно, продолжаем скрапинг")
+        print("Общее количество релизов неизвестно, продолжаем...")
         num_pages = 1
 
-    # Читаем уже имеющиеся title_id (если файл существует)
     existing_ids = set(read_title_ids(FILE_PATH))
     print("Найдено записей в файле:", len(existing_ids))
 
-    # Если файл уже содержит полное количество записей, скрапинг не требуется
     if total is not None and len(existing_ids) == total:
-        print("Файл содержит полное количество записей, скрапинг не требуется")
+        print("Файл содержит полное количество записей, обновление не требуется")
         new_title_ids = []
     else:
-        print("Запускаем скрапинг для получения новых данных...")
+        print("Запускаем получение новых данных...")
         new_title_ids = scrape_title_ids(existing_ids, num_pages, FILE_PATH)
 
     print("Новые Title IDs:", new_title_ids)

@@ -133,3 +133,62 @@ UPDATE titles
 SET last_change = strftime('%Y-%m-%d %H:%M:%f000000', last_change, 'unixepoch', 'localtime')
 WHERE LENGTH(last_change) <= 10 AND last_change GLOB '[0-9]*';
 ```
+10. Update 'title_id' foreign key
+    10. Check foreign key count 0
+    10. Update 'title_id' foreign key in Titles
+```sql
+SELECT 
+    'franchise_releases' as table_name, 
+    (SELECT COUNT(*) FROM franchise_releases WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'franchises' as table_name, 
+    (SELECT COUNT(*) FROM franchises WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'posters' as table_name, 
+    (SELECT COUNT(*) FROM posters WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'torrents' as table_name, 
+    (SELECT COUNT(*) FROM torrents WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'title_genre_relation' as table_name, 
+    (SELECT COUNT(*) FROM title_genre_relation WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'title_team_relation' as table_name, 
+    (SELECT COUNT(*) FROM title_team_relation WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'episodes' as table_name, 
+    (SELECT COUNT(*) FROM episodes WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'schedule' as table_name, 
+    (SELECT COUNT(*) FROM schedule WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'ratings' as table_name, 
+    (SELECT COUNT(*) FROM ratings WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'history' as table_name, 
+    (SELECT COUNT(*) FROM history WHERE title_id = ?) as record_count
+UNION ALL
+SELECT 
+    'production_studios' as table_name, 
+    (SELECT COUNT(*) FROM production_studios WHERE title_id = ?) as record_count;
+```
+```sql
+UPDATE titles SET title_id = ? WHERE title_id = ?; 
+```
+
+11. Select titles without poster
+```sql
+SELECT t.title_id, t.code, t.name_en
+FROM titles t
+LEFT JOIN posters p ON t.title_id = p.title_id
+WHERE p.poster_id IS NULL
+```

@@ -246,6 +246,7 @@ python compare_titles.py
 - [x] small fixes for compare_titles
 - [x] New feature: add UPDATE TITLE button for title
 - [x] changed button titles: UPDATE TITLE -> UT⮂, RELOAD -> RS⮂
+- [x] New feature: scrapping and compare poster links
 - [ ] fix pagination: shows wrong first page, large offset value 
 - [ ] do pretty pagination logic
 

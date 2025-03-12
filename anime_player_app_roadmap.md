@@ -244,6 +244,8 @@ python compare_titles.py
 - [x] New feature: add pagination info
 - [x] fix find more than 2 titles
 - [x] small fixes for compare_titles
+- [x] New feature: add UPDATE TITLE button for title
+- [x] changed button titles: UPDATE TITLE -> UT⮂, RELOAD -> RS⮂
 - [ ] fix pagination: shows wrong first page, large offset value 
 - [ ] do pretty pagination logic
 

@@ -322,6 +322,7 @@ class AnimePlayerAppVer3(QWidget):
         # Существующие статические колбеки
         callbacks = {
             "get_search_by_title": self.get_search_by_title,
+            "get_update_title": self.get_update_title,
             "get_random_title": self.get_random_title,
             "refresh_display": self.refresh_display,
             "save_playlist_wrapper": self.save_playlist_wrapper,
@@ -882,6 +883,26 @@ class AnimePlayerAppVer3(QWidget):
                     if title_id:
                         parsed_data.append({"day": day, "title_id": title_id})
         return parsed_data
+
+    def get_update_title(self):
+        try:
+            self.ui_manager.show_loader("Fetching by title...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            search_text = self.title_search_entry.text()
+            self.title_search_entry.clear()
+            if not search_text:
+                search_text = self.current_title_id
+
+            self.logger.debug(f"keywords: {search_text}")
+            self._handle_no_titles_found(search_text)
+
+        except Exception as e:
+            self.logger.error(f"Error while fetching get_search_by_title: {e}")
+            return False, None
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def get_search_by_title(self):
         try:

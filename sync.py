@@ -191,7 +191,7 @@ def run_merge_utility():
     """Runs merge_utility.exe."""
     if not os.path.exists(MERGE_UTILITY_NAME):
         raise FileNotFoundError(f"Merge utility {MERGE_UTILITY_NAME} not found.")
-    expected_hash = "ad74c9d7e30c017b499f04134159a96fca6614f70be5045771dcbcadd4a3ce1b"
+    expected_hash = "2c1ff91ac8c35989c026082d21f51a386faee49d482d5f65b1810bff98c454d0"
     status = verify_file_hash(MERGE_UTILITY_NAME, expected_hash)
     print(f"Running {MERGE_UTILITY_NAME}. Verified: {status}.")
     logger.info(f"Running {MERGE_UTILITY_NAME}.")

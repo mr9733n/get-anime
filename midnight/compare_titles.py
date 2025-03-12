@@ -9,7 +9,8 @@ from core.tables import Title
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 base_dir = os.path.join(ROOT_DIR, "midnight")
 FILE_PATH = os.path.join(base_dir, "title_ids.txt")
-db_dir = os.path.join(ROOT_DIR, 'db')
+build_dir = os.path.join(ROOT_DIR, 'dist/AnimePlayer')
+db_dir = os.path.join(build_dir, 'db')
 db_path = os.path.join(db_dir, 'anime_player.db')
 DATABASE_URL = f"sqlite:///{db_path}"
 

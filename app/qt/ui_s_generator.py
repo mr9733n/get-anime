@@ -210,7 +210,7 @@ class UISGenerator:
                 font-size: 14pt;
                 font-weight: bold;
                 position: relative;
-                background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+                background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный желтый фон */
                 """
             )
 

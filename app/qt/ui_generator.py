@@ -334,25 +334,25 @@ class UIGenerator:
             error_message = f"Error in generate_announce_html: {str(e)}"
             self.logger.error(error_message)
 
-    def generate_status_html(self, title):
+    def generate_status_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения статуса."""
         try:
             title_status = title.status_string if title.status_string else "Статус отсутствует"
-            return f"""<p>Статус: {title_status}</p>"""
+            title_code = title.status_code
+            status_html = f'<a href="filter_by_status/{title_code}">{title_status}</a>'
+            if title_code == 1:  # В работе
+                status_icon = f"📺"
+            elif title_code == 2:  # Завершен
+                status_icon = f"🎬"
+            else:
+                status_icon = ""
+            if show_text_list:
+                return f"""{status_icon}"""
+            else:
+                return f"""<p>Статус: {status_html}{status_icon}</p>"""
 
         except Exception as e:
             error_message = f"Error in generate_status_html: {str(e)}"
-            self.logger.error(error_message)
-
-    def generate_description_html(self, title):
-        """Генерирует HTML для отображения описания, если оно есть."""
-        try:
-            if title.description:
-                return f"""<p>Описание: {title.description}</p>"""
-            else:
-                return ""
-        except Exception as e:
-            error_message = f"Error in generate_description_html: {str(e)}"
             self.logger.error(error_message)
 
     def generate_year_html(self, title, show_text_list=False):
@@ -367,6 +367,17 @@ class UIGenerator:
                 return f"""<p>Год выпуска: {year_html}</p>"""
         except Exception as e:
             error_message = f"Error in generate_year_html: {str(e)}"
+            self.logger.error(error_message)
+
+    def generate_description_html(self, title):
+        """Генерирует HTML для отображения описания, если оно есть."""
+        try:
+            if title.description:
+                return f"""<p>Описание: {title.description}</p>"""
+            else:
+                return ""
+        except Exception as e:
+            error_message = f"Error in generate_description_html: {str(e)}"
             self.logger.error(error_message)
 
     def generate_type_html(self, title):

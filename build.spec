@@ -110,7 +110,7 @@ block_cipher = None
 
 datas = [
     (os.path.join(project_dir, 'static/*'), 'static'),
-    (os.path.join(project_dir, 'templates/default/*'), 'templates/default'),
+    (os.path.join(project_dir, 'templates/'), 'templates'),
     (os.path.join(project_dir, 'config/*'), 'config'),
     (os.path.join(project_dir, 'db/*'), 'db'),
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),

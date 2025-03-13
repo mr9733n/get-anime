@@ -248,13 +248,17 @@ python compare_titles.py
 - [x] changed button titles: UPDATE TITLE -> UT⮂, RELOAD -> RS⮂
 - [x] New feature: scrapping and compare poster links
 - [x] fix updating title
-- [x] New feature: show translate team data
+- [x] New feature: show titles by team member
 - [x] fix filter by genre & team_member
 - [x] fix reload template
+- [x] New feature: show titles by year
+- [x] add current show_mode in pagination
+- [x] add show_mode in app_state
 - [ ] fix pagination: shows wrong first page, large offset value 
 - [ ] do pretty pagination logic
 
 ### 8.21. Some fixes
+- [ ] update build.spec for py installer 6.x
 - [ ] change background-color in no_background & no_background_night template for system, text_list
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload

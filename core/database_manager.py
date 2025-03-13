@@ -232,6 +232,10 @@ class DatabaseManager:
         """Titles by genre"""
         return self.get_manager.get_titles_by_team_member(team_member)
 
+    def get_titles_by_year(self, year):
+        """Titles by year"""
+        return self.get_manager.get_titles_by_year(year)
+
     def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
         """Titles count"""
         return self.get_manager.get_total_titles_count(title_ids, batch_size, offset)

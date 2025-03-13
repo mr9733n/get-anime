@@ -488,6 +488,20 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
+    def get_titles_by_year(self, year):
+        """Получает список title_id по году выпуска."""
+        with self.Session as session:
+            try:
+                query = session.query(Title).filter(Title.season_year == year)
+                titles = query.all()
+
+                title_ids = [title.title_id for title in titles]
+                return title_ids
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при поиске тайтлов по year {year}: {e}")
+                return []
+
     def get_titles_by_genre(self, genre_id):
         """Получает список title_id, связанных с указанным жанром по его ID."""
         with self.Session as session:

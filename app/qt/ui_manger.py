@@ -272,14 +272,13 @@ class UIManager:
         for widget in self.parent.findChildren(QPushButton):
             widget.setEnabled(enabled)
 
-
-    def update_pagination_info(self, current_page, total_pages, total_items):
+    def update_pagination_info(self, current_page, total_pages, total_items, show_mode):
         """Обновляет информацию о пагинации в UI."""
         try:
             # Обновляем информационный текст
             pagination_info = self.parent_widgets.get("pagination_info")
             if pagination_info:
-                info_text = f"Pages: {current_page} .. {total_pages} (Titles: {total_items})"
+                info_text = f"{show_mode} | Pages: {current_page} .. {total_pages} | Titles: {total_items}"
                 pagination_info.setText(info_text)
 
             # Включаем/отключаем кнопки в зависимости от текущей страницы

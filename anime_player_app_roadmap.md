@@ -257,7 +257,8 @@ python compare_titles.py
 - [x] fix pagination: shows wrong first page, large offset value 
 
 ### 8.21. Some fixes
-- [ ] update build.spec for py installer 6.x
+- [x] update build.spec for py installer 6.x
+- [ ] test build.spec for py installer 6.x
 - [ ] change background-color in no_background & no_background_night template for system, text_list
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload

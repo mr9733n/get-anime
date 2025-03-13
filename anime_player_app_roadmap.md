@@ -254,8 +254,7 @@ python compare_titles.py
 - [x] New feature: show titles by year
 - [x] add current show_mode in pagination
 - [x] add show_mode in app_state
-- [ ] fix pagination: shows wrong first page, large offset value 
-- [ ] do pretty pagination logic
+- [x] fix pagination: shows wrong first page, large offset value 
 
 ### 8.21. Some fixes
 - [ ] update build.spec for py installer 6.x
@@ -264,6 +263,7 @@ python compare_titles.py
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py
+- [ ] refactoring pagination logic
 - [ ] ...
 
 ### 8.22. change one title view

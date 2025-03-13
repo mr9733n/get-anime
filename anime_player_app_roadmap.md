@@ -258,8 +258,10 @@ python compare_titles.py
 
 ### 8.21. Some fixes
 - [x] update build.spec for py installer 6.x
+- [x] New feature: show titles by status 
+- [x] change background-color in no_background & no_background_night template for system, text_list
+- [ ] addd pagination for titles list, franchises, need to see
 - [ ] test build.spec for py installer 6.x
-- [ ] change background-color in no_background & no_background_night template for system, text_list
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time

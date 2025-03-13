@@ -236,6 +236,10 @@ class DatabaseManager:
         """Titles by year"""
         return self.get_manager.get_titles_by_year(year)
 
+    def get_titles_by_status(self, status_code):
+        """Titles by status"""
+        return self.get_manager.get_titles_by_status(status_code)
+
     def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
         """Titles count"""
         return self.get_manager.get_total_titles_count(title_ids, batch_size, offset)

@@ -80,7 +80,7 @@ class TitleDataFactory:
             data_fetcher_name = show_mode_metadata[show_mode].get("data_fetcher")
 
             # Определяем списочные режимы с пагинацией
-            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list']
+            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list']
 
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()
@@ -195,12 +195,14 @@ class TitleHtmlFactory:
         """Генерирует HTML для отображения списка тайтлов."""
         try:
             year_html = self.app.ui_generator.generate_year_html(title, show_text_list=True)
+            status_html = self.app.ui_generator.generate_status_html(title, show_text_list=True)
             _, _, show_text_list_html, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             template = Template(show_text_list_html)
             html_content = template.render(
                 title=title,
                 styles_css=styles_css,
                 year_html=year_html,
+                status_html=status_html,
             )
             return html_content
         except Exception as e:
@@ -290,7 +292,7 @@ class TitleBrowserFactory:
             width: 100%;
             height: 100%;
             position: relative;
-            background: rgba(255, 255, 0, 0.5);  /* Полупрозрачный желтый фон */
+            background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный желтый фон */
         """)
 
         # Устанавливаем HTML-содержимое

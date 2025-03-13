@@ -1079,13 +1079,22 @@ class AnimePlayerAppVer3(QWidget):
                 else:
                     self.logger.warning(f"No titles found with team_member: '{team_member}'")
             elif link.startswith('filter_by_year/'):
-                year = link.split('/')[1]
+                year = int(link.split('/')[1])
                 self.logger.debug(f"Filtering by year: {year}")
                 title_ids = self.db_manager.get_titles_by_year(year)
                 if title_ids:
                     self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
                 else:
                     self.logger.warning(f"No titles found with year: '{year}'")
+            elif link.startswith('filter_by_status/'):
+                status_code = int(link.split('/')[1])
+                self.logger.debug(f"Filtering by status: {status_code}, type: {type(status_code)}")
+                title_ids = self.db_manager.get_titles_by_status(status_code)
+                self.logger.debug(f"Query returned {len(title_ids)} titles: {title_ids[:5] if title_ids else []}")
+                if title_ids:
+                    self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                else:
+                    self.logger.warning(f"No titles found with status: '{status_code}'")
             elif link.startswith('reload_template/'):
                 template_name = link.split('/')[1]
                 self.db_manager.save_template(template_name)

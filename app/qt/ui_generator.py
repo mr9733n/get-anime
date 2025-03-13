@@ -359,10 +359,12 @@ class UIGenerator:
         """Генерирует HTML для отображения года выпуска."""
         try:
             title_year = title.season_year if title.season_year else "Год отсутствует"
+            year_html = f'<a href="filter_by_year/{title_year}">{title_year}</a>'
+
             if show_text_list:
-                return f"""{title_year}"""
+                return f"""{year_html}"""
             else:
-                return f"""<p>Год выпуска: {title_year}</p>"""
+                return f"""<p>Год выпуска: {year_html}</p>"""
         except Exception as e:
             error_message = f"Error in generate_year_html: {str(e)}"
             self.logger.error(error_message)

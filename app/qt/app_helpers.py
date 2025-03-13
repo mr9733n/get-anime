@@ -56,6 +56,14 @@ class TitleDataFactory:
         self.db_manager = db_manager
         self.user_id = user_id
 
+    def get_metadata_description(self, show_mode='default'):
+        """Return show_mode description"""
+        try:
+            return show_mode_metadata[show_mode].get("description")
+        except Exception as e:
+            self.logger.error(f"Error in get_metadata_description: {str(e)}")
+            return ""
+
     def get_titles(self, show_mode='default', title_ids=None, current_offset=0, batch_size=None):
         """Возвращает данные тайтлов на основе режима отображения."""
         try:
@@ -71,14 +79,18 @@ class TitleDataFactory:
             # Получаем имя функции для получения данных из метаданных
             data_fetcher_name = show_mode_metadata[show_mode].get("data_fetcher")
 
+            # Определяем списочные режимы с пагинацией
+            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list']
+
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()
-            elif data_fetcher_name == 'titles_genre_list' or data_fetcher_name == 'titles_team_member_list':
+
+            elif str(data_fetcher_name) in [str(mode) for mode in pagination_modes]:
                 if current_offset >= len(title_ids):
                     self.logger.warning(
                         f"Offset {current_offset} превышает количество доступных title_ids {len(title_ids)}. Сбрасываем offset.")
                     current_offset = 0
-                # TODO: add batch size
+
                 if batch_size and len(title_ids) > batch_size:
                     # Получаем подмножество title_ids для текущей страницы
                     end_idx = min(current_offset + batch_size, len(title_ids))
@@ -90,19 +102,21 @@ class TitleDataFactory:
                 else:
                     # Если title_ids меньше или равен размеру страницы, просто возвращаем все
                     return self.db_manager.get_titles_from_db(show_all=False, title_ids=title_ids)
-            else:
-                # Получаем ссылку на метод из db_manager
-                data_fetcher = getattr(self.db_manager, data_fetcher_name, None)
-                if callable(data_fetcher):
-                    # Вызываем метод, передавая необходимые параметры
-                    return data_fetcher(batch_size=batch_size, offset=current_offset)
 
-            # Если show_mode — это режим, в котором требуются конкретные title_ids
-            if title_ids:
+            # Обработка других методов получения данных
+            elif data_fetcher_name and hasattr(self.db_manager, data_fetcher_name):
+                    data_fetcher = getattr(self.db_manager, data_fetcher_name)
+                    if callable(data_fetcher):
+                        return data_fetcher(batch_size=batch_size, offset=current_offset)
+
+                # Если переданы конкретные title_ids, но не попали под списочные режимы
+            elif title_ids:
                 return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
 
-            # В других случаях используем метод для получения всех тайтлов
-            return self.db_manager.get_titles_from_db(show_all=True, batch_size=batch_size, offset=current_offset)
+            # По умолчанию получаем все тайтлы
+            else:
+                return self.db_manager.get_titles_from_db(show_all=True, batch_size=batch_size, offset=current_offset)
+
         except Exception as e:
             self.logger.error(f"Error in get_titles: {str(e)}")
             return ""

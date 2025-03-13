@@ -372,7 +372,8 @@ class AnimePlayerAppVer3(QWidget):
             'current_title_ids': self.current_title_ids,
             'current_day': self.current_day_of_week,
             'player_offset': self.current_offset,
-            'template_name': getattr(self, 'current_template', 'default')
+            'template_name': getattr(self, 'current_template', 'default'),
+            'show_mode': getattr(self, 'current_show_mode', 'default')
         }
         return state
 
@@ -383,6 +384,7 @@ class AnimePlayerAppVer3(QWidget):
             current_title_ids = state.get('current_title_ids')
             current_day = state.get('current_day')
             template_name = state.get('template_name', 'default')  # Загружаем имя шаблона
+            show_mode = state.get('show_mode', 'default')
 
             self.current_template = template_name
             self.logger.info(f"Restored template: {self.current_template}")
@@ -411,10 +413,8 @@ class AnimePlayerAppVer3(QWidget):
                             current_title_ids = []
 
                     if len(current_title_ids) >= 12:
-                        # TODO: add batch size
                         self.logger.info(f"Using titles_list mode for {len(current_title_ids)} titles")
-                        # self.display_titles(show_mode='titles_list', title_ids=current_title_ids)
-                        self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size,
+                        self.display_titles(show_mode=show_mode, batch_size=self.titles_list_batch_size,
                                             title_ids=current_title_ids)
                     else:
                         self.logger.info(f"Using default mode for {len(current_title_ids)} titles")
@@ -435,13 +435,13 @@ class AnimePlayerAppVer3(QWidget):
             if not self.current_title_ids:
                 self.logger.warning("No titles for navigation")
                 return
-            show_mode = getattr(self, 'current_show_mode', 'titles_list')
+            show_mode = getattr(self, 'current_show_mode', 'default')
             # TODO: default size = 12
             batch_size = 12
             total_count = len(self.current_title_ids)
             if go_forward:
                 if self.current_offset + batch_size >= total_count:
-                    self.logger.info("End of the list, return to begining")
+                    self.logger.info("End of the list, return to beginning")
                     self.current_offset = 0
                 else:
                     self.current_offset += batch_size
@@ -507,6 +507,8 @@ class AnimePlayerAppVer3(QWidget):
                 self.total_titles = 0
                 return
 
+            description = data_factory.get_metadata_description(show_mode=show_mode)
+
             # Вычисляем информацию о пагинации, если есть список title_ids
             if title_ids and len(title_ids) > 0:
                 if batch_size:
@@ -514,7 +516,7 @@ class AnimePlayerAppVer3(QWidget):
                     current_page = (self.current_offset // batch_size) + 1
 
                     # Обновляем информацию о пагинации в UI
-                    self.ui_manager.update_pagination_info(current_page, total_pages, len(title_ids))
+                    self.ui_manager.update_pagination_info(current_page, total_pages, len(title_ids), description)
 
                     # Показываем виджет пагинации только если страниц больше одной
                     pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
@@ -1059,27 +1061,27 @@ class AnimePlayerAppVer3(QWidget):
             elif link.startswith('filter_by_genre/'):
                 genre_id = link.split('/')[1]
                 self.logger.debug(f"Filtering by genre: {genre_id}")
-                # Получаем список title_ids для данного жанра
                 title_ids = self.db_manager.get_titles_by_genre(genre_id)
                 if title_ids:
-                    # Отображаем тайтлы с указанным жанром
-                    # TODO: add batch size
                     self.display_titles(show_mode='titles_genre_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
-                    # self.display_titles(show_mode='titles_list', title_ids=title_ids)
                 else:
-                    self.logger.warning(f"No titles found with genre '{genre_id}'")
+                    self.logger.warning(f"No titles found with genre: '{genre_id}'")
             elif link.startswith('filter_by_team_member/'):
                 team_member = link.split('/')[1]
                 self.logger.debug(f"Filtering by team_member: {team_member}")
-                # Получаем список title_ids для данного жанра
                 title_ids = self.db_manager.get_titles_by_team_member(team_member)
                 if title_ids:
-                    # Отображаем тайтлы с указанным жанром
-                    # TODO: add batch size
                     self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
-                    # self.display_titles(show_mode='titles_list', title_ids=title_ids)
                 else:
-                    self.logger.warning(f"No titles found with team_member '{team_member}'")
+                    self.logger.warning(f"No titles found with team_member: '{team_member}'")
+            elif link.startswith('filter_by_year/'):
+                year = link.split('/')[1]
+                self.logger.debug(f"Filtering by year: {year}")
+                title_ids = self.db_manager.get_titles_by_year(year)
+                if title_ids:
+                    self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                else:
+                    self.logger.warning(f"No titles found with year: '{year}'")
             elif link.startswith('reload_template/'):
                 template_name = link.split('/')[1]
                 self.db_manager.save_template(template_name)

@@ -499,18 +499,22 @@ class AnimePlayerAppVer3(QWidget):
                 current_offset=self.current_offset,
                 batch_size=batch_size
             )
+            description = data_factory.get_metadata_description(show_mode=show_mode)
 
             # Если данных нет, сбрасываем оффсет
-            if not titles:
+            if not titles and description:
                 self.logger.info("Нет доступных данных для отображения, сбрасываем оффсет.")
                 self.current_offset = 0
                 self.total_titles = 0
                 return
 
-            description = data_factory.get_metadata_description(show_mode=show_mode)
-
             # Вычисляем информацию о пагинации, если есть список title_ids
             if title_ids and len(title_ids) > 0:
+                if self.current_offset >= len(title_ids):
+                    self.logger.warning(
+                        f"Offset {self.current_offset} превышает количество доступных title_ids {len(title_ids)}. Сбрасываем offset.")
+                    self.current_offset = 0
+
                 if batch_size:
                     total_pages = (len(title_ids) + batch_size - 1) // batch_size  # Округление вверх
                     current_page = (self.current_offset // batch_size) + 1

@@ -185,7 +185,7 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
-    def create_system_browser(self, statistics):
+    def create_system_browser(self, statistics, template):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         try:
             self.logger.debug("Начинаем создание system_browser...")
@@ -214,7 +214,7 @@ class UISGenerator:
                 """
             )
 
-            system_browser.setHtml(self._generate_statistics_html(statistics))
+            system_browser.setHtml(self._generate_statistics_html(statistics, template))
             # Добавляем system_browser в layout контейнера
             container_layout.addWidget(system_browser)
 
@@ -301,7 +301,7 @@ class UISGenerator:
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
 
-    def _generate_statistics_html(self, statistics):
+    def _generate_statistics_html(self, statistics, template):
         """Создает HTML-контент для отображения статистики."""
         # Информация о версии приложения
         app_version = self.app.app_version
@@ -319,8 +319,9 @@ class UISGenerator:
         history_total_download_changes = statistics.get('history_total_download_changes', 0)
         need_to_see_count = statistics.get('need_to_see_count', 0)
         blocked_titles_list = ""
-        # TODO: fix this
-        template_name = 'default'
+
+        template_name = template
+        self.logger.debug(f"template for reload: {template}")
         # TODO:
         reset_offset_status = True
 

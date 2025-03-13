@@ -363,6 +363,15 @@ class SaveManager:
     def save_team_members(self, title_id, team_data):
         with self.Session as session:
             try:
+                # Сначала получим все существующие связи для этого тайтла
+                existing_relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
+
+                # Создадим словарь для быстрого поиска существующих связей
+                existing_relations_dict = {relation.team_member_id: relation for relation in existing_relations}
+
+                # Список для отслеживания обработанных team_member_id
+                processed_team_member_ids = set()
+
                 for role, members_str in team_data.items():
                     try:
                         # Convert the string representation of list into an actual list
@@ -383,18 +392,36 @@ class SaveManager:
                         else:
                             team_member = existing_member
 
-                        # Добавляем связь с тайтлом
-                        title_team_relation = TitleTeamRelation(title_id=title_id, team_member_id=team_member.id, last_updated=datetime.utcnow())
-                        session.add(title_team_relation)
+                        # Добавляем ID в список обработанных
+                        processed_team_member_ids.add(team_member.id)
+
+                        # Проверяем, существует ли уже связь между тайтлом и участником
+                        if team_member.id in existing_relations_dict:
+                            # Обновляем существующую связь
+                            relation = existing_relations_dict[team_member.id]
+                            relation.last_updated = datetime.utcnow()
+                        else:
+                            # Создаем новую связь
+                            title_team_relation = TitleTeamRelation(
+                                title_id=title_id,
+                                team_member_id=team_member.id,
+                                last_updated=datetime.utcnow()
+                            )
+                            session.add(title_team_relation)
+
+                # Опционально: удаляем связи, которые не были обработаны (члены команды, удаленные из тайтла)
+                for relation in existing_relations:
+                    if relation.team_member_id not in processed_team_member_ids:
+                        session.delete(relation)
 
                 session.commit()
                 self.logger.debug(f"Successfully saved team members for title_id: {title_id}")
+                return True
 
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
                 return False
-
 
     def save_episode(self, episode_data):
         with self.Session as session:
@@ -467,9 +494,12 @@ class SaveManager:
 
     def save_torrent(self, torrent_data):
         with self.Session as session:
-
             # Создаем копию данных
             processed_data = torrent_data.copy()
+
+            # Сериализуем torrent_metadata в строку с помощью ast, если это словарь
+            if isinstance(processed_data.get('torrent_metadata'), dict):
+                processed_data['torrent_metadata'] = repr(processed_data['torrent_metadata'])
 
             # Преобразуем timestamps если они есть в данных
             if 'uploaded_timestamp' in processed_data:

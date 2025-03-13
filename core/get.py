@@ -1,4 +1,5 @@
 # get.py
+import json
 import logging
 import sqlalchemy
 
@@ -7,7 +8,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
-    Template, Genre
+    Template, Genre, TitleTeamRelation, TeamMember
 
 
 class GetManager:
@@ -237,6 +238,48 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
                 return None
 
+    def get_team_from_db(self, title_id):
+        with self.Session as session:
+            try:
+                # Получаем все team data, связанные с данным title_id через таблицу TitleTeamRelation
+                relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
+
+                # Группируем членов команды по ролям
+                team_data = {
+                    'voice': [],
+                    'translator': [],
+                    'timing': []
+                }
+
+                for relation in relations:
+                    role = relation.team_member.role.lower()
+                    name = relation.team_member.name
+
+                    # Проверяем и добавляем в соответствующую категорию
+                    if 'voice' in role:
+                        team_data['voice'].append(name)
+                    elif 'translator' in role:
+                        team_data['translator'].append(name)
+                    elif 'timing' in role:
+                        team_data['timing'].append(name)
+
+                # Сериализуем списки в JSON-строки
+                team_data = {
+                    'voice': json.dumps(team_data['voice']),
+                    'translator': json.dumps(team_data['translator']),
+                    'timing': json.dumps(team_data['timing'])
+                }
+
+                if any(team_data.values()):
+                    self.logger.debug(f"Team data were found in database for title_id: {title_id}")
+                    return team_data
+
+                return None
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при загрузке данных о команде из базы данных: {e}")
+                return None
+
     def get_titles_by_keywords(self, search_string):
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
         keywords = search_string.split(',')
@@ -455,4 +498,31 @@ class GetManager:
                 return title_ids
             except Exception as e:
                 self.logger.error(f"Ошибка при поиске тайтлов по genre_id {genre_id}: {e}")
+                return []
+
+    def get_titles_by_team_member(self, team_member):
+        """Получает список title_id, связанных с указанным team_member по его имени."""
+        with self.Session as session:
+            try:
+                # Получаем объект TeamMember по имени
+                team_member_obj = session.query(TeamMember).filter_by(name=team_member).first()
+                if not team_member_obj:
+                    self.logger.warning(f"team_member: '{team_member}' не найден в базе данных.")
+                    return []
+
+                # Используем id из полученного объекта
+                team_member_id = team_member_obj.id
+
+                # Получаем связи title-team_member
+                title_relations = session.query(TitleTeamRelation).filter_by(team_member_id=team_member_id).all()
+
+                # Извлекаем title_ids из полученных связей
+                title_ids = [relation.title_id for relation in title_relations]
+
+                self.logger.info(
+                    f"Найдено {len(title_ids)} тайтлов с team_member_id: {team_member_id} team_member: {team_member}")
+                return title_ids
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при поиске тайтлов по team_member: {team_member}: {e}")
                 return []

@@ -281,6 +281,49 @@ class UIGenerator:
             error_message = f"Error in generate_genres_html: {str(e)}"
             self.logger.error(error_message)
 
+    def generate_team_html(self, title):
+        """Генерирует HTML для отображения team_data с поддержкой кликабельных ссылок и разбивкой по ролям."""
+        try:
+            team_data = self.db_manager.get_team_from_db(title.title_id)
+            if team_data:
+                try:
+                    # Словарь для перевода ролей
+                    role_translation = {
+                        'voice': 'Озвучка',
+                        'translator': 'Перевод',
+                        'timing': 'Тайминг'
+                    }
+
+                    # Генерируем HTML для каждой роли
+                    team_roles_html = []
+                    for role, members_json in team_data.items():
+                        members = json.loads(members_json)
+                        if members:
+                            # Создаем кликабельные ссылки для членов команды
+                            linked_members = [
+                                f'<a href="filter_by_team_member/{member}">{member}</a>'
+                                for member in members
+                            ]
+
+                            # Формируем строку для каждой роли
+                            role_html = f"{role_translation.get(role, role.capitalize())}: {', '.join(linked_members)}"
+                            team_roles_html.append(role_html)
+
+                    # Объединяем роли, если есть
+                    team_data_html = '<br>'.join(team_roles_html) if team_roles_html else "Данные о команде отсутствуют"
+                except Exception as e:
+                    self.logger.error(f"Ошибка при генерации HTML команды: {e}")
+                    team_data_html = "Данные о команде отсутствуют"
+            else:
+                team_data_html = "Данные о команде отсутствуют"
+
+            return f"""<p>{team_data_html}</p>"""
+
+        except Exception as e:
+            error_message = f"Ошибка в generate_team_html: {str(e)}"
+            self.logger.error(error_message)
+            return "<p>Ошибка при загрузке данных о команде</p>"
+
     def generate_announce_html(self, title):
         """Генерирует HTML для отображения анонса."""
         try:

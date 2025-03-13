@@ -73,7 +73,7 @@ class TitleDataFactory:
 
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()
-            elif data_fetcher_name == 'titles_genre_list':
+            elif data_fetcher_name == 'titles_genre_list' or data_fetcher_name == 'titles_team_member_list':
                 if current_offset >= len(title_ids):
                     self.logger.warning(
                         f"Offset {current_offset} превышает количество доступных title_ids {len(title_ids)}. Сбрасываем offset.")
@@ -147,6 +147,7 @@ class TitleHtmlFactory:
             status_html = self.app.ui_generator.generate_status_html(title)
             description_html = self.app.ui_generator.generate_description_html(title)
             genres_html = self.app.ui_generator.generate_genres_html(title)
+            team_html = self.app.ui_generator.generate_team_html(title)
             year_html = self.app.ui_generator.generate_year_html(title)
             type_html = self.app.ui_generator.generate_type_html(title)
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
@@ -163,6 +164,7 @@ class TitleHtmlFactory:
                 rating_html=rating_html,
                 announce_html=announce_html,
                 status_html=status_html,
+                team_html=team_html,
                 description_html=description_html,
                 genres_html=genres_html,
                 year_html=year_html,

@@ -41,6 +41,10 @@ merged_log.txt
 libs/libvlc.dll
 screenshots/*
 title_ids.txt
+title_ids_old.txt
+compare_result.txt
+find_duplicates_result.txt
+find_duplicates_result_old.txt
 anime_player.db.zip
-midnight/title_ids_old.txt
-midnight/compare_result.txt
+
+

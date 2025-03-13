@@ -190,6 +190,9 @@ class DatabaseManager:
     def get_genres_from_db(self, title_id):
         return self.get_manager.get_genres_from_db(title_id)
 
+    def get_team_from_db(self, title_id):
+        return self.get_manager.get_team_from_db(title_id)
+
     def get_titles_by_keywords(self, search_string):
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
         return self.get_manager.get_titles_by_keywords(search_string)
@@ -224,6 +227,10 @@ class DatabaseManager:
     def get_titles_by_genre(self, genre_name):
         """Titles by genre"""
         return self.get_manager.get_titles_by_genre(genre_name)
+
+    def get_titles_by_team_member(self, team_member):
+        """Titles by genre"""
+        return self.get_manager.get_titles_by_team_member(team_member)
 
     def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
         """Titles count"""

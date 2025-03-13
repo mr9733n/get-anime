@@ -754,8 +754,9 @@ class AnimePlayerAppVer3(QWidget):
         """
         Прокси-метод, который делегирует создание system_browser в UISGenerator.
         """
+        template = self.current_template
         self.logger.debug(f"Пытаемся создать system_browser с параметрами: {len(statistics)}")
-        return self.ui_s_generator.create_system_browser(statistics)
+        return self.ui_s_generator.create_system_browser(statistics, template)
 
     def create_title_browser(self, title, show_mode='default'):
         """
@@ -885,21 +886,29 @@ class AnimePlayerAppVer3(QWidget):
         return parsed_data
 
     def get_update_title(self):
+        """Обновляет информацию о тайтле в базе данных."""
         try:
-            self.ui_manager.show_loader("Fetching by title...")
+            self.ui_manager.show_loader("Updating title info...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
             search_text = self.title_search_entry.text()
-            self.title_search_entry.clear()
-            if not search_text:
-                search_text = self.current_title_id
 
-            self.logger.debug(f"keywords: {search_text}")
+            if not search_text:
+                if self.current_title_id is None:
+                    self.logger.warning(f"Can't update title, keywords is: {search_text}")
+                    return False
+
+                search_text = str(self.current_title_id)
+                self.logger.debug(f"Used current title_id: {search_text} for update")
+            else:
+                self.title_search_entry.clear()
+
+            self.logger.info(f"Updating title. Keywords: {search_text}")
             self._handle_no_titles_found(search_text)
 
         except Exception as e:
-            self.logger.error(f"Error while fetching get_search_by_title: {e}")
-            return False, None
+            self.logger.error(f"Error on update title: {e}")
+            return False
         finally:
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
@@ -1055,11 +1064,22 @@ class AnimePlayerAppVer3(QWidget):
                 if title_ids:
                     # Отображаем тайтлы с указанным жанром
                     # TODO: add batch size
-                    self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    self.display_titles(show_mode='titles_genre_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
                     # self.display_titles(show_mode='titles_list', title_ids=title_ids)
                 else:
                     self.logger.warning(f"No titles found with genre '{genre_id}'")
-                    # Можно показать пользователю сообщение, что тайтлы не найдены
+            elif link.startswith('filter_by_team_member/'):
+                team_member = link.split('/')[1]
+                self.logger.debug(f"Filtering by team_member: {team_member}")
+                # Получаем список title_ids для данного жанра
+                title_ids = self.db_manager.get_titles_by_team_member(team_member)
+                if title_ids:
+                    # Отображаем тайтлы с указанным жанром
+                    # TODO: add batch size
+                    self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    # self.display_titles(show_mode='titles_list', title_ids=title_ids)
+                else:
+                    self.logger.warning(f"No titles found with team_member '{team_member}'")
             elif link.startswith('reload_template/'):
                 template_name = link.split('/')[1]
                 self.db_manager.save_template(template_name)

@@ -10,8 +10,9 @@ from core.tables import Title, Poster
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 base_dir = os.path.join(ROOT_DIR, "midnight")
-FILE_PATH = os.path.join(base_dir, "title_ids.txt")
-RESULT_PATH = os.path.join(base_dir, "compare_result.txt")
+log_path = os.path.join(ROOT_DIR, "logs")
+FILE_PATH = os.path.join(log_path, "title_ids.txt")
+RESULT_PATH = os.path.join(log_path, "compare_result.txt")
 build_dir = os.path.join(ROOT_DIR, 'dist/AnimePlayer')
 db_dir = os.path.join(build_dir, 'db')
 db_path = os.path.join(db_dir, 'anime_player.db')

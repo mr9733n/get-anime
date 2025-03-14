@@ -426,16 +426,30 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
-    def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
+    def get_total_titles_count(self, show_mode=None):
         """Возвращает общее количество тайтлов с учетом фильтров."""
+        self.logger.info(f"Was sent to display {show_mode}")
+
+        # Словарь стратегий запросов для разных режимов отображения
+        query_strategies = {
+            'titles_list': lambda session: session.query(Title),
+            'franchise_list': lambda session: session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                FranchiseRelease.franchise_id.isnot(None)
+            ),
+            'need_to_see_list': lambda session: session.query(Title).join(History).filter(History.need_to_see == True)
+        }
+
         with self.Session as session:
             try:
-                if title_ids:
-                    return len(title_ids)
+                # Получаем соответствующую стратегию запроса или используем базовый запрос
+                query_strategy = query_strategies.get(show_mode)
+
+                if query_strategy:
+                    query = query_strategy(session)
                 else:
+                    # Если режим не определен, возвращаем все тайтлы
                     query = session.query(Title)
-                    if batch_size:
-                        query = query.offset(offset).limit(batch_size)
+
                 count = query.count()
                 self.logger.debug(f"Total titles count: {count}")
                 return count

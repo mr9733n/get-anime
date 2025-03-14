@@ -27,7 +27,8 @@ HEADERS = {
 SEARCH_PARAM = '{"year":"","genre":"","season":""}'
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 base_dir = os.path.join(ROOT_DIR, "midnight")
-FILE_PATH = os.path.join(base_dir, "title_ids.txt")
+log_path = os.path.join(ROOT_DIR, "logs")
+FILE_PATH = os.path.join(log_path, "title_ids.txt")
 
 
 def get_total_and_pages():

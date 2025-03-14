@@ -5,6 +5,10 @@ from collections import defaultdict
 import re
 
 
+EXTENSIONS = ['.py', '.spec', '.java', '.js', '.html', '.css', '.c', '.cpp', '.rs', '.db', '.md']
+EXCLUDED_DIRS = ['venv', '.venv', 'node_modules', '.git', '__pycache__', 'build', 'dist', 'temp', 'obsolete']
+
+
 def count_lines(file_path):
     """Подсчет строк кода, пустых строк и комментариев."""
     try:
@@ -50,10 +54,10 @@ def count_lines(file_path):
 def scan_directory(directory, extensions=None, excluded_dirs=None, excluded_file_patterns=None):
     """Сканировать директорию и получить статистику по файлам."""
     if extensions is None:
-        extensions = ['.py', '.spec', '.java', '.js', '.html', '.css', '.c', '.cpp', '.rs', '.db', '.md']
+        extensions = EXTENSIONS
 
     if excluded_dirs is None:
-        excluded_dirs = ['venv', '.venv', 'node_modules', '.git', '__pycache__', 'build', 'dist', 'temp', 'obsolete']
+        excluded_dirs = EXCLUDED_DIRS
 
     if excluded_file_patterns is None:
         excluded_file_patterns = []
@@ -152,7 +156,7 @@ if __name__ == "__main__":
         extensions = [f".{ext}" if not ext.startswith('.') else ext for ext in args.extensions]
 
     # Определяем исключаемые директории
-    excluded_dirs = ['venv', '.venv', 'node_modules', '.git', '__pycache__', 'build', 'dist', 'temp', 'obsolete']
+    excluded_dirs = EXCLUDED_DIRS
     if args.exclude_dirs:
         excluded_dirs.extend(args.exclude_dirs)
 

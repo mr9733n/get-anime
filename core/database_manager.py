@@ -240,6 +240,6 @@ class DatabaseManager:
         """Titles by status"""
         return self.get_manager.get_titles_by_status(status_code)
 
-    def get_total_titles_count(self, title_ids=None, batch_size=None, offset=0):
+    def get_total_titles_count(self, show_mode=None):
         """Titles count"""
-        return self.get_manager.get_total_titles_count(title_ids, batch_size, offset)
+        return self.get_manager.get_total_titles_count(show_mode)

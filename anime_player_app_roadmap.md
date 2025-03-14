@@ -263,7 +263,6 @@ python compare_titles.py
 - [x] addd pagination for titles list, franchises, need to see
 - [x] refactoring pagination logic
 - [x] add check all tables enhanced_duplicate_finder.py
-
 #### Check all tables for duplicates interactively
 ```commandline
 python enhanced_duplicate_finder.py
@@ -288,19 +287,22 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] improvements in enhanced_duplicate_finder.py 
 - [x] CHECK fix deleting titles from schedule table after reload
 - [x] error notification for updating titles
-- [ ] change icons to symbols from images
+
+### 8.22. Some changes 
+- [x] use symbols instead of images for icons
+- [ ] remove unused logic
+ 
+### 8.23. Some fixes
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py
 - [ ] ...
 
-### 8.22. change one title view
+### 8.24. change one title view & redesign system browser 2
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
-
-### 8.23. redesign system browser 2
 - [ ] add/update table data
 - [ ] ...
 
@@ -314,7 +316,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Merge algorithm is unstable
 - [ ] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
-- [ ] remove schedule view logic from get_titles
+- [ ] ? remove schedule view logic from get_titles ?
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition
 

@@ -26,10 +26,11 @@ h3, p, ul, li {
 .reload {
 	text-align: left;
 	margin-left: -50px;
+	/*for icon*/
+	font-size: 30pt;
 }
 .header_episodes {
 	text-align: left;
-
 }
 .episodes {
 	text-align: left;
@@ -40,6 +41,9 @@ h3, p, ul, li {
 .header_span {
 	text-align: right;
 	background: rgba(255, 255, 255, 0.5);
+	/*for icon*/
+	font-size: 12pt;
+	margin-bottom: 15px;
 }
 .header_p {
 	text-align: left;

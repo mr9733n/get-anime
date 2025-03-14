@@ -80,10 +80,13 @@ class UIGenerator:
         """Generates HTML to display reload button"""
         try:
             image_base64 = self.prepare_generate_poster_html(7)
+            # image_html = f'<img src="data:image/png;base64,{image_base64}" />'
+            image_html = f"""🔄"""
             # TODO: fix blank spase
             blank_spase = self.blank_spase
-
-            reload_link = f'<a href="reload_info/{title_id}" title="Reload title"><img src="data:image/png;base64,{image_base64}" /></a>{blank_spase * 16}'
+            # if image not symbol
+            # reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 16}'
+            reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 4}'
             return reload_link
         except Exception as e:
             error_message = f"Error in generate_reload_button_html: {str(e)}"
@@ -102,11 +105,12 @@ class UIGenerator:
         try:
             ratings = self.db_manager.get_rating_from_db(title.title_id)
             rating_star_images = []
-            poster_base64_full = self.prepare_generate_poster_html(4)
-            poster_base64_blank = self.prepare_generate_poster_html(3)
-            image_html_full = f'<img src="data:image/png;base64,{poster_base64_full}" />'
-            image_html_blank = f'<img src="data:image/png;base64,{poster_base64_blank}" />'
-
+            # poster_base64_full = self.prepare_generate_poster_html(4)
+            # poster_base64_blank = self.prepare_generate_poster_html(3)
+            # image_html_full = f'<img src="data:image/png;base64,{poster_base64_full}" />'
+            # image_html_blank = f'<img src="data:image/png;base64,{poster_base64_blank}" />'
+            image_html_full = f"""💚"""
+            image_html_blank = f"""🤍"""
             if ratings:
                 rating_name = ratings.rating_name
                 rating_value = ratings.rating_value
@@ -128,7 +132,10 @@ class UIGenerator:
             rating_value = ''.join(rating_star_images)
             watch_html = self.generate_watch_history_html(title.title_id)
             need_to_see_html = self.generate_need_to_see_html(title.title_id)
-            return f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 4}{rating_name}:{blank_spase}{rating_value}'
+            # if image not symbol
+            # rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 4}{rating_name}:{blank_spase}{rating_value}'
+            rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 2}{rating_name}:{blank_spase}{rating_value}'
+            return rating_html
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"
             self.logger.error(error_message)
@@ -136,10 +143,12 @@ class UIGenerator:
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
         try:
-            image_base64_green = self.prepare_generate_poster_html(9)
-            image_base64_red = self.prepare_generate_poster_html(8)
-            image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Set download status" />'
-            image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Set download status" />'
+            # image_base64_green = self.prepare_generate_poster_html(9)
+            # image_base64_red = self.prepare_generate_poster_html(8)
+            # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Set download status" />'
+            # image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Set download status" />'
+            image_html_green = f"""🔷"""
+            image_html_red = f"""🔶"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -158,10 +167,12 @@ class UIGenerator:
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
         try:
-            image_base64_watched = self.prepare_generate_poster_html(6)
-            image_base64_blank = self.prepare_generate_poster_html(5)
-            image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" />'
-            image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" />'
+            # image_base64_watched = self.prepare_generate_poster_html(6)
+            # image_base64_blank = self.prepare_generate_poster_html(5)
+            # image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" />'
+            # image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch all episodes" />'
+            image_html_green = f"""🔳"""
+            image_html_red = f"""🔲"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -177,10 +188,12 @@ class UIGenerator:
     def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
         try:
-            image_base64_green = self.prepare_generate_poster_html(11)
-            image_base64_red = self.prepare_generate_poster_html(10)
-            image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Need to see" />'
-            image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Need to see" />'
+            # image_base64_green = self.prepare_generate_poster_html(11)
+            # image_base64_red = self.prepare_generate_poster_html(10)
+            # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Need to see" />'
+            # image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Need to see" />'
+            image_html_green = f"""🟢"""
+            image_html_red = f"""🔴"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -197,10 +210,12 @@ class UIGenerator:
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
         try:
-            image_base64_watched = self.prepare_generate_poster_html(6)
-            image_base64_blank = self.prepare_generate_poster_html(5)
-            image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" />'
-            image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" />'
+            # image_base64_watched = self.prepare_generate_poster_html(6)
+            # image_base64_blank = self.prepare_generate_poster_html(5)
+            # image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" />'
+            # image_html_red = f'<img src="data:image/png;base64,{image_base64_blank}" alt="Set watch status" />'
+            image_html_green = f"""🔳"""
+            image_html_red = f"""🔲"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -454,7 +469,9 @@ class UIGenerator:
 
             if episode_links:
                 episodes_html = (
-                    f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}'
+                    # if image not symbol
+                    # f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}'
+                    f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 2}'
                     f'Episodes:{blank_space * 6}{play_all_html}</p><ul>'
                 )
 
@@ -463,7 +480,9 @@ class UIGenerator:
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
                     episodes_html += (
-                        f'<p class="episodes">{watched_html}{blank_space * 4}'
+                        # if image not symbol
+                        # f'<p class="episodes">{watched_html}{blank_space * 4}'
+                        f'<p class="episodes">{watched_html}{blank_space * 2}'
                         f'<a href="play_m3u8/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]" '
                         f'target="_blank">{episode_name}</a></p>'
                     )

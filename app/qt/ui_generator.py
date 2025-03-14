@@ -79,11 +79,13 @@ class UIGenerator:
     def generate_reload_button_html(self, title_id):
         """Generates HTML to display reload button"""
         try:
-            image_base64 = self.prepare_generate_poster_html(7)
+            # TODO: remove unused logic
+            # image_base64 = self.prepare_generate_poster_html(7)
             # image_html = f'<img src="data:image/png;base64,{image_base64}" />'
             image_html = f"""🔄"""
             # TODO: fix blank spase
             blank_spase = self.blank_spase
+            # TODO: remove unused logic
             # if image not symbol
             # reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 16}'
             reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 6}'
@@ -105,6 +107,7 @@ class UIGenerator:
         try:
             ratings = self.db_manager.get_rating_from_db(title.title_id)
             rating_star_images = []
+            # TODO: remove unused logic
             # poster_base64_full = self.prepare_generate_poster_html(4)
             # poster_base64_blank = self.prepare_generate_poster_html(3)
             # image_html_full = f'<img src="data:image/png;base64,{poster_base64_full}" />'
@@ -143,6 +146,7 @@ class UIGenerator:
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
         try:
+            # TODO: remove unused logic
             # image_base64_green = self.prepare_generate_poster_html(9)
             # image_base64_red = self.prepare_generate_poster_html(8)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Set download status" />'
@@ -167,6 +171,7 @@ class UIGenerator:
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
         try:
+            # TODO: remove unused logic
             # image_base64_watched = self.prepare_generate_poster_html(6)
             # image_base64_blank = self.prepare_generate_poster_html(5)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch all episodes" />'
@@ -188,6 +193,7 @@ class UIGenerator:
     def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
         try:
+            # TODO: remove unused logic
             # image_base64_green = self.prepare_generate_poster_html(11)
             # image_base64_red = self.prepare_generate_poster_html(10)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Need to see" />'
@@ -210,6 +216,7 @@ class UIGenerator:
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
         try:
+            # TODO: remove unused logic
             # image_base64_watched = self.prepare_generate_poster_html(6)
             # image_base64_blank = self.prepare_generate_poster_html(5)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_watched}" alt="Set watch status" />'
@@ -269,11 +276,11 @@ class UIGenerator:
             elif need_background:
                 return f'background-image: url("data:image/png;base64,{poster_base64}");'
 
-            # TODO: fix this return
+            # TODO: fix this return: no static files in production version
             return f"background-image: url('static/background.png');"
         except Exception as e:
             self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
-            # TODO: fix this return
+            # TODO: fix this return: no static files in production version
             return f"background-image: url('static/background.png');"
 
     def generate_genres_html(self, title):
@@ -469,6 +476,7 @@ class UIGenerator:
 
             if episode_links:
                 episodes_html = (
+                    # TODO: remove unused logic
                     # if image not symbol
                     # f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}'
                     f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 2}'
@@ -480,6 +488,7 @@ class UIGenerator:
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
                     episodes_html += (
+                        # TODO: remove unused logic
                         # if image not symbol
                         # f'<p class="episodes">{watched_html}{blank_space * 4}'
                         f'<p class="episodes">{watched_html}{blank_space * 2}'

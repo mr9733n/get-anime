@@ -183,14 +183,14 @@ class GetManager:
             try:
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
+                    # TODO: remove unused logic
                     if title_id in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
-                        # TODO: No need log message for rating stars images
+                        # No need log message for rating stars images
                         # 3, 4 : rating images
                         # 5, 6 : watch images
                         # 7 : reload image
                         # 8, 9 : download image
                         # 10, 11 : need to see image
-
                         return poster.poster_blob, False
                     else:
                         self.logger.debug(f"Poster image was found in database. title_id: {title_id}")

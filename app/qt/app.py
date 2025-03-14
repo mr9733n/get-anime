@@ -147,11 +147,9 @@ class AnimePlayerAppVer3(QWidget):
 
     def init_ui(self):
         self.setWindowTitle(f'Anime Player App {self.app_version}')
-
         self.setGeometry(APP_X_POS, APP_Y_POS, APP_WIDTH, APP_HEIGHT)
         self.setMinimumSize(APP_WIDTH, APP_HEIGHT)
 
-        # Устанавливаем темный фон в зависимости от шаблона
         if self.current_template == "default":
             self.setStyleSheet("""
                 QWidget {
@@ -170,20 +168,16 @@ class AnimePlayerAppVer3(QWidget):
                     background-color: rgba(220, 220, 220, 1.0);
                 }
             """)
-
-        # Основной вертикальный layout
         main_layout = QVBoxLayout()
 
         self.ui_manager.setup_main_layout(main_layout, all_layout_metadata, self.callbacks)
         self.setLayout(main_layout)
 
-        # Сохранение ссылок на виджеты после их создания
         self.title_search_entry = self.ui_manager.parent_widgets.get("title_input")
         self.quality_dropdown = self.ui_manager.parent_widgets.get("quality_dropdown")
 
     def show_error_notification(self, title, message):
         """Показывает всплывающее уведомление об ошибке."""
-        # Сохраняем объект уведомления, чтобы он не удалился сборщиком мусора
         self.error_label = QLabel(message, self)
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("""
@@ -198,14 +192,12 @@ class AnimePlayerAppVer3(QWidget):
         self.error_label.setAlignment(Qt.AlignJustify)
         self.error_label.setGeometry(50, 50, 500, 50)
 
-        # Сохраняем tray icon как атрибут
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxWarning))
 
         self.error_label.show()
         self.tray_icon.show()
 
-        # Таймер для скрытия уведомления через 5 секунд
         QTimer.singleShot(5000, self.error_label.hide)
         QTimer.singleShot(5000, self.tray_icon.hide)
         self.tray_icon.showMessage(title, message, QSystemTrayIcon.Warning, 5000)
@@ -216,7 +208,6 @@ class AnimePlayerAppVer3(QWidget):
             selected_quality = self.quality_dropdown.currentText()
             self.logger.debug(f"REFRESH нажат, выбранное качество: {selected_quality}")
 
-            # Если данные не загружены, выполнить запрос и обновить
             if not self.total_titles:
                 self.logger.info("Данные не были загружены ранее, запрашиваем заново.")
                 self.update_quality_and_refresh()
@@ -319,7 +310,6 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Ошибка при обновлении reload_schedule: {e}")
 
     def generate_callbacks(self):
-        # Существующие статические колбеки
         callbacks = {
             "get_search_by_title": self.get_search_by_title,
             "get_update_title": self.get_update_title,
@@ -330,7 +320,6 @@ class AnimePlayerAppVer3(QWidget):
             "reload_schedule": self.reload_schedule,
         }
 
-        # Динамически добавляем колбэки для простых функций
         for metadata in all_layout_metadata:
             callback_key = metadata.get("callback_key")
             callback_type = metadata.get("callback_type", "complex")
@@ -393,7 +382,6 @@ class AnimePlayerAppVer3(QWidget):
                 self.current_offset = int(state['player_offset'])
                 self.logger.info(f"Offset restored from db: {self.current_offset}")
 
-            # Загружаем контент в зависимости от состояния
             match (current_day, current_title_id, current_title_ids):
                 case (day, None, None) if day:
                     self.logger.info(f"Restoring schedule for {day}")
@@ -455,7 +443,7 @@ class AnimePlayerAppVer3(QWidget):
                        start=False):
         try:
             self.ui_manager.show_loader("Loading titles...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+            self.ui_manager.set_buttons_enabled(False)
 
             if not isinstance(title_ids, list):
                 try:
@@ -468,7 +456,6 @@ class AnimePlayerAppVer3(QWidget):
             self.current_title_ids = title_ids
             self.current_show_mode = show_mode
 
-            # Логика определения offset
             if start:
                 self.logger.debug(
                     f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
@@ -490,7 +477,6 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.debug(
                         f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
-            # Используем фабрику для получения данных
             data_factory = TitleDataFactory(self.db_manager, self.user_id)
             titles = data_factory.get_titles(
                 show_mode=show_mode,
@@ -501,14 +487,12 @@ class AnimePlayerAppVer3(QWidget):
             description = data_factory.get_metadata_description(show_mode=show_mode)
             show_modes = ['titles_list', 'franchise_list', 'need_to_see_list']
 
-            # Если данных нет, сбрасываем оффсет
             if not titles and description:
                 self.logger.info("Нет доступных данных для отображения, сбрасываем оффсет.")
                 self.current_offset = 0
                 self.total_titles = 0
                 return
 
-            # Настройка пагинации
             if title_ids and len(title_ids) > 0:
                 if self.current_offset >= len(title_ids):
                     self.logger.warning(
@@ -518,7 +502,6 @@ class AnimePlayerAppVer3(QWidget):
                 if batch_size:
                     self._setup_pagination_ui(len(title_ids), batch_size, description)
                 else:
-                    # Скрываем пагинацию, если batch_size не задан
                     pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
                     if pagination_widget:
                         pagination_widget.setVisible(False)
@@ -527,22 +510,19 @@ class AnimePlayerAppVer3(QWidget):
                 count_titles = self.db_manager.get_total_titles_count(show_mode=show_mode)
                 self._setup_pagination_ui(count_titles, batch_size, description)
             else:
-                # Скрываем пагинацию, если нет списка title_ids
                 pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
                 if pagination_widget:
                     pagination_widget.setVisible(False)
 
-            # Передача данных в метод отображения
             self.display_titles_in_ui(titles, show_mode)
-
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
             self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
 
         except Exception as e:
             self.logger.error(f"Ошибка display_titles: {e}")
         finally:
-            self.ui_manager.hide_loader()  # Скрываем лоадер
-            self.ui_manager.set_buttons_enabled(True)  # Разблокируем кнопки
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def _update_pagination_offset(self, total_count, batch_size, go_forward=True):
         """

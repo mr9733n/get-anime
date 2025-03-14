@@ -21,6 +21,7 @@ class GetManager:
         with self.Session as session:
             try:
                 return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
+
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
@@ -34,6 +35,7 @@ class GetManager:
                     # days_ago = (datetime.utcnow() - history_status.last_watched_at).days if history_status.last_watched_at else 0
                     return history_status.is_watched, history_status.is_download
                 return False, False
+
             except NoResultFound:
                 self.logger.debug(
                     f"No history found for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, torrent_id: {torrent_id}")
@@ -63,26 +65,21 @@ class GetManager:
     def get_all_episodes_watched_status(self, user_id, title_id):
         with self.Session as session:
             try:
-                # Запрос записей для указанного пользователя и тайтла
                 query = session.query(History).filter(
                     History.user_id == user_id,
                     History.title_id == title_id
                 )
 
-
-                    # Если флаг select_all не установлен, выбираем записи, где episode_id не является None
                 query = query.filter(History.episode_id != None)
-
                 history_statuses = query.all()
 
-                # Если записей нет, возвращаем False, так как нет подтверждения, что все эпизоды просмотрены
                 if not history_statuses:
                     return False
 
-                # Проверяем, что все записи имеют статус is_watched=True
                 all_watched = all(status.is_watched for status in history_statuses)
 
                 return all_watched
+
             except Exception as e:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}: {e}")
                 raise
@@ -94,6 +91,7 @@ class GetManager:
                 if ratings:
                     self.logger.debug(f"Rating '{ratings.rating_value}' for title_id: {ratings.title_id}")
                     return ratings
+
             except Exception as e:
                 self.logger.error(f"Error fetching rating for title_id {title_id}: {e}")
                 raise
@@ -102,7 +100,6 @@ class GetManager:
         """Получает статистику из базы данных."""
         with self.Session as session:
             try:
-                # Список запросов для разных статистик
                 queries = {
                     'titles_count': "SELECT COUNT(DISTINCT title_id) FROM titles",
                     'franchises_count': """
@@ -149,7 +146,6 @@ class GetManager:
                     """
                 }
 
-                # Выполняем каждый запрос и сохраняем результаты
                 statistics = {}
                 for key, query in queries.items():
                     result = session.execute(sqlalchemy.text(query)).scalar()
@@ -165,8 +161,6 @@ class GetManager:
         with self.Session as session:
             try:
                 self.logger.debug(f"Processing poster link for title_id: {title_id}")
-
-                # Запрос для получения poster_path_original для конкретного title_id
                 poster_link = session.query(Title.poster_path_original).filter(Title.title_id == title_id).scalar()
 
                 if poster_link:
@@ -202,7 +196,6 @@ class GetManager:
                         self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
                         return poster.poster_blob, False
 
-                # Используем placeholder, если постер не найден
                 placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
                 if placeholder_poster:
                     self.logger.debug(
@@ -222,18 +215,19 @@ class GetManager:
                     self.logger.debug(f"Torrent data was found in database.")
                     return torrents
                 return None
+
             except Exception as e:
                 self.logger.error(f"Error fetching torrent data from database: {e}")
 
     def get_genres_from_db(self, title_id):
         with self.Session as session:
             try:
-                # Получаем все жанры, связанные с данным title_id через таблицу TitleGenreRelation
                 relations = session.query(TitleGenreRelation).filter_by(title_id=title_id).all()
                 genres = [relation.genre.name for relation in relations]
                 if genres:
                     self.logger.debug(f"Genres were found in database for title_id: {title_id}")
                     return genres
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
                 return None
@@ -241,10 +235,7 @@ class GetManager:
     def get_team_from_db(self, title_id):
         with self.Session as session:
             try:
-                # Получаем все team data, связанные с данным title_id через таблицу TitleTeamRelation
                 relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
-
-                # Группируем членов команды по ролям
                 team_data = {
                     'voice': [],
                     'translator': [],
@@ -255,7 +246,6 @@ class GetManager:
                     role = relation.team_member.role.lower()
                     name = relation.team_member.name
 
-                    # Проверяем и добавляем в соответствующую категорию
                     if 'voice' in role:
                         team_data['voice'].append(name)
                     elif 'translator' in role:
@@ -263,7 +253,6 @@ class GetManager:
                     elif 'timing' in role:
                         team_data['timing'].append(name)
 
-                # Сериализуем списки в JSON-строки
                 team_data = {
                     'voice': json.dumps(team_data['voice']),
                     'translator': json.dumps(team_data['translator']),
@@ -289,7 +278,6 @@ class GetManager:
         self.logger.debug(f"keyword for processing: {keywords}")
         with self.Session as session:
             try:
-                # Check if the keywords contain only title_ids
                 if all(kw.isdigit() for kw in keywords):
                     title_ids = [int(kw) for kw in keywords]
                     query = session.query(Title).filter(Title.title_id.in_(title_ids))
@@ -310,9 +298,9 @@ class GetManager:
                     self.logger.info(f"keywords find in DB")
                     titles = query.all()
 
-                # Extract and return only the title_ids from the matched titles
                 title_ids = [title.title_id for title in titles]
                 return title_ids
+
             except Exception as e:
                 self.logger.error(f"Error during title search: {e}")
                 return []
@@ -332,6 +320,7 @@ class GetManager:
                 else:
                     self.logger.warning(f"Template '{name}' not found.")
                     return None, None, None, None
+
             except Exception as e:
                 self.logger.error(f"Error loading template '{name}': {e}")
                 return None, None, None, None
@@ -343,7 +332,8 @@ class GetManager:
         with self.Session as session:
             try:
                 templates = session.query(Template.name).all()
-                return [t[0] for t in templates]  # Преобразуем в список строк
+                return [t[0] for t in templates]
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке списка шаблонов: {e}")
                 return []
@@ -352,9 +342,7 @@ class GetManager:
         """Получает все тайтлы вместе с информацией о франшизах."""
         with self.Session as session:
             try:
-                # Начинаем формирование базового запроса
                 if title_id:
-                    # Если указан title_id, находим все связанные тайтлы
                     franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
                         FranchiseRelease.title_id == title_id
                     ).scalar_subquery()
@@ -364,18 +352,14 @@ class GetManager:
                         FranchiseRelease.franchise_id.isnot(None)
                     )
                 else:
-                    # Получить все тайтлы, у которых есть франшизы
                     query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
                         FranchiseRelease.franchise_id.isnot(None)
                     )
 
-                # Применяем лимит и смещение, если указаны batch_size и offset
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
 
-                # Получаем результат запроса
                 titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
-
                 return titles
 
             except Exception as e:
@@ -386,22 +370,16 @@ class GetManager:
         """Need to see Titles without episodes"""
         with self.Session as session:
             try:
-                # Начинаем формирование базового запроса
                 query = session.query(Title).join(History, Title.title_id == History.title_id)
 
-                # Применяем фильтр для need_to_see
                 if title_id:
-                    # Фильтруем конкретный тайтл
                     query = query.filter(History.title_id == title_id, History.need_to_see == True)
                 else:
-                    # Фильтруем все тайтлы, которые необходимо посмотреть
                     query = query.filter(History.need_to_see == True)
 
-                # Применяем лимит и смещение, если указаны batch_size и offset
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
 
-                # Получаем результат запроса
                 titles = query.all()
                 return titles
 
@@ -422,15 +400,13 @@ class GetManager:
 
                 titles = query.all()
                 return titles
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
 
     def get_total_titles_count(self, show_mode=None):
         """Возвращает общее количество тайтлов с учетом фильтров."""
-        self.logger.info(f"Was sent to display {show_mode}")
-
-        # Словарь стратегий запросов для разных режимов отображения
         query_strategies = {
             'titles_list': lambda session: session.query(Title),
             'franchise_list': lambda session: session.query(Title).join(FranchiseRelease).join(Franchise).filter(
@@ -441,18 +417,17 @@ class GetManager:
 
         with self.Session as session:
             try:
-                # Получаем соответствующую стратегию запроса или используем базовый запрос
                 query_strategy = query_strategies.get(show_mode)
 
                 if query_strategy:
                     query = query_strategy(session)
                 else:
-                    # Если режим не определен, возвращаем все тайтлы
                     query = session.query(Title)
 
                 count = query.count()
                 self.logger.debug(f"Total titles count: {count}")
                 return count
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return 0
@@ -468,7 +443,6 @@ class GetManager:
         """
         with self.Session as session:
             try:
-                # Используем `joinedload` для предварительной загрузки жанров и эпизодов
                 query = session.query(Title).options(
                     joinedload(Title.genres).joinedload(TitleGenreRelation.genre),
                     joinedload(Title.episodes)
@@ -484,8 +458,6 @@ class GetManager:
                     query = query.offset(offset).limit(batch_size)
 
                 titles = query.all()
-
-                # Создаем списки жанров и их ID
                 for title in titles:
                     genre_data = [(relation.genre.name, relation.genre.genre_id)
                                   for relation in title.genres if relation.genre]
@@ -494,10 +466,8 @@ class GetManager:
                     else:
                         title.genre_names = []
                         title.genre_ids = []
-
-                # self.logger.debug(f"Titles were found in database. QUERY: {str(query)}")
-                # self.logger.debug(f"Titles were found in database. titles: {titles}")
                 return titles
+
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return []
@@ -508,7 +478,6 @@ class GetManager:
             try:
                 query = session.query(Title).filter(Title.season_year == year)
                 titles = query.all()
-
                 title_ids = [title.title_id for title in titles]
                 return title_ids
 
@@ -522,7 +491,6 @@ class GetManager:
             try:
                 query = session.query(Title).filter(Title.status_code == status_code)
                 titles = query.all()
-
                 title_ids = [title.title_id for title in titles]
                 return title_ids
 
@@ -538,6 +506,7 @@ class GetManager:
                 title_ids = [relation.title_id for relation in title_relations]
                 self.logger.info(f"Найдено {len(title_ids)} тайтлов с genre_id: {genre_id}")
                 return title_ids
+
             except Exception as e:
                 self.logger.error(f"Ошибка при поиске тайтлов по genre_id {genre_id}: {e}")
                 return []
@@ -546,21 +515,13 @@ class GetManager:
         """Получает список title_id, связанных с указанным team_member по его имени."""
         with self.Session as session:
             try:
-                # Получаем объект TeamMember по имени
                 team_member_obj = session.query(TeamMember).filter_by(name=team_member).first()
                 if not team_member_obj:
                     self.logger.warning(f"team_member: '{team_member}' не найден в базе данных.")
                     return []
-
-                # Используем id из полученного объекта
                 team_member_id = team_member_obj.id
-
-                # Получаем связи title-team_member
                 title_relations = session.query(TitleTeamRelation).filter_by(team_member_id=team_member_id).all()
-
-                # Извлекаем title_ids из полученных связей
                 title_ids = [relation.title_id for relation in title_relations]
-
                 self.logger.info(
                     f"Найдено {len(title_ids)} тайтлов с team_member_id: {team_member_id} team_member: {team_member}")
                 return title_ids

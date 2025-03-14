@@ -432,24 +432,22 @@ class AnimePlayerAppVer3(QWidget):
         Навигация по страницам текущих результатов (любых списков тайтлов)
         """
         try:
-            if not self.current_title_ids:
-                self.logger.warning("No titles for navigation")
-                return
             show_mode = getattr(self, 'current_show_mode', 'default')
-            # TODO: default size = 12
-            batch_size = 12
-            total_count = len(self.current_title_ids)
-            if go_forward:
-                if self.current_offset + batch_size >= total_count:
-                    self.logger.info("End of the list, return to beginning")
-                    self.current_offset = 0
-                else:
-                    self.current_offset += batch_size
+            batch_size = 12  # TODO: default size = 12
+
+            if self.current_title_ids:
+                total_count = len(self.current_title_ids)
+                self.current_offset = self._update_pagination_offset(total_count, batch_size, go_forward)
+                self.logger.debug(
+                    f"Navigation: offset={self.current_offset}, batch_size={batch_size}, total={total_count}")
+                self.display_titles(title_ids=self.current_title_ids, batch_size=batch_size, show_mode=show_mode)
             else:
-                self.current_offset = max(0, self.current_offset - batch_size)
-            self.logger.debug(f"Navigation: offset={self.current_offset}, batch_size={batch_size}, total={total_count}")
-            self.display_titles(title_ids=self.current_title_ids, batch_size=batch_size,
-                                show_mode=show_mode)
+                total_count = self.db_manager.get_total_titles_count(show_mode=show_mode)
+                self.current_offset = self._update_pagination_offset(total_count, batch_size, go_forward)
+                self.logger.debug(
+                    f"Navigation: offset={self.current_offset}, batch_size={batch_size}, total={total_count}")
+                self.display_titles(batch_size=batch_size, show_mode=show_mode)
+
         except Exception as e:
             self.logger.error(f"Ошибка при навигации по результатам: {e}")
 
@@ -461,7 +459,7 @@ class AnimePlayerAppVer3(QWidget):
 
             if not isinstance(title_ids, list):
                 try:
-                    title_ids = list(title_ids)
+                    title_ids = list(title_ids) if title_ids is not None else None
                 except TypeError:
                     title_ids = title_ids
 
@@ -474,22 +472,23 @@ class AnimePlayerAppVer3(QWidget):
             if start:
                 self.logger.debug(
                     f"START: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
-            if show_next:
-                # Проверяем, достаточно ли данных для загрузки
 
-                statistics = self.db_manager.get_statistics_from_db()  # Метод подсчета общего количества тайтлов
-                total_available_titles = statistics.get('titles_count', 0)
-                if self.current_offset + self.titles_batch_size >= total_available_titles:
-                    self.logger.info("Достигнут конец списка тайтлов, сбрасываем оффсет.")
-                    self.current_offset = 0  # Сбрасываем оффсет, если достигли конца данных
-                else:
-                    self.current_offset += self.titles_batch_size
+            if show_next or show_previous:
+                statistics = self.db_manager.get_statistics_from_db() if show_next else None
+                total_available_titles = statistics.get('titles_count', 0) if show_next else 0
+
+                if show_next:
+                    self.current_offset = self._update_pagination_offset(
+                        total_available_titles,
+                        self.titles_batch_size,
+                        go_forward=True
+                    )
                     self.logger.debug(
                         f"NEXT: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
-            if show_previous:
-                self.current_offset = max(0, self.current_offset - self.titles_batch_size)
-                self.logger.debug(
-                    f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
+                elif show_previous:
+                    self.current_offset = max(0, self.current_offset - self.titles_batch_size)
+                    self.logger.debug(
+                        f"PREV: current_offset: {self.current_offset} - titles_batch_size: {self.titles_batch_size}")
 
             # Используем фабрику для получения данных
             data_factory = TitleDataFactory(self.db_manager, self.user_id)
@@ -500,6 +499,7 @@ class AnimePlayerAppVer3(QWidget):
                 batch_size=batch_size
             )
             description = data_factory.get_metadata_description(show_mode=show_mode)
+            show_modes = ['titles_list', 'franchise_list', 'need_to_see_list']
 
             # Если данных нет, сбрасываем оффсет
             if not titles and description:
@@ -508,7 +508,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.total_titles = 0
                 return
 
-            # Вычисляем информацию о пагинации, если есть список title_ids
+            # Настройка пагинации
             if title_ids and len(title_ids) > 0:
                 if self.current_offset >= len(title_ids):
                     self.logger.warning(
@@ -516,21 +516,16 @@ class AnimePlayerAppVer3(QWidget):
                     self.current_offset = 0
 
                 if batch_size:
-                    total_pages = (len(title_ids) + batch_size - 1) // batch_size  # Округление вверх
-                    current_page = (self.current_offset // batch_size) + 1
-
-                    # Обновляем информацию о пагинации в UI
-                    self.ui_manager.update_pagination_info(current_page, total_pages, len(title_ids), description)
-
-                    # Показываем виджет пагинации только если страниц больше одной
-                    pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
-                    if pagination_widget:
-                        pagination_widget.setVisible(total_pages > 1)
+                    self._setup_pagination_ui(len(title_ids), batch_size, description)
                 else:
                     # Скрываем пагинацию, если batch_size не задан
                     pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
                     if pagination_widget:
                         pagination_widget.setVisible(False)
+            elif show_mode in show_modes:
+                self.logger.info(f"Was sent to display {show_mode} ")
+                count_titles = self.db_manager.get_total_titles_count(show_mode=show_mode)
+                self._setup_pagination_ui(count_titles, batch_size, description)
             else:
                 # Скрываем пагинацию, если нет списка title_ids
                 pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
@@ -541,7 +536,6 @@ class AnimePlayerAppVer3(QWidget):
             self.display_titles_in_ui(titles, show_mode)
 
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-
             self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
 
         except Exception as e:
@@ -549,6 +543,47 @@ class AnimePlayerAppVer3(QWidget):
         finally:
             self.ui_manager.hide_loader()  # Скрываем лоадер
             self.ui_manager.set_buttons_enabled(True)  # Разблокируем кнопки
+
+    def _update_pagination_offset(self, total_count, batch_size, go_forward=True):
+        """
+        Обновляет текущий offset для пагинации на основе направления навигации.
+
+        Args:
+            total_count: общее количество элементов
+            batch_size: размер страницы
+            go_forward: направление навигации (True - вперед, False - назад)
+
+        Returns:
+            Новое значение offset
+        """
+        if go_forward:
+            if self.current_offset + batch_size >= total_count:
+                self.logger.info("End of the list, return to beginning")
+                return 0
+            else:
+                return self.current_offset + batch_size
+        else:
+            return max(0, self.current_offset - batch_size)
+
+    def _setup_pagination_ui(self, count_titles, batch_size, description=None):
+        """
+        Настраивает отображение пагинации в UI.
+
+        Args:
+            count_titles: общее количество элементов
+            batch_size: размер страницы
+            description: описание текущего режима отображения
+        """
+        total_pages = (count_titles + batch_size - 1) // batch_size  # Округление вверх
+        current_page = (self.current_offset // batch_size) + 1
+
+        # Обновляем информацию о пагинации в UI
+        self.ui_manager.update_pagination_info(current_page, total_pages, count_titles, description)
+
+        # Показываем виджет пагинации только если страниц больше одной
+        pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+        if pagination_widget:
+            pagination_widget.setVisible(total_pages > 1)
 
     def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:

@@ -11,12 +11,13 @@ from core.tables import Base, TitleTeamRelation, TeamMember
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 base_dir = os.path.join(ROOT_DIR, "midnight")
+log_path = os.path.join(ROOT_DIR, "logs")
 build_dir = os.path.join(ROOT_DIR, 'dist/AnimePlayer')
 # db_dir = os.path.join(build_dir, 'db')
 db_dir = os.path.join(ROOT_DIR, 'db')
 db_path = os.path.join(db_dir, 'anime_player.db')
 DATABASE_URL = f"sqlite:///{db_path}"
-RESULT_PATH = os.path.join(base_dir, "find_duplicates_result.txt")
+RESULT_PATH = os.path.join(log_path, "find_duplicates_result.txt")
 
 
 def backup_database():

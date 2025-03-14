@@ -260,13 +260,37 @@ python compare_titles.py
 - [x] update build.spec for py installer 6.x
 - [x] New feature: show titles by status 
 - [x] change background-color in no_background & no_background_night template for system, text_list
-- [ ] addd pagination for titles list, franchises, need to see
+- [x] addd pagination for titles list, franchises, need to see
+- [x] refactoring pagination logic
+- [x] add check all tables enhanced_duplicate_finder.py
+
+#### Check all tables for duplicates interactively
+```commandline
+python enhanced_duplicate_finder.py
+```
+#### Auto-fix duplicates in all tables, keeping the latest records
+```commandline
+python enhanced_duplicate_finder.py --auto-fix
+```
+#### Check only specific tables
+```commandline
+python enhanced_duplicate_finder.py --tables title_team_relation,posters
+```
+#### Auto-fix duplicates, but keep the oldest records
+```commandline
+python enhanced_duplicate_finder.py --auto-fix --keep-oldest
+```
+#### Specify a custom output file
+```commandline
+python enhanced_duplicate_finder.py --output /path/to/results.txt
+```
+- [x] move logs from midnight scripts to logs folder
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py
-- [ ] refactoring pagination logic
+
 - [ ] ...
 
 ### 8.22. change one title view

@@ -286,13 +286,13 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 ```
 - [x] move logs from midnight scripts to logs folder
 - [x] improvements in enhanced_duplicate_finder.py 
+- [x] CHECK fix deleting titles from schedule table after reload
+- [x] error notification for updating titles
 - [ ] change icons to symbols from images
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
-- [ ] CHECK fix deleting titles from schedule table after reload
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] refactoring app.py
-
 - [ ] ...
 
 ### 8.22. change one title view

@@ -188,7 +188,7 @@ class AnimePlayerAppVer3(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("""
             QLabel {
-                background-color: rgba(255, 0, 0, 0.8);
+                background-color: rgba(255, 0, 0, 0.9);
                 color: white;
                 font-size: 14px;
                 padding: 6px;
@@ -196,7 +196,7 @@ class AnimePlayerAppVer3(QWidget):
             }
         """)
         self.error_label.setAlignment(Qt.AlignJustify)
-        self.error_label.setGeometry(50, 50, 550, 100)
+        self.error_label.setGeometry(50, 50, 500, 50)
 
         # Сохраняем tray icon как атрибут
         self.tray_icon = QSystemTrayIcon(self)
@@ -936,7 +936,8 @@ class AnimePlayerAppVer3(QWidget):
 
             if not search_text:
                 if self.current_title_id is None:
-                    self.logger.warning(f"Can't update title, keywords is: {search_text}")
+                    self.logger.warning("Unable to update title(s): missing title ID(s)")
+                    self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
                     return False
 
                 search_text = str(self.current_title_id)

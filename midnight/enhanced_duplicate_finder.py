@@ -15,13 +15,14 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 base_dir = os.path.join(ROOT_DIR, "midnight")
 log_path = os.path.join(ROOT_DIR, "logs")
 build_dir = os.path.join(ROOT_DIR, 'dist/AnimePlayer')
-db_dir = os.path.join(ROOT_DIR, 'db')
-db_path = os.path.join(db_dir, 'anime_player.db')
-DATABASE_URL = f"sqlite:///{db_path}"
+db_dir1 = os.path.join(ROOT_DIR, 'db')
+db_dir2 = os.path.join(build_dir, 'db')
+DB_PATH1 = os.path.join(db_dir1, 'anime_player.db')
+DB_PATH2 = os.path.join(db_dir2, 'anime_player.db')
 RESULT_PATH = os.path.join(log_path, "find_duplicates_result.txt")
 
 
-def backup_database():
+def backup_database(db_path):
     """Creates a backup of the database."""
     source_db_path = db_path
     backup_folder = os.path.join(os.path.expanduser("~"), "Desktop", "db")
@@ -44,6 +45,77 @@ def backup_database():
         print(f"❌ Error copying DB: {e}")
         return False
 
+
+def select_database(auto_choice=None):
+    """
+    Allows user to select which database to use.
+
+    Args:
+        auto_choice (str, optional): Automatically use this choice ('1' for development, '2' for production)
+
+    Returns:
+        str: Database path
+    """
+    # Check if both database paths exist
+    path1_exists = os.path.exists(DB_PATH1)
+    path2_exists = os.path.exists(DB_PATH2)
+
+    if not path1_exists and not path2_exists:
+        print("❌ Error: No database files found!")
+        print(f"Development path: {DB_PATH1}")
+        print(f"Production path: {DB_PATH2}")
+        sys.exit(1)
+
+    # Show database options
+    print("\n=== Database Selection ===")
+    print(f"1. Development DB: {DB_PATH1}" + (" [EXISTS]" if path1_exists else " [NOT FOUND]"))
+    print(f"2. Production DB: {DB_PATH2}" + (" [EXISTS]" if path2_exists else " [NOT FOUND]"))
+
+    # Set default to production (choice '2')
+    default_choice = '2'
+
+    # Get user choice or use auto_choice
+    if auto_choice in ['1', '2']:
+        db_choice = auto_choice
+        print(f"Using {'Development' if db_choice == '1' else 'Production'} database (auto-selected)")
+    else:
+        # Change the prompt to indicate the default
+        while True:
+            db_choice = input(f"Please select database (1/2, default: {default_choice}): ").strip()
+            if db_choice == '':  # Empty input means use default
+                db_choice = default_choice
+                print(f"Using default (Production) database")
+            if db_choice in ['1', '2']:
+                break
+            print("Invalid choice. Please enter 1 or 2.")
+
+    # Set database path based on choice
+    if db_choice == '1':
+        if not path1_exists:
+            print(f"⚠️ Warning: Development database not found at {DB_PATH1}")
+            if path2_exists and input("Use production database instead? (y/n): ").lower() == 'y':
+                db_path = DB_PATH2
+                print(f"Using production database: {DB_PATH2}")
+            else:
+                print("Operation cancelled.")
+                sys.exit(1)
+        else:
+            db_path = DB_PATH1
+            print(f"Using development database: {DB_PATH1}")
+    else:  # db_choice == '2'
+        if not path2_exists:
+            print(f"⚠️ Warning: Production database not found at {DB_PATH2}")
+            if path1_exists and input("Use development database instead? (y/n): ").lower() == 'y':
+                db_path = DB_PATH1
+                print(f"Using development database: {DB_PATH1}")
+            else:
+                print("Operation cancelled.")
+                sys.exit(1)
+        else:
+            db_path = DB_PATH2
+            print(f"Using production database: {DB_PATH2}")
+
+    return db_path
 
 # TITLE TEAM RELATION TABLE
 
@@ -1069,7 +1141,7 @@ def run_table_check(session, table_name, find_function, output_file=None):
     return duplicates
 
 
-def main(auto_fix=False, keep_latest=True, selected_tables=None):
+def main(auto_fix=False, keep_latest=True, selected_tables=None, db_choice=None, skip_backup=False):
     """Main function to run duplication checking and fixing.
 
     Args:
@@ -1077,6 +1149,9 @@ def main(auto_fix=False, keep_latest=True, selected_tables=None):
         keep_latest (bool): Whether to keep the latest record (True) or the oldest (False)
         selected_tables (list): List of table names to check, or None for all tables
     """
+    db_path = select_database(db_choice)
+    database_url = f"sqlite:///{db_path}"
+
     # Get command line arguments if provided
     args = sys.argv[1:] if hasattr(sys, 'argv') else []
     if '--auto-fix' in args:
@@ -1085,12 +1160,15 @@ def main(auto_fix=False, keep_latest=True, selected_tables=None):
         keep_latest = False
 
     # Create a backup
-    if not backup_database():
-        print("Error creating backup. Aborting.")
-        return
+    if not skip_backup:
+        if not backup_database(db_path):
+            print("Error creating backup. Aborting.")
+            return
+    else:
+        print("Skipping database backup as requested.")
 
     # Connect to the database
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
     output = io.StringIO()
@@ -1254,4 +1332,18 @@ def main(auto_fix=False, keep_latest=True, selected_tables=None):
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Find and fix duplicate records in the anime_player database.')
+    parser.add_argument('--auto-fix', action='store_true', help='Automatically fix duplicates without confirmation')
+    parser.add_argument('--keep-oldest', action='store_true', help='Keep oldest records instead of latest')
+    parser.add_argument('--output', type=str, help='Custom output file path')
+    parser.add_argument('--tables', type=str, help='Comma-separated list of tables to check (default: all)')
+    parser.add_argument('--no-backup', action='store_true', help='Skip database backup')
+    parser.add_argument('--db', type=str, choices=['1', '2'], help='Database to use (1=Development, 2=Production)')
+    args = parser.parse_args()
+
+    if args.output:
+        RESULT_PATH = args.output
+
+    selected_tables = args.tables.split(',') if args.tables else None
+    main(auto_fix=args.auto_fix, keep_latest=not args.keep_oldest,
+         selected_tables=selected_tables, db_choice=args.db, skip_backup=args.no_backup)

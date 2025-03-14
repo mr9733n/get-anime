@@ -7,12 +7,18 @@ AnimePlayerAppLite - это приложение на основе Tkinter, пр
 
 ## Особенности
 - Просмотр расписания аниме на разные дни недели.
+- Обновление расписания.
 - Поиск аниме по названию.
 - Отображение подробной информации о выбранном аниме, включая описание, статус, жанры и год выпуска.
-- Возможность просмотра постеров аниме.
+- Возможность указать историю просмотра.
+- Возможность отметить рейтинг.
+- Возможность отметить посмотреть позже для тайтла
+- Отображение списка тайтлов, франшиз и списка посмотреть позже. 
+- Показать список аниме по статусу, году, жанру, участников команды.
 - Сохранение плейлистов с сериями аниме.
 - Воспроизведение плейлистов через VLC Media Player.
 - Выбор качества просмотра (FHD, HD, SD).
+- Скачивание торрент-файлов и передача в торрент-клиент
 
 ## Настройка и использование
 Установка зависимостей:
@@ -55,13 +61,36 @@ cd midnight
 python create_archive.py
 ```
 
+#### Check all tables for duplicates interactively
+```commandline
+python enhanced_duplicate_finder.py
+```
+#### Auto-fix duplicates in all tables, keeping the latest records
+```commandline
+python enhanced_duplicate_finder.py --auto-fix
+```
+#### Check only specific tables
+```commandline
+python enhanced_duplicate_finder.py --tables title_team_relation,posters
+```
+#### Auto-fix duplicates, but keep the oldest records
+```commandline
+python enhanced_duplicate_finder.py --auto-fix --keep-oldest
+```
+#### Specify a custom output file
+```commandline
+python enhanced_duplicate_finder.py --output /logs/find_duplicates_result.txt
+```
+
 ## Использование приложения:
 
 Используйте кнопки дней недели для просмотра расписания.
+Нажмите RS⮂ для обновления данных по текущему отображенному дню недели.
 
 Нажмите "Random" для выбора случайного аниме.
 
 Используйте поле ввода и кнопку "Find" для поиска по названию или ID (поддерживается ввод нескольких ID через запятую).
+Нажмите UT⮂ для обновления данных по title_id в поле ввода или текущему тайтлу.
 
 Плейлист открытого аниме сохраняется автоматически.
 

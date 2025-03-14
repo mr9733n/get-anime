@@ -18,6 +18,7 @@ class PlaceholderManager:
         placeholders = [
             {'title_id': 1, 'file_name': 'background.png'},
             {'title_id': 2, 'file_name': 'no_image.png'},
+            # TODO: remove unused images
             {'title_id': 3, 'file_name': 'rating_star_blank.png'},
             {'title_id': 4, 'file_name': 'rating_star.png'},
             {'title_id': 5, 'file_name': 'watch_me.png'},

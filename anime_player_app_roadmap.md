@@ -290,6 +290,8 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 
 ### 8.22. Some changes 
 - [x] use symbols instead of images for icons
+- [x] add hints for links
+- [x] little changes
 - [ ] remove unused logic
  
 ### 8.23. Some fixes

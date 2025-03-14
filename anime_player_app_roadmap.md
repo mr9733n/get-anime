@@ -285,6 +285,8 @@ python enhanced_duplicate_finder.py --auto-fix --keep-oldest
 python enhanced_duplicate_finder.py --output /path/to/results.txt
 ```
 - [x] move logs from midnight scripts to logs folder
+- [x] improvements in enhanced_duplicate_finder.py 
+- [ ] change icons to symbols from images
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] CHECK fix deleting titles from schedule table after reload

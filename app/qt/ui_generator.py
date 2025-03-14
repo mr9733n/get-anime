@@ -86,7 +86,7 @@ class UIGenerator:
             blank_spase = self.blank_spase
             # if image not symbol
             # reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 16}'
-            reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 4}'
+            reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 6}'
             return reload_link
         except Exception as e:
             error_message = f"Error in generate_reload_button_html: {str(e)}"
@@ -109,23 +109,23 @@ class UIGenerator:
             # poster_base64_blank = self.prepare_generate_poster_html(3)
             # image_html_full = f'<img src="data:image/png;base64,{poster_base64_full}" />'
             # image_html_blank = f'<img src="data:image/png;base64,{poster_base64_blank}" />'
-            image_html_full = f"""💚"""
-            image_html_blank = f"""🤍"""
+            image_html_full = f"""★"""
+            image_html_blank = f"""☆"""
             if ratings:
                 rating_name = ratings.rating_name
                 rating_value = ratings.rating_value
                 for i in range(self.max_rating):
                     if i < rating_value:
                         rating_star_images.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_full}</a>')
+                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_full}</a>')
                     else:
                         rating_star_images.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_blank}</a>')
+                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
             else:
                 rating_name = self.rating_name
                 for i in range(self.max_rating):
                     rating_star_images.append(
-                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}">{image_html_blank}</a>')
+                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
 
             # TODO: fix blank spase
             blank_spase = self.blank_spase
@@ -147,8 +147,8 @@ class UIGenerator:
             # image_base64_red = self.prepare_generate_poster_html(8)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Set download status" />'
             # image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Set download status" />'
-            image_html_green = f"""🔷"""
-            image_html_red = f"""🔶"""
+            image_html_green = f"""◆"""
+            image_html_red = f"""◇"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -192,8 +192,8 @@ class UIGenerator:
             # image_base64_red = self.prepare_generate_poster_html(10)
             # image_html_green = f'<img src="data:image/png;base64,{image_base64_green}" alt="Need to see" />'
             # image_html_red = f'<img src="data:image/png;base64,{image_base64_red}" alt="Need to see" />'
-            image_html_green = f"""🟢"""
-            image_html_red = f"""🔴"""
+            image_html_green = f"""⚫"""
+            image_html_red = f"""⚪"""
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -246,7 +246,7 @@ class UIGenerator:
                 torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
                 torrent_link = torrent.url if torrent.url else "#"
                 download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
-                torrent_link_html = f'<a href="{torrent_link}" target="_blank">{torrent_quality} ({torrent_size})</a>'
+                torrent_link_html = f'<a href="{torrent_link}" target="_blank" title="DDownload torrent file">{torrent_quality} ({torrent_size})</a>'
                 torrents_html += f'<li>{torrent_link_html}{blank_spase * 4}{download_html}</li>'
                 self.app.torrent_data = torrent.title_id, title.code, torrent.torrent_id
             torrents_html += "</ul>"
@@ -283,7 +283,7 @@ class UIGenerator:
                 try:
                     linked_genres = []
                     for genre_name, genre_id in zip(title.genre_names, title.genre_ids):
-                        linked_genres.append(f'<a href="filter_by_genre/{genre_id}">{genre_name}</a>')
+                        linked_genres.append(f'<a href="filter_by_genre/{genre_id}" title="Filter by genre">{genre_name}</a>')
                     genres = ', '.join(linked_genres) if linked_genres else "Жанры отсутствуют"
                 except Exception as e:
                     self.logger.error(f"Ошибка при генерации HTML жанров: {e}")
@@ -316,7 +316,7 @@ class UIGenerator:
                         if members:
                             # Создаем кликабельные ссылки для членов команды
                             linked_members = [
-                                f'<a href="filter_by_team_member/{member}">{member}</a>'
+                                f'<a href="filter_by_team_member/{member}" title="Filter by team member">{member}</a>'
                                 for member in members
                             ]
 
@@ -354,7 +354,7 @@ class UIGenerator:
         try:
             title_status = title.status_string if title.status_string else "Статус отсутствует"
             title_code = title.status_code
-            status_html = f'<a href="filter_by_status/{title_code}">{title_status}</a>'
+            status_html = f'<a href="filter_by_status/{title_code}" title="Filter by status">{title_status}</a>'
             if title_code == 1:  # В работе
                 status_icon = f"📺"
             elif title_code == 2:  # Завершен
@@ -374,7 +374,7 @@ class UIGenerator:
         """Генерирует HTML для отображения года выпуска."""
         try:
             title_year = title.season_year if title.season_year else "Год отсутствует"
-            year_html = f'<a href="filter_by_year/{title_year}">{title_year}</a>'
+            year_html = f'<a href="filter_by_year/{title_year}" title="Filter by year">{title_year}</a>'
 
             if show_text_list:
                 return f"""{year_html}"""
@@ -484,7 +484,7 @@ class UIGenerator:
                         # f'<p class="episodes">{watched_html}{blank_space * 4}'
                         f'<p class="episodes">{watched_html}{blank_space * 2}'
                         f'<a href="play_m3u8/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]" '
-                        f'target="_blank">{episode_name}</a></p>'
+                        f'target="_blank" title="Watch episode">{episode_name}</a></p>'
                     )
                     self.logger.debug(f"play_m3u8/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]")
                     self.app.discovered_links.append(link)
@@ -523,7 +523,7 @@ class UIGenerator:
                                                                        self.app.stream_video_url)
                     self.logger.debug(
                         f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
-                    return f'<a href="play_all/{title.title_id}/{filename}/[{skip_data_encoded}]">Play all</a>'
+                    return f'<a href="play_all/{title.title_id}/{filename}/[{skip_data_encoded}]" title="Watch all episodes">Play all</a>'
                 else:
                     self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
                     return "No playlist available"

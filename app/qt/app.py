@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import logging.config
@@ -1078,12 +1079,20 @@ class AnimePlayerAppVer3(QWidget):
             if link.startswith('display_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
+            elif link.startswith('filter_by_franchise/'):
+                title_ids = ast.literal_eval(link.split('/')[1])
+                self.logger.debug(f"Filtering by franchise for title_ids: {title_ids}")
+                QTimer.singleShot(100, lambda: self.display_titles(title_ids=title_ids))
             elif link.startswith('filter_by_genre/'):
                 genre_id = link.split('/')[1]
                 self.logger.debug(f"Filtering by genre: {genre_id}")
                 title_ids = self.db_manager.get_titles_by_genre(genre_id)
                 if title_ids:
-                    self.display_titles(show_mode='titles_genre_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(
+                        show_mode='titles_genre_list',
+                        batch_size=self.titles_list_batch_size,
+                        title_ids=title_ids
+                    ))
                 else:
                     self.logger.warning(f"No titles found with genre: '{genre_id}'")
             elif link.startswith('filter_by_team_member/'):
@@ -1091,7 +1100,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(f"Filtering by team_member: {team_member}")
                 title_ids = self.db_manager.get_titles_by_team_member(team_member)
                 if title_ids:
-                    self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with team_member: '{team_member}'")
             elif link.startswith('filter_by_year/'):
@@ -1099,7 +1108,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(f"Filtering by year: {year}")
                 title_ids = self.db_manager.get_titles_by_year(year)
                 if title_ids:
-                    self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with year: '{year}'")
             elif link.startswith('filter_by_status/'):
@@ -1108,7 +1117,7 @@ class AnimePlayerAppVer3(QWidget):
                 title_ids = self.db_manager.get_titles_by_status(status_code)
                 self.logger.debug(f"Query returned {len(title_ids)} titles: {title_ids[:5] if title_ids else []}")
                 if title_ids:
-                    self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with status: '{status_code}'")
             elif link.startswith('reload_template/'):
@@ -1170,7 +1179,7 @@ class AnimePlayerAppVer3(QWidget):
                 if len(parts) >= 4:
                     user_id = int(parts[1])
                     title_id = int(parts[2])
-                    episode_ids = eval(parts[3])
+                    episode_ids = ast.literal_eval(parts[3])
                     if not isinstance(episode_ids, list):
                         raise ValueError("Invalid episode_ids, expected a list.")
                     self.logger.debug(f"Setting user:{user_id} watch status for title_id, all_episodes: {title_id}")

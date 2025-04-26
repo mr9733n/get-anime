@@ -2,7 +2,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, \
     SmallInteger, PrimaryKeyConstraint
 from sqlalchemy.orm import relationship, validates
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -44,7 +44,7 @@ class Title(Base):
     blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
     host_for_player = Column(String)
     alternative_player = Column(String)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
     genres = relationship("TitleGenreRelation", back_populates="title")
@@ -61,7 +61,7 @@ class ProductionStudio(Base):
     __tablename__ = 'production_studios'
     title_id = Column(Integer, ForeignKey('titles.title_id'), primary_key=True)
     name = Column(String, unique=True, nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="production_studio")
 
@@ -74,7 +74,7 @@ class Schedule(Base):
     __tablename__ = 'schedule'
     day_of_week = Column(Integer, ForeignKey('days_of_week.day_of_week'), nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
     __table_args__ = (
         PrimaryKeyConstraint('day_of_week', 'title_id'),
     )
@@ -90,11 +90,11 @@ class History(Base):
     episode_id = Column(Integer, ForeignKey('episodes.episode_id'), nullable=True)
     torrent_id = Column(Integer, ForeignKey('torrents.torrent_id'), nullable=True)
     is_watched = Column(Boolean, default=False)
-    last_watched_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    last_watched_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=True)
     previous_watched_at = Column(DateTime, nullable=True)
     watch_change_count = Column(Integer, default=0)
     is_download = Column(Boolean, default=False)
-    last_download_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    last_download_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=True)
     previous_download_at = Column(DateTime, nullable=True)
     download_change_count = Column(Integer, default=0)
     need_to_see = Column(Boolean, default=False)
@@ -110,7 +110,7 @@ class Rating(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     rating_name = Column(String, default='CMERS', nullable=False)
     rating_value = Column(SmallInteger, nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="ratings")
 
@@ -126,7 +126,7 @@ class FranchiseRelease(Base):
     name_ru = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     name_alternative = Column(String, nullable=True)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     franchise = relationship("Franchise", back_populates="releases")
     title = relationship("Title", back_populates="franchises")
@@ -137,7 +137,7 @@ class Franchise(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
     franchise_name = Column(String, nullable=False)  # Название франшизы
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
 
@@ -145,7 +145,7 @@ class Genre(Base):
     __tablename__ = 'genres'
     genre_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     titles = relationship("TitleGenreRelation", back_populates="genre")
 
@@ -155,7 +155,7 @@ class TitleGenreRelation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     genre_id = Column(Integer, ForeignKey('genres.genre_id'), nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="genres")
     genre = relationship("Genre", back_populates="titles")
@@ -165,7 +165,7 @@ class TeamMember(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)  # Имя участника команды
     role = Column(String, nullable=False)  # Роль участника: voice, translator, timing
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     titles = relationship("TitleTeamRelation", back_populates="team_member")
 
@@ -175,7 +175,7 @@ class TitleTeamRelation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     team_member_id = Column(Integer, ForeignKey('team_members.id'), nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="team_members")
     team_member = relationship("TeamMember", back_populates="titles")
@@ -187,7 +187,7 @@ class Episode(Base):
     episode_number = Column(Integer, nullable=False)
     name = Column(String)
     uuid = Column(String, unique=True)
-    created_timestamp = Column(DateTime, default=datetime.utcnow)
+    created_timestamp = Column(DateTime, default=datetime.now(timezone.utc))
     hls_fhd = Column(String)
     hls_hd = Column(String)
     hls_sd = Column(String)
@@ -220,7 +220,7 @@ class Torrent(Base):
     size_string = Column(String)
     url = Column(String)
     magnet_link = Column(String)
-    uploaded_timestamp = Column(DateTime, default=datetime.utcnow)
+    uploaded_timestamp = Column(DateTime, default=datetime.now(timezone.utc))
     hash = Column(String)
     torrent_metadata = Column(Text, nullable=True)
     raw_base64_file = Column(Text, nullable=True)
@@ -233,7 +233,7 @@ class Poster(Base):
     poster_id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     poster_blob = Column(LargeBinary, nullable=False)  # Поле для хранения бинарных данных изображения
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="posters")
 
@@ -245,11 +245,11 @@ class Template(Base):
     titles_html = Column(Text, nullable=False)
     text_list_html = Column(Text, nullable=False)
     styles_css = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 class AppState(Base):
     __tablename__ = 'app_state'
 
     key = Column(String, primary_key=True)
     value = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))

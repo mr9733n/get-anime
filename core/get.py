@@ -25,6 +25,7 @@ class GetManager:
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при получении тайтлов для дня недели: {e}")
+                return None
 
     def get_history_status(self, user_id, title_id, episode_id=None, torrent_id=None):
         with self.Session as session:
@@ -218,6 +219,7 @@ class GetManager:
 
             except Exception as e:
                 self.logger.error(f"Error fetching torrent data from database: {e}")
+                return None
 
     def get_genres_from_db(self, title_id):
         with self.Session as session:

@@ -164,6 +164,7 @@ class TitleHtmlFactory:
             team_html = self.app.ui_generator.generate_team_html(title)
             year_html = self.app.ui_generator.generate_year_html(title)
             type_html = self.app.ui_generator.generate_type_html(title)
+            franchise_html = self.app.ui_generator.generate_franchise_html(title)
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
@@ -183,8 +184,10 @@ class TitleHtmlFactory:
                 genres_html=genres_html,
                 year_html=year_html,
                 type_html=type_html,
+                franchise_html=franchise_html,
                 episodes_html=episodes_html,
                 torrents_html=torrents_html,
+
             )
             return html_content
         except Exception as e:
@@ -221,6 +224,7 @@ class TitleHtmlFactory:
             genres_html = self.app.ui_generator.generate_genres_html(title)
             year_html = self.app.ui_generator.generate_year_html(title)
             type_html = self.app.ui_generator.generate_type_html(title)
+            franchise_html = self.app.ui_generator.generate_franchise_html(title)
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
@@ -242,6 +246,7 @@ class TitleHtmlFactory:
                 genres_html=genres_html,
                 year_html=year_html,
                 type_html=type_html,
+                franchise_html=franchise_html,
                 episodes_html=episodes_html,
                 torrents_html=torrents_html,
                 new_line='<br /><br /><br /><br />'

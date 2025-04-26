@@ -3,7 +3,7 @@ import json
 import logging
 import os
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 from core.tables import Poster, Template
@@ -40,7 +40,7 @@ class PlaceholderManager:
                             placeholder_poster = Poster(
                                 title_id=placeholder['title_id'],
                                 poster_blob=poster_blob,
-                                last_updated=datetime.utcnow()
+                                last_updated=datetime.now(timezone.utc)
                             )
                             session.add(placeholder_poster)
                             session.commit()
@@ -149,7 +149,7 @@ class StateManager:
 
                     session.execute(
                         text("INSERT INTO app_state (key, value, created_at) VALUES (:key, :value, :created_at)"),
-                        {"key": key, "value": stored_value, "created_at": datetime.utcnow()},
+                        {"key": key, "value": stored_value, "created_at": datetime.now(timezone.utc)},
                     )
                 session.commit()
                 self.logger.info("Состояние приложения сохранено в БД")

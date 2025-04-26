@@ -36,7 +36,7 @@ def load_library(lib_name, lib_dir=LIB_DIR):
     except OSError as e:
         raise RuntimeError(f"Error loading {lib_name}: {e}")
 
-def calculate_sha256(file_path):
+def calculate_sha256(file_location):
     """
     Вычисляет SHA256-хэш для указанного файла.
     Args:  file_path (str): Путь к файлу.
@@ -45,15 +45,15 @@ def calculate_sha256(file_path):
     """
     sha256_hash = hashlib.sha256()
     try:
-        with open(file_path, "rb") as f:
+        with open(file_location, "rb") as f:
             for byte_block in iter(lambda: f.read(4096), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
     except FileNotFoundError:
-        logger.error(f"{file_path} not found!")
+        logger.error(f"{file_location} not found!")
         return None
     except IOError as e:
-        logger.error(f"Error reading file {file_path}: {e}")
+        logger.error(f"Error reading file {file_location}: {e}")
         return None
 
 def execute_library_specific_actions(lib_name):

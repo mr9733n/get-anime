@@ -362,11 +362,49 @@ class UIGenerator:
     def generate_announce_html(self, title):
         """Генерирует HTML для отображения анонса."""
         try:
-            title_announced = title.announce if title.announce else 'Анонс отсутствует'
-            return f"""<p>Анонс: {title_announced}</p>"""
+            day_html = self.generate_day_of_week_html(title)
+
+            if hasattr(title, 'announce') and title.announce:
+                announce_part = f"{title.announce}"
+            else:
+                announce_part = ""
+            if day_html and announce_part:
+                combined_text = f"{day_html}{self.blank_spase}{announce_part}"
+            else:
+                combined_text = day_html or announce_part
+
+            return f"<p>{combined_text}</p>"
 
         except Exception as e:
             error_message = f"Error in generate_announce_html: {str(e)}"
+            self.logger.error(error_message)
+            return ""
+
+    def generate_day_of_week_html(self, title):
+        """Генерирует HTML для отображения дня недели тайтла."""
+        try:
+            day_number = getattr(title, 'day_of_week', None)
+            day_part = ""
+
+            try:
+                day_number = int(day_number)
+            except (ValueError, TypeError):
+                self.logger.warning(f"Некорректный номер дня недели: {day_number}")
+                return ""
+
+            if day_number is not None:
+                days_of_week = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+                if isinstance(day_number, int) and 0 <= day_number < len(days_of_week):
+                    day_name = days_of_week[day_number]
+                    day_part = f'<span class="day_name">{self.blank_spase}{day_name}{self.blank_spase}</span>'
+
+                return day_part
+            else:
+                self.logger.warning(f"Некорректный номер дня недели: {day_number}")
+                return ""
+
+        except Exception as e:
+            error_message = f"Error in generate_day_of_week_html: {str(e)}"
             self.logger.error(error_message)
             return ""
 

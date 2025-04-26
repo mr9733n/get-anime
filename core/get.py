@@ -92,7 +92,8 @@ class GetManager:
                 if ratings:
                     self.logger.debug(f"Rating '{ratings.rating_value}' for title_id: {ratings.title_id}")
                     return ratings
-
+                self.logger.warning(f"No ratings found for title_id: {title_id}.")
+                return None
             except Exception as e:
                 self.logger.error(f"Error fetching rating for title_id {title_id}: {e}")
                 raise
@@ -215,6 +216,7 @@ class GetManager:
                 if torrents:
                     self.logger.debug(f"Torrent data was found in database.")
                     return torrents
+                self.logger.warning(f"No torrents found for title_id: {title_id}.")
                 return None
 
             except Exception as e:
@@ -229,7 +231,8 @@ class GetManager:
                 if genres:
                     self.logger.debug(f"Genres were found in database for title_id: {title_id}")
                     return genres
-
+                self.logger.warning(f"No genres found for title_id: {title_id}.")
+                return None
             except Exception as e:
                 self.logger.error(f"Ошибка при загрузке Genres из базы данных: {e}")
                 return None
@@ -468,6 +471,14 @@ class GetManager:
                     else:
                         title.genre_names = []
                         title.genre_ids = []
+
+                    # Add day of week
+                    if not show_all and day_of_week:
+                        title.day_of_week = day_of_week
+                    else:
+                        schedule = session.query(Schedule).filter(Schedule.title_id == title.title_id).first()
+                        title.day_of_week = schedule.day_of_week if schedule else None
+
                 return titles
 
             except Exception as e:

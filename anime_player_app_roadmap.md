@@ -298,11 +298,13 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixed saving date in torrents and episodes tables
 - [x] Show franchises links in title
 - [x] Filter titles by franchise
+- [ ] remove unused logic
+
+### 8.24. Some fixes
 - [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to fix watch status for title_id when set status first time
-- [ ] remove unused logic
 - [ ] refactoring app.py
 - [ ] ...
 

@@ -298,6 +298,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixed saving date in torrents and episodes tables
 - [x] Show franchises links in title
 - [x] Filter titles by franchise
+- [x] Show day of week in title 
 - [ ] remove unused logic
 
 ### 8.24. Some fixes

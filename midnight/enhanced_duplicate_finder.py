@@ -798,6 +798,12 @@ def find_duplicates_in_torrents(session):
             'timestamps': timestamps
         })
 
+
+    print("\n--- Cleaning torrents by title_id and size ---")
+    torrents_cleaned = clean_torrents_by_title(session)
+    print(f"Cleaned an additional {torrents_cleaned} torrent duplicates by size")
+
+
     return duplicates
 
 
@@ -846,6 +852,95 @@ def fix_duplicates_in_torrents(session, duplicates, keep_latest=True):
 
     print(f"Total fixed duplicates in torrents: {fixed_count}")
 
+
+def clean_torrents_by_title(session):
+    """
+    Для каждого title_id оставляет только один торрент с максимальным количеством эпизодов
+    для каждого типа кодека (h264 и h265/HEVC).
+    """
+    try:
+        # Найдем все title_id, где есть более одной записи
+        duplicates_query = text("""
+        SELECT title_id, COUNT(*) as torrent_count
+        FROM torrents
+        GROUP BY title_id
+        HAVING COUNT(*) > 1
+        """)
+
+        duplicate_titles = session.execute(duplicates_query).fetchall()
+
+        if not duplicate_titles:
+            print("Торрентов для очистки не найдено.")
+            return 0
+
+        print(f"Найдено {len(duplicate_titles)} title_id с несколькими торрентами.")
+
+        total_deleted = 0
+
+        # Для каждого title_id с несколькими торрентами
+        for row in duplicate_titles:
+            title_id = row[0]
+            torrent_count = row[1]
+            print(f"Обрабатываем title_id: {title_id} (количество торрентов: {torrent_count})")
+
+            # Получаем все торренты для данного title_id
+            torrents = session.query(Torrent).filter_by(title_id=title_id).all()
+
+            # Группируем торренты по типу кодека (h264, h265)
+            codec_groups = {}
+            for t in torrents:
+                codec = t.encoder if t.encoder else 'unknown'
+                if codec not in codec_groups:
+                    codec_groups[codec] = []
+                codec_groups[codec].append(t)
+
+            deleted_for_title = 0
+
+            # Для каждого типа кодека оставляем только торрент с максимальным количеством эпизодов
+            for codec, codec_torrents in codec_groups.items():
+                if len(codec_torrents) > 1:
+                    print(f"  Кодек {codec} имеет {len(codec_torrents)} торрентов")
+
+                    # Сортируем по диапазону эпизодов и размеру
+                    # Пытаемся извлечь максимальное число из диапазона эпизодов (например, "1-16" => 16)
+                    def get_max_episode(t):
+                        try:
+                            eps_range = t.episodes_range
+                            if '-' in eps_range:
+                                return int(eps_range.split('-')[1])
+                            else:
+                                return int(eps_range)
+                        except:
+                            return 0
+
+                    # Сортируем сначала по максимальному эпизоду, затем по размеру
+                    codec_torrents.sort(key=lambda t: (get_max_episode(t), t.total_size if t.total_size else 0),
+                                        reverse=True)
+
+                    # Оставляем первый (с наибольшим числом эпизодов и размером), удаляем остальные
+                    keep_torrent = codec_torrents[0]
+                    print(
+                        f"    Оставляем торрент: torrent_id={keep_torrent.torrent_id}, episodes={keep_torrent.episodes_range}, size={keep_torrent.total_size if keep_torrent.total_size else 'None'}")
+
+                    for t in codec_torrents[1:]:
+                        print(
+                            f"    Удаляем торрент: torrent_id={t.torrent_id}, episodes={t.episodes_range}, size={t.total_size if t.total_size else 'None'}")
+                        session.delete(t)
+                        total_deleted += 1
+                        deleted_for_title += 1
+
+            print(f"  Удалено {deleted_for_title} торрентов для title_id {title_id}")
+
+        session.commit()
+        print(f"Всего удалено {total_deleted} торрентов.")
+        return total_deleted
+
+    except Exception as e:
+        session.rollback()
+        print(f"Ошибка при очистке торрентов: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
 
 # FRANCHISES TABLE
 
@@ -1295,6 +1390,7 @@ def main(auto_fix=False, keep_latest=True, selected_tables=None, db_choice=None,
                     fix_functions[table_name](session, duplicates, keep_latest)
                     fixed_count += len(duplicates)
 
+
             print("\nDuplicate fixing completed for all tables.")
         else:
             print("Operation cancelled.")
@@ -1339,6 +1435,7 @@ if __name__ == "__main__":
     parser.add_argument('--tables', type=str, help='Comma-separated list of tables to check (default: all)')
     parser.add_argument('--no-backup', action='store_true', help='Skip database backup')
     parser.add_argument('--db', type=str, choices=['1', '2'], help='Database to use (1=Development, 2=Production)')
+
     args = parser.parse_args()
 
     if args.output:

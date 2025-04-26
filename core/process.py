@@ -2,7 +2,8 @@
 import ast
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+
 
 class ProcessManager:
     def __init__(self, save_manager):
@@ -71,7 +72,7 @@ class ProcessManager:
                 'blocked_geoip_list': json.dumps(title_data.get('blocked', {}).get('geoip_list', [])),
                 'host_for_player': title_data.get('player', {}).get('host', ''),
                 'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
-                'last_updated': datetime.utcnow(),
+                'last_updated': datetime.now(timezone.utc),
             }
             self.save_manager.save_title(title_data)
 
@@ -101,6 +102,7 @@ class ProcessManager:
             return True
         except Exception as e:
             self.logger.error(f"Failed to save title to database: {e}")
+            return False
 
     def process_episodes(self, title_data):
         list_data = title_data.get("player", {}).get("list")
@@ -112,7 +114,7 @@ class ProcessManager:
             episodes = list_data
         else:
             self.logger.error("Unexpected type for list_data in player. Expected dict or list.")
-            return
+            return False
 
         for episode in episodes:
             if not isinstance(episode, dict):
@@ -127,7 +129,7 @@ class ProcessManager:
                         'episode_number': episode.get('episode'),
                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
                         'uuid': episode.get('uuid'),
-                        'created_timestamp': episode.get('created_timestamp') if title_data.get(
+                        'created_timestamp': episode.get('created_timestamp') if episode.get(
                             'created_timestamp') is not None else 0,
                         'hls_fhd': episode.get('hls', {}).get('fhd'),
                         'hls_hd': episode.get('hls', {}).get('hd'),
@@ -164,7 +166,7 @@ class ProcessManager:
                             'size_string': torrent.get('size_string'),
                             'url': torrent.get('url'),
                             'magnet_link': torrent.get('magnet'),
-                            'uploaded_timestamp': torrent.get('uploaded_timestamp') if title_data.get(
+                            'uploaded_timestamp': torrent.get('uploaded_timestamp') if torrent.get(
                                 'uploaded_timestamp') is not None else 0,
                             'hash': torrent.get('hash'),
                             'torrent_metadata': torrent.get('metadata'),

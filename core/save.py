@@ -3,7 +3,7 @@ import ast
 import logging
 
 from sqlalchemy import or_
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
@@ -22,13 +22,13 @@ class SaveManager:
                 existing_poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if not existing_poster:
                     # Создаем новый объект Poster и добавляем в базу
-                    new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.utcnow())
+                    new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.now(timezone.utc))
                     session.add(new_poster)
                     self.logger.debug(f"Poster image was saved to database. title_id: {title_id}")
                 else:
                     # Обновляем существующий постер
                     existing_poster.poster_blob = poster_blob
-                    existing_poster.last_updated = datetime.utcnow()
+                    existing_poster.last_updated = datetime.now(timezone.utc)
                     self.logger.debug(f"Poster image was existed in database. title_id: {title_id}")
                 session.commit()
             except Exception as e:
@@ -83,7 +83,7 @@ class SaveManager:
                 for existing_status in existing_statuses:
                     existing_status.previous_watched_at = existing_status.last_watched_at
                     existing_status.is_watched = is_watched
-                    existing_status.last_watched_at = datetime.utcnow()
+                    existing_status.last_watched_at = datetime.now(timezone.utc)
                     existing_status.watch_change_count += 1
                     existing_episode_ids.add(existing_status.episode_id)
 
@@ -98,7 +98,7 @@ class SaveManager:
                         title_id=title_id,
                         episode_id=episode_id,
                         is_watched=is_watched,
-                        last_watched_at=datetime.utcnow() if is_watched else None,
+                        last_watched_at=datetime.now(timezone.utc) if is_watched else None,
                         watch_change_count=1 if is_watched else 0
                     )
                     new_adds.append(new_add)
@@ -135,21 +135,21 @@ class SaveManager:
                     if episode_id is not None:
                         existing_status.previous_watched_at = existing_status.last_watched_at
                         existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
+                        existing_status.last_watched_at = datetime.now(timezone.utc)
                         existing_status.watch_change_count += 1
                         self.logger.debug(
                             f"Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id} STATUS: {is_watched}")
                     elif torrent_id is not None:
                         existing_status.previous_download_at = existing_status.last_download_at
                         existing_status.is_download = is_download
-                        existing_status.last_download_at = datetime.utcnow()
+                        existing_status.last_download_at = datetime.now(timezone.utc)
                         existing_status.download_change_count += 1
                         self.logger.debug(
                             f"Updated download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id} STATUS: {is_download}")
                     else:
                         existing_status.previous_watched_at = existing_status.last_watched_at
                         existing_status.is_watched = is_watched
-                        existing_status.last_watched_at = datetime.utcnow()
+                        existing_status.last_watched_at = datetime.now(timezone.utc)
                         existing_status.watch_change_count += 1
                         self.logger.debug(
                             f"Updated watch status for user_id: {user_id}, title_id: {title_id} STATUS: {is_watched}")
@@ -162,8 +162,8 @@ class SaveManager:
                         episode_id=episode_id if episode_id is not None else None,
                         is_download=is_download if torrent_id is not None else False,
                         is_watched=is_watched if episode_id is not None else False,
-                        last_download_at=datetime.utcnow() if torrent_id is not None else None,
-                        last_watched_at=datetime.utcnow() if episode_id is not None else None,
+                        last_download_at=datetime.now(timezone.utc) if torrent_id is not None else None,
+                        last_watched_at=datetime.now(timezone.utc) if episode_id is not None else None,
                         download_change_count=1 if torrent_id is not None else 0,
                         watch_change_count=1 if episode_id is not None else 0
                     )
@@ -198,10 +198,10 @@ class SaveManager:
                 if existing_rating:
                     existing_rating.rating_value = rating_value
                     existing_rating.rating_name = rating_name
-                    existing_rating.last_updated = datetime.utcnow()
+                    existing_rating.last_updated = datetime.now(timezone.utc)
                     self.logger.debug(f"Updated rating for title_id: {title_id}")
                 else:
-                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name, last_updated=datetime.utcnow())
+                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name, last_updated=datetime.now(timezone.utc))
                     session.add(new_rating)
                     self.logger.debug(f"Added new rating for title_id: {title_id}")
                 session.commit()
@@ -225,9 +225,9 @@ class SaveManager:
 
                 # Convert timestamps if they exist
                 if 'updated' in title_data:
-                    title_data['updated'] = datetime.utcfromtimestamp(title_data['updated'])
+                    title_data['updated'] = datetime.fromtimestamp(title_data['updated'], tz=timezone.utc)
                 if 'last_change' in title_data:
-                    title_data['last_change'] = datetime.utcfromtimestamp(title_data['last_change'])
+                    title_data['last_change'] = datetime.fromtimestamp(title_data['last_change'], tz=timezone.utc)
 
                 # Check for an existing title by title_id or code
                 existing_title = session.query(Title).filter(
@@ -274,7 +274,7 @@ class SaveManager:
                     # Обновление существующей франшизы
                     existing_franchise.franchise_id = franchise_id
                     existing_franchise.franchise_name = franchise_name
-                    existing_franchise.last_updated = datetime.utcnow()
+                    existing_franchise.last_updated = datetime.now(timezone.utc)
                     franchise = existing_franchise
                 else:
                     # Создание новой франшизы
@@ -282,7 +282,7 @@ class SaveManager:
                         title_id=title_id,
                         franchise_id=franchise_id,
                         franchise_name=franchise_name,
-                        last_updated=datetime.utcnow()
+                        last_updated=datetime.now(timezone.utc)
                     )
                     session.add(new_franchise)
                     session.flush()  # Получаем ID новой франшизы для использования в релизах
@@ -307,7 +307,7 @@ class SaveManager:
                         existing_release.name_ru = release_names.get('ru')
                         existing_release.name_en = release_names.get('en')
                         existing_release.name_alternative = release_names.get('alternative')
-                        existing_release.last_updated = datetime.utcnow()
+                        existing_release.last_updated = datetime.now(timezone.utc)
                     else:
                         # Создание нового релиза франшизы
                         new_release = FranchiseRelease(
@@ -318,7 +318,7 @@ class SaveManager:
                             name_ru=release_names.get('ru'),
                             name_en=release_names.get('en'),
                             name_alternative=release_names.get('alternative'),
-                            last_updated=datetime.utcnow()
+                            last_updated=datetime.now(timezone.utc)
                         )
                         session.add(new_release)
 
@@ -339,7 +339,7 @@ class SaveManager:
 
                     # Если жанр не существует, добавляем его
                     if not existing_genre:
-                        new_genre = Genre(name=genre, last_updated=datetime.utcnow())
+                        new_genre = Genre(name=genre, last_updated=datetime.now(timezone.utc))
                         session.add(new_genre)
                         session.commit()  # Коммитим, чтобы получить genre_id для следующего этапа
                         genre_id = new_genre.genre_id
@@ -350,7 +350,7 @@ class SaveManager:
                     existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
                                                                                     genre_id=genre_id).first()
                     if not existing_relation:
-                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.utcnow())
+                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.now(timezone.utc))
                         session.add(new_relation)
 
                 session.commit()
@@ -385,7 +385,7 @@ class SaveManager:
                         existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
                         if not existing_member:
                             # Создаем нового участника команды
-                            new_member = TeamMember(name=member_name, role=role, last_updated=datetime.utcnow())
+                            new_member = TeamMember(name=member_name, role=role, last_updated=datetime.now(timezone.utc))
                             session.add(new_member)
                             session.flush()  # Получаем ID нового участника
                             team_member = new_member
@@ -399,13 +399,13 @@ class SaveManager:
                         if team_member.id in existing_relations_dict:
                             # Обновляем существующую связь
                             relation = existing_relations_dict[team_member.id]
-                            relation.last_updated = datetime.utcnow()
+                            relation.last_updated = datetime.now(timezone.utc)
                         else:
                             # Создаем новую связь
                             title_team_relation = TitleTeamRelation(
                                 title_id=title_id,
                                 team_member_id=team_member.id,
-                                last_updated=datetime.utcnow()
+                                last_updated=datetime.now(timezone.utc)
                             )
                             session.add(title_team_relation)
 
@@ -437,7 +437,7 @@ class SaveManager:
 
                 # Преобразуем timestamps если они есть в данных
                 if 'created_timestamp' in processed_data:
-                    processed_data['created_timestamp'] = datetime.utcfromtimestamp(processed_data['created_timestamp'])
+                    processed_data['created_timestamp'] = datetime.fromtimestamp(processed_data['created_timestamp'], tz=timezone.utc)
 
                 existing_episode = session.query(Episode).filter_by(
                     uuid=processed_data['uuid'],
@@ -447,7 +447,16 @@ class SaveManager:
 
                 if existing_episode:
                     is_updated = False
-                    protected_fields = {'episode_id', 'title_id', 'created_timestamp'}
+                    protected_fields = {'episode_id', 'title_id'}
+
+                    # Особая обработка для created_timestamp
+                    if ('created_timestamp' in processed_data and
+                            existing_episode.created_timestamp == datetime.fromtimestamp(0, tz=timezone.utc) and
+                            processed_data['created_timestamp'] != datetime.fromtimestamp(0, tz=timezone.utc)):
+                        # Если у существующего эпизода дефолтная дата, а в новых данных есть нормальная дата
+                        existing_episode.created_timestamp = processed_data['created_timestamp']
+                        is_updated = True
+                        self.logger.debug(f"Updating incorrect timestamp for episode {episode_uuid}")
 
                     for key, value in episode_data.items():
                         if key not in protected_fields and getattr(existing_episode, key) != value:
@@ -455,16 +464,17 @@ class SaveManager:
                             self.logger.debug(f"Existing episode: {protected_fields}")
                             is_updated = True
                     if is_updated:
-                        existing_episode.last_updated = datetime.utcnow()
+                        existing_episode.last_updated = datetime.now(timezone.utc)
                         session.commit()
                         self.logger.debug(f"Successfully updated episode: {episode_uuid} for title_id: {title_id}")
                 else:
-                        if 'created_timestamp' not in episode_data:
-                            episode_data['created_timestamp'] = datetime.utcnow()
-                        new_episode = Episode(**episode_data)
-                        session.add(new_episode)
-                        session.commit()
-                        self.logger.debug(f"Added episode: {episode_uuid}  for title_id: {title_id}")
+                    if 'created_timestamp' not in processed_data or processed_data[
+                        'created_timestamp'] == datetime.fromtimestamp(0, tz=timezone.utc):
+                        processed_data['created_timestamp'] = datetime.now(timezone.utc)
+                    new_episode = Episode(**processed_data)
+                    session.add(new_episode)
+                    session.commit()
+                    self.logger.debug(f"Added episode: {episode_uuid} for title_id: {title_id}")
 
             except Exception as e:
                 session.rollback()
@@ -478,7 +488,7 @@ class SaveManager:
                                                                       title_id=title_id).first()
                 if existing_schedule:
                     # If it exists, update the last_updated field
-                    existing_schedule.last_updated = last_updated or datetime.utcnow()
+                    existing_schedule.last_updated = last_updated or datetime.now(timezone.utc)
                     self.logger.debug(
                         f"Schedule entry for day {day_of_week} and title_id {title_id} already exists. Updating last_updated.")
                 else:
@@ -503,7 +513,8 @@ class SaveManager:
 
             # Преобразуем timestamps если они есть в данных
             if 'uploaded_timestamp' in processed_data:
-                processed_data['uploaded_timestamp'] = datetime.utcfromtimestamp(processed_data['uploaded_timestamp'])
+                processed_data['uploaded_timestamp'] = datetime.fromtimestamp(processed_data['uploaded_timestamp'],
+                                                                              tz=timezone.utc)
 
             title_id = processed_data['title_id']
             torrent_id = processed_data['torrent_id']
@@ -515,11 +526,20 @@ class SaveManager:
                 if existing_torrent:
                     is_updated = False
 
-                    # Проверка на изменение данных
-                    is_updated = any(
-                        getattr(existing_torrent, key) != value
-                        for key, value in processed_data.items()
-                    )
+                    # Особая обработка для uploaded_timestamp
+                    if ('uploaded_timestamp' in processed_data and
+                            existing_torrent.uploaded_timestamp == datetime.fromtimestamp(0, tz=timezone.utc) and
+                            processed_data['uploaded_timestamp'] != datetime.fromtimestamp(0, tz=timezone.utc)):
+                        # Если у существующего торрента дефолтная дата, а в новых данных есть нормальная дата
+                        existing_torrent.uploaded_timestamp = processed_data['uploaded_timestamp']
+                        is_updated = True
+                        self.logger.debug(f"Updating incorrect timestamp for torrent {torrent_id}")
+
+                    # Проверка на изменение остальных данных
+                    for key, value in processed_data.items():
+                        if key != 'uploaded_timestamp' and getattr(existing_torrent, key) != value:
+                            is_updated = True
+                            break
 
                     if is_updated:
                         # Обновляем данные, если они изменились

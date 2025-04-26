@@ -46,6 +46,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in create_title_browser: {str(e)}"
             self.logger.error(error_message)
+            return None
 
     def get_title_html(self, title, show_mode='default'):
         """Генерирует HTML для отображения информации о тайтле, используя фабрику HTML.
@@ -93,6 +94,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_reload_button_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_show_more_html(self, title_id):
         """Generates HTML to display 'show more' link"""
@@ -101,6 +103,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_show_more_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_rating_html(self, title):
         """Generates HTML to display ratings and allows updating"""
@@ -142,6 +145,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
@@ -164,9 +168,11 @@ class UIGenerator:
                     html = f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_green}</a>'
                     return html
                 return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_download_history_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
@@ -189,6 +195,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_watch_all_episodes_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
@@ -209,9 +216,11 @@ class UIGenerator:
                 if is_need_to_see:
                     return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_green}</a>'
                 return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_nee_to_see_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
@@ -232,9 +241,11 @@ class UIGenerator:
                 if is_watched:
                     return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_green}</a>'
                 return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_watch_history_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
@@ -262,6 +273,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_torrents_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_poster_html(self, title, need_image=False, need_background=False, need_placeholder=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
@@ -302,6 +314,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_genres_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_team_html(self, title):
         """Генерирует HTML для отображения team_data с поддержкой кликабельных ссылок и разбивкой по ролям."""
@@ -355,6 +368,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_announce_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_status_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения статуса."""
@@ -376,6 +390,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_status_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_year_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения года выпуска."""
@@ -390,6 +405,47 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_year_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
+
+    def generate_franchise_html(self, title):
+        """Генерирует HTML для отображения франшиз, связанных с указанным тайтлом."""
+        try:
+            franchise_titles = self.db_manager.get_franchises_from_db(title_id=title.title_id)
+
+            if not franchise_titles:
+                return ""
+
+            franchise_title_ids = [fr.title_id for fr in franchise_titles]
+
+            filtered_franchises = [fr for fr in franchise_titles if fr.title_id != title.title_id]
+
+            if not filtered_franchises:
+                return ""
+
+            franchise_titles_html = (f'<p class="header_p">'
+                                     f'<a href="filter_by_franchise/{franchise_title_ids}" '
+                                     f'title="Filter by Franchise list">Franchises</a>'
+                                     f':{self.blank_spase * 6}</p><ul>')
+
+            for franchise_release in filtered_franchises:
+                title_id = franchise_release.title_id
+                title_en_name = franchise_release.name_en
+                title_ru_name = franchise_release.name_ru
+
+                franchise_titles_html += (
+                    f'<li><a href="display_info/{title_id}" '
+                    f'title="{title_id}|{title_en_name}|{title_ru_name}">'
+                    f'{title_ru_name}</a></li>'
+                )
+                self.logger.debug(f"display_info/{title_id}/{title_en_name}/{title_ru_name}")
+
+            franchise_titles_html += '</ul>'
+            return franchise_titles_html
+
+        except Exception as e:
+            error_message = f"Error in generate_franchise_html: {str(e)}"
+            self.logger.error(error_message)
+            return ""
 
     def generate_description_html(self, title):
         """Генерирует HTML для отображения описания, если оно есть."""
@@ -401,6 +457,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_description_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_type_html(self, title):
         """Генерирует HTML для отображения типа аниме."""
@@ -410,6 +467,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_type_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
@@ -518,6 +576,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_episodes_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_play_all_html(self, title, skip_data_encoded):
         """Generates M3U Playlist link with encoded skip data."""
@@ -541,3 +600,4 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_play_all_html: {str(e)}"
             self.logger.error(error_message)
+            return ""

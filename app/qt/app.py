@@ -11,8 +11,9 @@ import datetime
 
 from datetime import datetime
 from app.qt.vlc_player import VLCPlayer
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
-from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
+
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
+from PyQt6.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
 
 from app.qt.ui_manger import UIManager
 from app.qt.app_state_manager import AppStateManager

@@ -2,9 +2,9 @@
 import logging
 
 from jinja2 import Template
-from PyQt5.QtWidgets import QTextBrowser, QLabel, QWidget
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QTextBrowser, QLabel, QWidget
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt
 from app.qt.layout_metadata import show_mode_metadata
 
 
@@ -105,11 +105,13 @@ class TitleDataFactory:
 
             # Обработка других методов получения данных
             elif data_fetcher_name and hasattr(self.db_manager, data_fetcher_name):
-                    data_fetcher = getattr(self.db_manager, data_fetcher_name)
-                    if callable(data_fetcher):
-                        return data_fetcher(batch_size=batch_size, offset=current_offset)
+                data_fetcher = getattr(self.db_manager, data_fetcher_name)
+                if callable(data_fetcher):
+                    return data_fetcher(batch_size=batch_size, offset=current_offset)
+                else:
+                    return []
 
-                # Если переданы конкретные title_ids, но не попали под списочные режимы
+            # Если переданы конкретные title_ids, но не попали под списочные режимы
             elif title_ids:
                 return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
 
@@ -119,7 +121,7 @@ class TitleDataFactory:
 
         except Exception as e:
             self.logger.error(f"Error in get_titles: {str(e)}")
-            return ""
+            return []
 
 class TitleHtmlFactory:
     def __init__(self, app, template_name):
@@ -289,8 +291,8 @@ class TitleBrowserFactory:
         title_browser.anchorClicked.connect(self.app.on_link_click)
 
         # Настраиваем виджет на основе метаданных
-        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         title_browser.setStyleSheet("""
             text-align: right;
             border: 1px solid #444;
@@ -328,10 +330,10 @@ class TitleBrowserFactory:
         if poster_data:
             pixmap = QPixmap()
             if pixmap.loadFromData(poster_data):
-                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
             else:
                 self.app.logger.error(f"Error: Failed to load pixmap from data for title_id: {title_id}")
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         else:
-            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         return poster_label

@@ -1,6 +1,6 @@
 # ui_manager.py
-from PyQt5.QtCore import QEventLoop, Qt
-from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
+from PyQt6.QtCore import QEventLoop, Qt
+from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
     QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication
 
 
@@ -190,13 +190,13 @@ class UIManager:
         # Добавляем лейаут пагинации под скролл-областью
         pagination_widget = QWidget()
         pagination_widget_layout = QHBoxLayout(pagination_widget)
-        pagination_widget_layout.setAlignment(Qt.AlignCenter)
+        pagination_widget_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Создаем кнопки для пагинации с уникальными колбеками
         prev_page_button = QPushButton("←", self.parent)
         prev_page_button.setFixedWidth(50)
         pagination_info = QLabel("0 .. 0", self.parent)
-        pagination_info.setAlignment(Qt.AlignCenter)
+        pagination_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         next_page_button = QPushButton("→", self.parent)
         next_page_button.setFixedWidth(50)
 
@@ -314,7 +314,7 @@ class LoadingDialog(QDialog):
     def start(self):
         """Запускает лоадер"""
         self.show()
-        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)  # Обновляем UI
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)  # Обновляем UI
 
     def stop(self):
         """Останавливает лоадер"""

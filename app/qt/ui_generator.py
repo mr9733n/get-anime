@@ -3,9 +3,9 @@ import json
 import base64
 import logging
 
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import QByteArray, QBuffer
+from PyQt6.QtWidgets import QHBoxLayout
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QByteArray, QBuffer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 
 
@@ -64,7 +64,7 @@ class UIGenerator:
             # Используем QBuffer для сохранения в байтовый массив
             byte_array = QByteArray()
             buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.WriteOnly)
+            buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             if not pixmap.save(buffer, 'PNG'):
                 self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
                 return None

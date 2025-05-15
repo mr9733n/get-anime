@@ -7,9 +7,9 @@ import ctypes
 import vlc
 import time
 
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget
-from PyQt5.QtCore import Qt, QTimer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget
+from PyQt6.QtCore import Qt, QTimer
 
 
 ES_CONTINUOUS       = 0x80000000  # постоянный режим
@@ -397,7 +397,7 @@ class VLCPlayer(QWidget):
         """Обрабатывает клик по слайдеру и перемещает ручку с учётом буферизации."""
         if event.button() == Qt.LeftButton:
             slider_width = self.progress_slider.width()
-            click_position = event.pos().x()
+            click_position = event.position().x()
             new_value = int((click_position / slider_width) * self.progress_slider.maximum())
             self.progress_slider.setValue(new_value)
             self.seek_position_with_buffer()

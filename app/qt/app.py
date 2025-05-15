@@ -44,18 +44,17 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version, template_name):
         super().__init__()
-        self.current_show_mode = None
-        self.error_label = None
-        self.tray_icon = None
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
+        self.current_show_mode = None
+        self.error_label = None
+        self.tray_icon = None
         self.current_title_ids = None
         self.current_day_of_week = None
         self.current_title_id = None
         self.vlc_window = None
-        self.day_of_week = None
         self.quality_dropdown = None
         self.playlist_filename = None
         self.current_data = None
@@ -296,12 +295,12 @@ class AnimePlayerAppVer3(QWidget):
     def reload_schedule(self):
         """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
         try:
-            day = self.day_of_week
+            day = self.current_day_of_week
             titles = self.total_titles
             if not day:
                 day = 0 # Monday
             status, title_ids = self.check_and_update_schedule_after_display(day, titles)
-            self.current_day_of_week = self.day_of_week
+
             self.current_title_id = None
             if not title_ids:
                 self.display_titles_for_day(day)
@@ -386,6 +385,8 @@ class AnimePlayerAppVer3(QWidget):
             match (current_day, current_title_id, current_title_ids):
                 case (day, None, None) if day:
                     self.logger.info(f"Restoring schedule for {day}")
+                    # TODO: saving day for Reload schedule
+                    self.current_day_of_week = day
                     self.display_titles_for_day(day)
 
                 case (None, current_title_id, None) if current_title_id:
@@ -636,8 +637,8 @@ class AnimePlayerAppVer3(QWidget):
             # Очистка предыдущих постеров
             self.clear_previous_posters()
             titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
-            self.day_of_week = day_of_week
-            self.current_day_of_week = self.day_of_week
+            # TODO: saving current day for state
+            self.current_day_of_week = day_of_week
             self.current_title_id = None
             self.current_title_ids = None
             pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")

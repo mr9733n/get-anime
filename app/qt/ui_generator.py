@@ -163,7 +163,7 @@ class UIGenerator:
             if torrent_id:
                 _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
                 self.logger.debug(
-                    f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
+                    f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status: {bool(is_download)}")
                 if is_download:
                     html = f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_green}</a>'
                     return html
@@ -188,7 +188,7 @@ class UIGenerator:
             user_id = self.app.user_id
 
             all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status:{all_watched}")
+            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status: {bool(all_watched)}")
             if all_watched:
                 return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_green}</a>'
             return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_red}</a>'
@@ -212,7 +212,7 @@ class UIGenerator:
 
             if title_id:
                 is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
-                self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status:{is_need_to_see}")
+                self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status: {bool(is_need_to_see)}")
                 if is_need_to_see:
                     return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_green}</a>'
                 return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_red}</a>'
@@ -237,7 +237,7 @@ class UIGenerator:
 
             if episode_id or title_id:
                 is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
-                self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
+                self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status: {bool(is_watched)}")
                 if is_watched:
                     return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_green}</a>'
                 return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_red}</a>'

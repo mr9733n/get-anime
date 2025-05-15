@@ -361,6 +361,10 @@ class GetManager:
                         FranchiseRelease.franchise_id.isnot(None)
                     )
 
+                total_count = query.count()
+                if offset >= total_count:
+                    offset = 0
+
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
 
@@ -381,6 +385,10 @@ class GetManager:
                     query = query.filter(History.title_id == title_id, History.need_to_see == True)
                 else:
                     query = query.filter(History.need_to_see == True)
+
+                total_count = query.count()
+                if offset >= total_count:
+                    offset = 0
 
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)

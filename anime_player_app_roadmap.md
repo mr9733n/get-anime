@@ -299,6 +299,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Show franchises links in title
 - [x] Filter titles by franchise
 - [x] Show day of week in title 
+- [x] Fix offset and pagination
 - [ ] remove unused logic
 
 ### 8.24. Some fixes

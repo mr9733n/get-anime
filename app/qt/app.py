@@ -340,15 +340,15 @@ class AnimePlayerAppVer3(QWidget):
                 self.display_titles(show_next=True)
             elif callback_name == "display_titles_text_list":
                 self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             elif callback_name == "display_franchises":
                 self.display_titles(show_mode='franchise_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             elif callback_name == "display_system":
                 self.display_titles(show_mode='system')
             elif callback_name == "toggle_need_to_see":
                 self.display_titles(show_mode='need_to_see_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             else:
                 self.logger.warning(f"Неизвестный колбек: {callback_name}")
 
@@ -518,7 +518,11 @@ class AnimePlayerAppVer3(QWidget):
 
             self.display_titles_in_ui(titles, show_mode)
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-            self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
+            if isinstance(self.total_titles, list):
+                self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
+            else:
+                self.logger.debug(
+                    f"self.total_titles is not a list, but {type(self.total_titles).__name__}: {self.total_titles}")
 
         except Exception as e:
             self.logger.error(f"Ошибка display_titles: {e}")

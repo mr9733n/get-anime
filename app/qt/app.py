@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import logging.config
@@ -10,8 +11,9 @@ import datetime
 
 from datetime import datetime
 from app.qt.vlc_player import VLCPlayer
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
-from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
+
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
+from PyQt6.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
 
 from app.qt.ui_manger import UIManager
 from app.qt.app_state_manager import AppStateManager
@@ -43,18 +45,17 @@ class AnimePlayerAppVer3(QWidget):
 
     def __init__(self, db_manager, version, template_name):
         super().__init__()
-        self.current_show_mode = None
-        self.error_label = None
-        self.tray_icon = None
         self.logger = logging.getLogger(__name__)
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
 
+        self.current_show_mode = None
+        self.error_label = None
+        self.tray_icon = None
         self.current_title_ids = None
         self.current_day_of_week = None
         self.current_title_id = None
         self.vlc_window = None
-        self.day_of_week = None
         self.quality_dropdown = None
         self.playlist_filename = None
         self.current_data = None
@@ -295,12 +296,12 @@ class AnimePlayerAppVer3(QWidget):
     def reload_schedule(self):
         """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
         try:
-            day = self.day_of_week
+            day = self.current_day_of_week
             titles = self.total_titles
             if not day:
                 day = 0 # Monday
             status, title_ids = self.check_and_update_schedule_after_display(day, titles)
-            self.current_day_of_week = self.day_of_week
+
             self.current_title_id = None
             if not title_ids:
                 self.display_titles_for_day(day)
@@ -340,15 +341,15 @@ class AnimePlayerAppVer3(QWidget):
                 self.display_titles(show_next=True)
             elif callback_name == "display_titles_text_list":
                 self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             elif callback_name == "display_franchises":
                 self.display_titles(show_mode='franchise_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             elif callback_name == "display_system":
                 self.display_titles(show_mode='system')
             elif callback_name == "toggle_need_to_see":
                 self.display_titles(show_mode='need_to_see_list', batch_size=self.titles_list_batch_size)
-                self.current_offset += self.titles_list_batch_size
+                ## self.current_offset += self.titles_list_batch_size
             else:
                 self.logger.warning(f"Неизвестный колбек: {callback_name}")
 
@@ -385,6 +386,8 @@ class AnimePlayerAppVer3(QWidget):
             match (current_day, current_title_id, current_title_ids):
                 case (day, None, None) if day:
                     self.logger.info(f"Restoring schedule for {day}")
+                    # TODO: saving day for Reload schedule
+                    self.current_day_of_week = day
                     self.display_titles_for_day(day)
 
                 case (None, current_title_id, None) if current_title_id:
@@ -516,7 +519,11 @@ class AnimePlayerAppVer3(QWidget):
 
             self.display_titles_in_ui(titles, show_mode)
             self.logger.debug(f"Was sent to display {show_mode} {len(titles)} titles.")
-            self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
+            if isinstance(self.total_titles, list):
+                self.logger.debug(f"self.total_titles: {len(self.total_titles)}")
+            else:
+                self.logger.debug(
+                    f"self.total_titles is not a list, but {type(self.total_titles).__name__}: {self.total_titles}")
 
         except Exception as e:
             self.logger.error(f"Ошибка display_titles: {e}")
@@ -635,8 +642,8 @@ class AnimePlayerAppVer3(QWidget):
             # Очистка предыдущих постеров
             self.clear_previous_posters()
             titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
-            self.day_of_week = day_of_week
-            self.current_day_of_week = self.day_of_week
+            # TODO: saving current day for state
+            self.current_day_of_week = day_of_week
             self.current_title_id = None
             self.current_title_ids = None
             pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
@@ -1078,12 +1085,20 @@ class AnimePlayerAppVer3(QWidget):
             if link.startswith('display_info/'):
                 title_id = int(link.split('/')[1])
                 QTimer.singleShot(100, lambda: self.display_info(title_id))
+            elif link.startswith('filter_by_franchise/'):
+                title_ids = ast.literal_eval(link.split('/')[1])
+                self.logger.debug(f"Filtering by franchise for title_ids: {title_ids}")
+                QTimer.singleShot(100, lambda: self.display_titles(title_ids=title_ids))
             elif link.startswith('filter_by_genre/'):
                 genre_id = link.split('/')[1]
                 self.logger.debug(f"Filtering by genre: {genre_id}")
                 title_ids = self.db_manager.get_titles_by_genre(genre_id)
                 if title_ids:
-                    self.display_titles(show_mode='titles_genre_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(
+                        show_mode='titles_genre_list',
+                        batch_size=self.titles_list_batch_size,
+                        title_ids=title_ids
+                    ))
                 else:
                     self.logger.warning(f"No titles found with genre: '{genre_id}'")
             elif link.startswith('filter_by_team_member/'):
@@ -1091,7 +1106,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(f"Filtering by team_member: {team_member}")
                 title_ids = self.db_manager.get_titles_by_team_member(team_member)
                 if title_ids:
-                    self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with team_member: '{team_member}'")
             elif link.startswith('filter_by_year/'):
@@ -1099,7 +1114,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(f"Filtering by year: {year}")
                 title_ids = self.db_manager.get_titles_by_year(year)
                 if title_ids:
-                    self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with year: '{year}'")
             elif link.startswith('filter_by_status/'):
@@ -1108,7 +1123,7 @@ class AnimePlayerAppVer3(QWidget):
                 title_ids = self.db_manager.get_titles_by_status(status_code)
                 self.logger.debug(f"Query returned {len(title_ids)} titles: {title_ids[:5] if title_ids else []}")
                 if title_ids:
-                    self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids)
+                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
                 else:
                     self.logger.warning(f"No titles found with status: '{status_code}'")
             elif link.startswith('reload_template/'):
@@ -1170,7 +1185,7 @@ class AnimePlayerAppVer3(QWidget):
                 if len(parts) >= 4:
                     user_id = int(parts[1])
                     title_id = int(parts[2])
-                    episode_ids = eval(parts[3])
+                    episode_ids = ast.literal_eval(parts[3])
                     if not isinstance(episode_ids, list):
                         raise ValueError("Invalid episode_ids, expected a list.")
                     self.logger.debug(f"Setting user:{user_id} watch status for title_id, all_episodes: {title_id}")

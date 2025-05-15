@@ -3,9 +3,9 @@ import json
 import base64
 import logging
 
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import QByteArray, QBuffer
+from PyQt6.QtWidgets import QHBoxLayout
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QByteArray, QBuffer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 
 
@@ -46,6 +46,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in create_title_browser: {str(e)}"
             self.logger.error(error_message)
+            return None
 
     def get_title_html(self, title, show_mode='default'):
         """Генерирует HTML для отображения информации о тайтле, используя фабрику HTML.
@@ -63,7 +64,7 @@ class UIGenerator:
             # Используем QBuffer для сохранения в байтовый массив
             byte_array = QByteArray()
             buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.WriteOnly)
+            buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             if not pixmap.save(buffer, 'PNG'):
                 self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
                 return None
@@ -93,6 +94,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_reload_button_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_show_more_html(self, title_id):
         """Generates HTML to display 'show more' link"""
@@ -101,6 +103,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_show_more_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_rating_html(self, title):
         """Generates HTML to display ratings and allows updating"""
@@ -142,6 +145,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
@@ -159,14 +163,16 @@ class UIGenerator:
             if torrent_id:
                 _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
                 self.logger.debug(
-                    f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status:{is_download}")
+                    f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status: {bool(is_download)}")
                 if is_download:
                     html = f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_green}</a>'
                     return html
                 return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_download_history_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
@@ -182,13 +188,14 @@ class UIGenerator:
             user_id = self.app.user_id
 
             all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status:{all_watched}")
+            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status: {bool(all_watched)}")
             if all_watched:
                 return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_green}</a>'
             return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_red}</a>'
         except Exception as e:
             error_message = f"Error in generate_watch_all_episodes_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
@@ -205,13 +212,15 @@ class UIGenerator:
 
             if title_id:
                 is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
-                self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status:{is_need_to_see}")
+                self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status: {bool(is_need_to_see)}")
                 if is_need_to_see:
                     return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_green}</a>'
                 return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_nee_to_see_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
@@ -228,13 +237,15 @@ class UIGenerator:
 
             if episode_id or title_id:
                 is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
-                self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status:{is_watched}")
+                self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status: {bool(is_watched)}")
                 if is_watched:
                     return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_green}</a>'
                 return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_red}</a>'
+            return ""
         except Exception as e:
             error_message = f"Error in generate_watch_history_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_torrents_html(self, title):
         """Generates HTML to display a list of torrents for a title."""
@@ -262,6 +273,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_torrents_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_poster_html(self, title, need_image=False, need_background=False, need_placeholder=False):
         """Generates HTML for the poster in Base64 format or returns a placeholder."""
@@ -302,6 +314,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_genres_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_team_html(self, title):
         """Генерирует HTML для отображения team_data с поддержкой кликабельных ссылок и разбивкой по ролям."""
@@ -349,12 +362,51 @@ class UIGenerator:
     def generate_announce_html(self, title):
         """Генерирует HTML для отображения анонса."""
         try:
-            title_announced = title.announce if title.announce else 'Анонс отсутствует'
-            return f"""<p>Анонс: {title_announced}</p>"""
+            day_html = self.generate_day_of_week_html(title)
+
+            if hasattr(title, 'announce') and title.announce:
+                announce_part = f"{title.announce}"
+            else:
+                announce_part = ""
+            if day_html and announce_part:
+                combined_text = f"{day_html}{self.blank_spase}{announce_part}"
+            else:
+                combined_text = day_html or announce_part
+
+            return f"<p>{combined_text}</p>"
 
         except Exception as e:
             error_message = f"Error in generate_announce_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
+
+    def generate_day_of_week_html(self, title):
+        """Генерирует HTML для отображения дня недели тайтла."""
+        try:
+            day_number = getattr(title, 'day_of_week', None)
+            day_part = ""
+
+            try:
+                day_number = int(day_number)
+            except (ValueError, TypeError):
+                self.logger.warning(f"Некорректный номер дня недели: {day_number}")
+                return ""
+
+            if day_number is not None:
+                days_of_week = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+                if isinstance(day_number, int) and 0 <= day_number < len(days_of_week):
+                    day_name = days_of_week[day_number]
+                    day_part = f'<span class="day_name">{self.blank_spase}{day_name}{self.blank_spase}</span>'
+
+                return day_part
+            else:
+                self.logger.warning(f"Некорректный номер дня недели: {day_number}")
+                return ""
+
+        except Exception as e:
+            error_message = f"Error in generate_day_of_week_html: {str(e)}"
+            self.logger.error(error_message)
+            return ""
 
     def generate_status_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения статуса."""
@@ -376,6 +428,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_status_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_year_html(self, title, show_text_list=False):
         """Генерирует HTML для отображения года выпуска."""
@@ -390,6 +443,47 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_year_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
+
+    def generate_franchise_html(self, title):
+        """Генерирует HTML для отображения франшиз, связанных с указанным тайтлом."""
+        try:
+            franchise_titles = self.db_manager.get_franchises_from_db(title_id=title.title_id)
+
+            if not franchise_titles:
+                return ""
+
+            franchise_title_ids = [fr.title_id for fr in franchise_titles]
+
+            filtered_franchises = [fr for fr in franchise_titles if fr.title_id != title.title_id]
+
+            if not filtered_franchises:
+                return ""
+
+            franchise_titles_html = (f'<p class="header_p">'
+                                     f'<a href="filter_by_franchise/{franchise_title_ids}" '
+                                     f'title="Filter by Franchise list">Franchises</a>'
+                                     f':{self.blank_spase * 6}</p><ul>')
+
+            for franchise_release in filtered_franchises:
+                title_id = franchise_release.title_id
+                title_en_name = franchise_release.name_en
+                title_ru_name = franchise_release.name_ru
+
+                franchise_titles_html += (
+                    f'<li><a href="display_info/{title_id}" '
+                    f'title="{title_id}|{title_en_name}|{title_ru_name}">'
+                    f'{title_ru_name}</a></li>'
+                )
+                self.logger.debug(f"display_info/{title_id}/{title_en_name}/{title_ru_name}")
+
+            franchise_titles_html += '</ul>'
+            return franchise_titles_html
+
+        except Exception as e:
+            error_message = f"Error in generate_franchise_html: {str(e)}"
+            self.logger.error(error_message)
+            return ""
 
     def generate_description_html(self, title):
         """Генерирует HTML для отображения описания, если оно есть."""
@@ -401,6 +495,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_description_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_type_html(self, title):
         """Генерирует HTML для отображения типа аниме."""
@@ -410,6 +505,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_type_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_episodes_html(self, title):
         """Генерирует HTML для отображения информации об эпизодах на основе выбранного качества."""
@@ -518,6 +614,7 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_episodes_html: {str(e)}"
             self.logger.error(error_message)
+            return ""
 
     def generate_play_all_html(self, title, skip_data_encoded):
         """Generates M3U Playlist link with encoded skip data."""
@@ -541,3 +638,4 @@ class UIGenerator:
         except Exception as e:
             error_message = f"Error in generate_play_all_html: {str(e)}"
             self.logger.error(error_message)
+            return ""

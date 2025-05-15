@@ -324,6 +324,7 @@ class SaveManager:
 
                 session.commit()
                 self.logger.debug(f"Successfully saved franchise for title_id: {title_id}")
+                return True
 
             except Exception as e:
                 session.rollback()

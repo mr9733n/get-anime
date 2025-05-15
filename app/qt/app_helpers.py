@@ -105,9 +105,11 @@ class TitleDataFactory:
 
             # Обработка других методов получения данных
             elif data_fetcher_name and hasattr(self.db_manager, data_fetcher_name):
-                    data_fetcher = getattr(self.db_manager, data_fetcher_name)
-                    if callable(data_fetcher):
-                        return data_fetcher(batch_size=batch_size, offset=current_offset)
+                data_fetcher = getattr(self.db_manager, data_fetcher_name)
+                if callable(data_fetcher):
+                    return data_fetcher(batch_size=batch_size, offset=current_offset)
+                else:
+                    return []
 
                 # Если переданы конкретные title_ids, но не попали под списочные режимы
             elif title_ids:
@@ -119,7 +121,7 @@ class TitleDataFactory:
 
         except Exception as e:
             self.logger.error(f"Error in get_titles: {str(e)}")
-            return ""
+            return []
 
 class TitleHtmlFactory:
     def __init__(self, app, template_name):

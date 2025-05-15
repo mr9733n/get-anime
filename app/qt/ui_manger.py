@@ -125,6 +125,16 @@ class UIManager:
                 border: 1px solid #aaa;
                 selection-background-color: #0078d4;
                 selection-color: #fff;
+                color: #333;  /* Важно: цвет текста в выпадающем списке */
+            }
+            QComboBox::item {
+                color: #333;  /* Цвет текста для элементов списка */
+                background-color: #ffffff;
+                padding: 4px;
+            }
+            QComboBox::item:selected {
+                background-color: #0078d4;
+                color: #fff;
             }
         """)
 
@@ -197,6 +207,7 @@ class UIManager:
         prev_page_button.setFixedWidth(50)
         pagination_info = QLabel("0 .. 0", self.parent)
         pagination_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pagination_info.setStyleSheet("color: #333; font-weight: bold;")
         next_page_button = QPushButton("→", self.parent)
         next_page_button.setFixedWidth(50)
 
@@ -280,6 +291,7 @@ class UIManager:
             if pagination_info:
                 info_text = f"{show_mode} | Pages: {current_page} .. {total_pages} | Titles: {total_items}"
                 pagination_info.setText(info_text)
+                pagination_info.setStyleSheet("color: #333; font-weight: bold;")
 
             # Включаем/отключаем кнопки в зависимости от текущей страницы
             prev_button = self.parent_widgets.get("pagination_prev")

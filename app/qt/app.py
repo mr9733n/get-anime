@@ -1272,6 +1272,7 @@ class AnimePlayerAppVer3(QWidget):
                     final_age = timedelta(days=90)
                     poster_age = current_time - poster_date
 
+                    if poster_age < week_age or poster_age > final_age:
                         need_download = False
                         if poster_age < week_age:
                             self.logger.debug(

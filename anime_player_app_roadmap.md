@@ -300,6 +300,11 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Filter titles by franchise
 - [x] Show day of week in title 
 - [x] Fix offset and pagination
+- [x] Reload poster images
+- [x] Reload schedule rework
+- [x] Some fixes in Rating
+- [x] Some fixed in Episode saving
+- [ ] Add status for buttons (simple callback)
 - [ ] remove unused logic
 
 ### 8.24. Some fixes

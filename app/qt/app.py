@@ -7,9 +7,8 @@ import platform
 import re
 import subprocess
 import base64
-import datetime
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from app.qt.vlc_player import VLCPlayer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
@@ -93,6 +92,7 @@ class AnimePlayerAppVer3(QWidget):
         self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
         self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
+        self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
         self.torrent_save_path = "torrents/"  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
@@ -108,7 +108,6 @@ class AnimePlayerAppVer3(QWidget):
 
         # Initialize other components
         self.api_client = APIClient(self.base_url, self.api_version)
-        self.poster_manager = PosterManager()
         self.playlist_manager = PlaylistManager()
         self.db_manager = db_manager
         self.poster_manager = PosterManager(
@@ -293,19 +292,19 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(error_message)
 
     def reload_schedule(self):
-        """RELOAD и отображает тайтлы DISPLAY SCHEDULE."""
+        """Обновляет и отображает расписание тайтлов."""
         try:
             day = self.current_day_of_week
-            titles = self.total_titles
             if not day:
-                day = 0 # Monday
-            status, title_ids = self.check_and_update_schedule_after_display(day, titles)
+                day = 0  # Monday
 
+            current_titles = self.total_titles if self.total_titles else set()
+            status, new_title_ids = self.check_and_update_schedule(day, current_titles)
             self.current_title_id = None
-            if not title_ids:
-                self.display_titles_for_day(day)
-            if status:
-                self.display_titles(title_ids=title_ids)
+            if status and new_title_ids:
+                self.display_titles_for_day(day, force_reload=False)
+            else:
+                self.display_titles_for_day(day, force_reload=True)
         except Exception as e:
             self.logger.error(f"Ошибка при обновлении reload_schedule: {e}")
 
@@ -633,15 +632,19 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
-    def display_titles_for_day(self, day_of_week):
+    def display_titles_for_day(self, day_of_week, force_reload=False):
+        """
+        Отображает тайтлы для указанного дня недели.
+
+        Args:
+            day_of_week (int): День недели.
+            force_reload (bool): Принудительно загрузить данные с сервера.
+        """
         try:
             self.ui_manager.show_loader("Loading schedule...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+            self.ui_manager.set_buttons_enabled(False)
 
-            # Очистка предыдущих постеров
             self.clear_previous_posters()
-            titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
-            # TODO: saving current day for state
             self.current_day_of_week = day_of_week
             self.current_title_id = None
             self.current_title_ids = None
@@ -649,39 +652,24 @@ class AnimePlayerAppVer3(QWidget):
             if pagination_widget:
                 pagination_widget.setVisible(False)
 
-            self.logger.debug(f"day_of_week: {day_of_week}, titles: {len(titles)}")
+            titles = None
+            if not force_reload:
+                titles = self.db_manager.get_titles_from_db(show_all=False, day_of_week=day_of_week)
+                self.logger.debug(f"day_of_week: {day_of_week}, titles from DB: {len(titles)}")
             if titles:
-                # Сохраняем текущие тайтлы для последующего использования
                 self.total_titles = {title.title_id for title in titles}
-                # Отображаем тайтлы в UI
                 self.display_titles_in_ui(titles)
-                # Проверяем и обновляем расписание после отображения every 10 min
-                # QTimer.singleShot(600000, lambda: self.reload_schedule())
             else:
-                # Если тайтлы отсутствуют, получаем данные с сервера
-                titles_list = []
-                data = self.get_schedule(day_of_week)
-                if not data:
-                    self.display_titles(start=True)
-                else:
-                    self.logger.debug(f"Received data from server: {len(data)} keys (type: {type(data).__name__})")
-                    parsed_data = self.parse_schedule_data(data)
-                    self.logger.debug(f"parsed_data: {parsed_data}")
-                    self._save_parsed_data(parsed_data)
-
-                    for titles_list in data:
-                        titles_list = titles_list.get("list", [])
-                    # TODO: fix this. need to count as dict
-                    self.logger.debug(f"title_list: {titles_list}")
-                    # Сохраняем данные в базе данных
-                    self._save_titles_list(titles_list)
-
-                    titles = self.db_manager.get_titles_from_db(day_of_week)
-                    self.total_titles = titles
+                status, new_title_ids = self.fetch_and_process_schedule(day_of_week)
+                if status and new_title_ids:
+                    titles = self.db_manager.get_titles_from_db(day_of_week=day_of_week)
+                    self.total_titles = {title.title_id for title in titles}
                     self.display_titles_in_ui(titles)
+                else:
+                    self.display_titles(start=True)
 
         except Exception as e:
-            self.logger.error(f"Error fetching titles from schedule: {e}")
+            self.logger.error(f"Error displaying titles for day: {e}")
         finally:
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
@@ -704,30 +692,27 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as e:
             self.logger.error(f"Ошибка при save titles расписания: {e}")
 
-    def check_and_update_schedule_after_display(self, day_of_week, current_titles):
+    def fetch_and_process_schedule(self, day_of_week):
         """
-        Проверяет наличие обновлений в расписании и обновляет базу данных, если необходимо.
+        Получает и обрабатывает расписание с сервера.
+
         Args:
             day_of_week (int): День недели.
-            current_titles (list): Текущие данные о титулах.
+
         Returns:
-            tuple: (bool, set) Успешность операции и список новых титулов.
+            tuple: (bool, set) Успешность операции и набор title_ids.
         """
         try:
-            self.ui_manager.show_loader("Reload schedule...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
-
-            titles_list = []
             data = self.get_schedule(day_of_week)
-
             if data is None:
-                self.logger.warning(f"No data available for day {day_of_week}. Skipping update.")
+                self.logger.warning(f"No data available for day {day_of_week}.")
                 return False, None
 
             parsed_data = self.parse_schedule_data(data)
             self.logger.debug(f"Parsed data: {parsed_data}")
             self._save_parsed_data(parsed_data)
 
+            titles_list = []
             for item in data:
                 titles = item.get("list", [])
                 titles_list.extend(titles)
@@ -736,20 +721,40 @@ class AnimePlayerAppVer3(QWidget):
             self._save_titles_list(titles_list)
 
             new_title_ids = {title_data.get('id') for title_data in titles_list}
+            return True, new_title_ids
+        except Exception as e:
+            self.logger.error(f"Error while fetching and processing schedule: {e}")
+            return False, None
+
+    def check_and_update_schedule(self, day_of_week, current_titles):
+        """
+        Проверяет наличие обновлений в расписании и обновляет базу данных.
+
+        Args:
+            day_of_week (int): День недели.
+            current_titles (set): Текущий набор title_ids.
+
+        Returns:
+            tuple: (bool, set) Успешность операции и набор обновленных title_ids.
+        """
+        try:
+            self.ui_manager.show_loader("Updating schedule...")
+            self.ui_manager.set_buttons_enabled(False)
+            status, new_title_ids = self.fetch_and_process_schedule(day_of_week)
+            if not status:
+                return False, None
 
             if current_titles:
-                current_title_ids = set(current_titles)
-
-                titles_to_remove = current_title_ids.difference(new_title_ids)
+                titles_to_remove = current_titles.difference(new_title_ids)
                 if titles_to_remove:
                     self.logger.debug(f"Titles to remove: {titles_to_remove}")
                     self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
                 else:
-                    self.logger.debug(f"No updates required: {current_title_ids} == {new_title_ids}")
+                    self.logger.debug(f"No updates required: {current_titles} == {new_title_ids}")
 
             return True, new_title_ids
         except Exception as e:
-            self.logger.error(f"Error while checking or updating schedule: {e}")
+            self.logger.error(f"Error while checking and updating schedule: {e}")
             return False, None
         finally:
             self.ui_manager.hide_loader()
@@ -761,8 +766,7 @@ class AnimePlayerAppVer3(QWidget):
             item = self.posters_layout.takeAt(0)
             widget_to_remove = item.widget()
             if widget_to_remove is not None:
-                widget_to_remove.deleteLater()  # Полностью удаляет виджет из памяти
-            # Также проверяем, если в сетке может быть элемент, а не виджет (например, пустое место)
+                widget_to_remove.deleteLater()
             if item.layout() is not None:
                 self.clear_layout(item.layout())
 
@@ -810,33 +814,28 @@ class AnimePlayerAppVer3(QWidget):
     def get_random_title(self):
         try:
             self.ui_manager.show_loader("Fetching random title...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+            self.ui_manager.set_buttons_enabled(False)
 
             data = self.api_client.get_random_title()
 
-            # Проверяем, что data имеет тип dict
             if not isinstance(data, dict):
                 self.logger.error(f"Unexpected response format: {type(data).__name__}")
                 self.show_error_notification("API Error", "Unexpected response format.")
                 return
 
-            # Если в ответе присутствует ошибка, логируем и уведомляем пользователя
             if 'error' in data:
                 self.logger.error(data['error'])
                 self.show_error_notification("API Error", data['error'])
                 return
 
-            # Теперь можно безопасно считать количество ключей в словаре
             self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
 
-            # Получаем список тайтлов из ответа
             title_list = data.get('list', [])
             if not title_list:
                 self.logger.error("No titles found in the response.")
                 self.show_error_notification("Error", "No titles found in the response.")
                 return
 
-            # Извлекаем первый элемент из списка и получаем его ID
             title_data = title_list[0]
             title_id = title_data.get('id')
             self.invoke_database_save(title_list)
@@ -1254,17 +1253,43 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(error_message)
 
     def get_poster_or_placeholder(self, title_id):
+        """
+        Получает постер для тайтла или плейсхолдер, если постер не найден.
+        Инициирует скачивание постера только если существующий постер устарел или отсутствует.
+        """
         try:
             poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
-            if is_placeholder:
-                self.logger.warning(f"Warning: No poster data for title_id: {title_id}, using placeholder.")
+            need_download = True
+            if poster_data and not is_placeholder:
+                poster_date = self.db_manager.get_poster_last_updated(title_id)
+
+                if poster_date:
+                    if poster_date.tzinfo is None:
+                        poster_date = poster_date.replace(tzinfo=timezone.utc)
+
+                    current_time = datetime.now(timezone.utc)
+                    week_age = timedelta(days=7)
+                    final_age = timedelta(days=90)
+                    poster_age = current_time - poster_date
+
+                        need_download = False
+                        if poster_age < week_age:
+                            self.logger.debug(
+                                f"Poster for title_id {title_id} is current (updated on {poster_date}). Skipping download."
+                            )
+                        else:
+                            self.logger.debug(
+                                f"Poster for title_id {title_id} is considered final (older than {final_age.days} days). Skipping download."
+                            )
+
+            if need_download:
                 poster_link = self.db_manager.get_poster_link(title_id)
-                processed_link = self.perform_poster_link(poster_link)
-                link_to_download = []
-                if processed_link:
-                    link_to_download.append((title_id, processed_link))
-                if link_to_download:
-                    self.poster_manager.write_poster_links(link_to_download)
+                if poster_link:
+                    processed_link = self.perform_poster_link(poster_link)
+                    if processed_link:
+                        self.poster_manager.write_poster_links([(title_id, processed_link)])
+                        self.logger.debug(f"Added poster for title_id {title_id} to download queue.")
+
             return poster_data
 
         except Exception as e:
@@ -1294,7 +1319,8 @@ class AnimePlayerAppVer3(QWidget):
         """
         return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-    def standardize_url(self, url):
+    @staticmethod
+    def standardize_url(url):
         """
         Standardizes the URL for consistent comparison.
         Strips spaces, removes query parameters if necessary, or any other needed cleaning.

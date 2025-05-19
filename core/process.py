@@ -123,14 +123,20 @@ class ProcessManager:
 
             if "hls" in episode:
                 try:
-                    self.logger.debug(f"episode: {len(episode)}")
+                    self.logger.debug(f"Processing episode: {episode.get('episode')}")
+
+                    created_timestamp = episode.get('created_timestamp')
+                    if created_timestamp is not None and isinstance(created_timestamp, (int, float)):
+                        created_timestamp = datetime.fromtimestamp(created_timestamp, tz=timezone.utc)
+                    else:
+                        created_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
+
                     episode_data = {
                         'title_id': title_data.get('id', None),
                         'episode_number': episode.get('episode'),
                         'name': episode.get('name', f'Серия {episode.get("episode")}'),
                         'uuid': episode.get('uuid'),
-                        'created_timestamp': episode.get('created_timestamp') if episode.get(
-                            'created_timestamp') is not None else 0,
+                        'created_timestamp': created_timestamp,
                         'hls_fhd': episode.get('hls', {}).get('fhd'),
                         'hls_hd': episode.get('hls', {}).get('hd'),
                         'hls_sd': episode.get('hls', {}).get('sd'),

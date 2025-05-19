@@ -19,7 +19,7 @@ class UIGenerator:
         self.title_browser_factory = TitleBrowserFactory(app)
         self.blank_spase = '&nbsp;'
         # TODO: fix this rating system
-        self.rating_name = 'CMERS'
+        self.rating_name = self.app.default_rating_name
         self.max_rating = 6
 
     def create_title_browser(self, title, show_mode='default'):
@@ -109,7 +109,7 @@ class UIGenerator:
         """Generates HTML to display ratings and allows updating"""
         try:
             ratings = self.db_manager.get_rating_from_db(title.title_id)
-            rating_star_images = []
+            rating_icons = []
             # TODO: remove unused logic
             # poster_base64_full = self.prepare_generate_poster_html(4)
             # poster_base64_blank = self.prepare_generate_poster_html(3)
@@ -122,25 +122,27 @@ class UIGenerator:
                 rating_value = ratings.rating_value
                 for i in range(self.max_rating):
                     if i < rating_value:
-                        rating_star_images.append(
+                        rating_icons.append(
                             f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_full}</a>')
                     else:
-                        rating_star_images.append(
+                        rating_icons.append(
                             f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
             else:
                 rating_name = self.rating_name
                 for i in range(self.max_rating):
-                    rating_star_images.append(
+                    rating_icons.append(
                         f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
 
             # TODO: fix blank spase
             blank_spase = self.blank_spase
-            rating_value = ''.join(rating_star_images)
+            rating_value = ''.join(rating_icons)
             watch_html = self.generate_watch_history_html(title.title_id)
             need_to_see_html = self.generate_need_to_see_html(title.title_id)
             # if image not symbol
             # rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 4}{rating_name}:{blank_spase}{rating_value}'
-            rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 2}{rating_name}:{blank_spase}{rating_value}'
+            # сброса рейтинга (значение 0)
+            rating_name_html = f'<a href="set_rating/{title.title_id}/{rating_name}/0" title="Reset rating">{rating_name}</a>'
+            rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 2}{rating_name_html}:{blank_spase}{rating_value}'
             return rating_html
         except Exception as e:
             error_message = f"Error in generate_rating_html: {str(e)}"

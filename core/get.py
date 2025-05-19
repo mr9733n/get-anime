@@ -183,7 +183,8 @@ class GetManager:
         """
         with self.Session as session:
             try:
-                poster = session.query(Poster).filter_by(title_id=title_id).first()
+                poster = session.query(Poster).filter_by(title_id=title_id) \
+                    .order_by(Poster.last_updated.desc()).first()
                 if poster:
                     # TODO: remove unused logic
                     if title_id in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
@@ -208,6 +209,26 @@ class GetManager:
             except Exception as e:
                 self.logger.error(f"Error fetching poster from database: {e}")
                 return None, False
+
+    def get_poster_last_updated(self, title_id):
+        """
+        Получает дату последнего обновления постера для указанного title_id.
+
+        Args:
+            title_id: ID тайтла
+
+        Returns:
+            datetime: Дата последнего обновления или None, если постер не найден
+        """
+        with self.Session as session:
+            try:
+                poster = session.query(Poster).filter_by(title_id=title_id).order_by(Poster.last_updated.desc()).first()
+                if poster:
+                    return poster.last_updated
+                return None
+            except Exception as e:
+                self.logger.error(f"Ошибка при получении даты обновления постера: {e}")
+                return None
 
     def get_torrents_from_db(self, title_id):
         with self.Session as session:
@@ -320,7 +341,7 @@ class GetManager:
             try:
                 template = session.query(Template).filter_by(name=name).first()
                 if template:
-                    self.logger.info(f"Template '{name}' loaded successfully.")
+                    self.logger.debug(f"Template '{name}' loaded successfully.")
                     return template.titles_html, template.one_title_html, template.text_list_html, template.styles_css
                 else:
                     self.logger.warning(f"Template '{name}' not found.")

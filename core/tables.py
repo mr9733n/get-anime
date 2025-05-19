@@ -233,6 +233,7 @@ class Poster(Base):
     poster_id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     poster_blob = Column(LargeBinary, nullable=False)  # Поле для хранения бинарных данных изображения
+    hash_value = Column(String(32), nullable=True)  # MD5
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="posters")

@@ -121,8 +121,8 @@ class DatabaseManager:
     def process_torrents(self, title_data):
         return self.process_manager.process_torrents(title_data)
 
-    def save_poster(self, title_id, poster_blob):
-        return self.save_manager.save_poster(title_id, poster_blob)
+    def save_poster(self, title_id, poster_blob, hash_value):
+        return self.save_manager.save_poster(title_id, poster_blob, hash_value)
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
         return self.save_manager.save_need_to_see(user_id, title_id, need_to_see)
@@ -133,7 +133,7 @@ class DatabaseManager:
     def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False, torrent_id=None, is_download=False):
         return self.save_manager.save_watch_status(user_id,title_id, episode_id, is_watched, torrent_id, is_download)
 
-    def save_ratings(self, title_id, rating_value, rating_name='CMERS'):
+    def save_ratings(self, title_id, rating_value, rating_name):
         """
         "Comprehensive Media Evaluation Rating System" or CMERS
         The CMERS system would operate as follows:
@@ -170,12 +170,15 @@ class DatabaseManager:
     def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
         return self.get_manager.get_franchises_from_db(batch_size, offset, title_id)
 
-    def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None, ):
+    def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None):
         """Need to see Titles without episodes"""
         return self.get_manager.get_need_to_see_from_db(batch_size, offset, title_id)
 
     def get_poster_link(self, title_id):
         return self.get_manager.get_poster_link(title_id)
+
+    def get_poster_last_updated(self, title_id):
+        return self.get_manager.get_poster_last_updated(title_id)
 
     def get_poster_blob(self, title_id):
         """

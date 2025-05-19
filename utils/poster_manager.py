@@ -4,11 +4,11 @@ import time
 import requests
 import io
 import logging
+import hashlib
 from PIL import Image, UnidentifiedImageError
 
-
 MAX_RETRIES = 3
-RETRY_DELAY = 5  # Задержка в секундах между повторными попытками
+RETRY_DELAY = 10  # Задержка в секундах между повторными попытками
 
 class PosterManager:
     def __init__(self, display_callback=None, save_callback=None):
@@ -20,7 +20,6 @@ class PosterManager:
         self.current_poster_index = 0
         self.display_callback = display_callback
         self.save_callback = save_callback
-
 
     def write_poster_links(self, links):
         """
@@ -70,15 +69,21 @@ class PosterManager:
                     }
                     params = {'no_cache': 'true', 'timestamp': time.time()}
                     start_time = time.time()
+                    self.logger.info(f"Запрос к URL: {link}")
                     response = requests.get(link, headers=headers, stream=True, params=params)
+                    self.logger.info(f"Статус ответа: {response.status_code}")
                     response.raise_for_status()
                     end_time = time.time()
-                    if 'image' not in response.headers.get('Content-Type', ''):
+                    content_type = response.headers.get('Content-Type', '')
+                    self.logger.info(f"Content-Type: {content_type}")
+                    if 'image' not in content_type:
                         self.logger.error(f"The URL did not return an image: {link}")
                         continue
 
+                    content = response.content
+                    hash_value = hashlib.md5(content).hexdigest()
                     # Open and process the image
-                    link_io = io.BytesIO(response.content)
+                    link_io = io.BytesIO(content)
                     poster_image = Image.open(link_io)
                     self.poster_images.append(poster_image)
 
@@ -86,7 +91,8 @@ class PosterManager:
                     num_kilobytes = len(response.content) / 1024
                     self.logger.debug(f"Successfully downloaded poster. URL: '{link[-41:]}', "
                                       f"Time taken: {end_time - start_time:.2f} seconds, "
-                                      f"Image size: {num_kilobytes:.2f} Kb.")
+                                      f"Image size: {num_kilobytes:.2f} Kb."
+                                      f"Hash: {hash_value}")
 
                     # Display and save poster
                     if self.display_callback:
@@ -94,8 +100,8 @@ class PosterManager:
                         self.logger.warning(f"!!!Display callback")
 
                     if self.save_callback:
-                        self.save_callback(title_id, response.content)
-                        self.logger.warning(f"!!!Save callback")
+                        self.save_callback(title_id, content, hash_value)
+                        self.logger.warning(f"!!!Save callback title_id: {title_id}")
 
                     self.poster_images.append((poster_image, title_id))
 

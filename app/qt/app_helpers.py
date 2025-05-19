@@ -299,7 +299,7 @@ class TitleBrowserFactory:
             width: 100%;
             height: 100%;
             position: relative;
-            background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный желтый фон */
+            background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный фон */
         """)
 
         # Устанавливаем HTML-содержимое

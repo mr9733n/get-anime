@@ -15,21 +15,33 @@ class SaveManager:
         self.logger = logging.getLogger(__name__)
         self.Session = sessionmaker(bind=engine)()
 
-    def save_poster(self, title_id, poster_blob):
+    def save_poster(self, title_id, poster_blob, hash_value=None):
         with self.Session as session:
             try:
-                # Проверяем, существует ли уже постер для данного title_id
-                existing_poster = session.query(Poster).filter_by(title_id=title_id).first()
-                if not existing_poster:
-                    # Создаем новый объект Poster и добавляем в базу
-                    new_poster = Poster(title_id=title_id, poster_blob=poster_blob, last_updated=datetime.now(timezone.utc))
-                    session.add(new_poster)
-                    self.logger.debug(f"Poster image was saved to database. title_id: {title_id}")
-                else:
-                    # Обновляем существующий постер
-                    existing_poster.poster_blob = poster_blob
-                    existing_poster.last_updated = datetime.now(timezone.utc)
-                    self.logger.debug(f"Poster image was existed in database. title_id: {title_id}")
+                current_time = datetime.now(timezone.utc)
+
+                if hash_value:
+                    existing_poster = session.query(Poster).filter_by(
+                        title_id=title_id,
+                        hash_value=hash_value
+                    ).first()
+
+                    if existing_poster:
+                        existing_poster.last_updated = current_time
+                        self.logger.debug(
+                            f"Poster already exists with same hash. Updated timestamp. title_id: {title_id}")
+                        session.commit()
+                        return
+
+                new_poster = Poster(
+                    title_id=title_id,
+                    poster_blob=poster_blob,
+                    hash_value=hash_value,
+                    last_updated=current_time
+                )
+                session.add(new_poster)
+                self.logger.debug(f"New poster version saved to database. title_id: {title_id}")
+
                 session.commit()
             except Exception as e:
                 session.rollback()
@@ -179,7 +191,7 @@ class SaveManager:
                     f"Error saving watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
                 raise
 
-    def save_ratings(self, title_id, rating_value, rating_name='CMERS'):
+    def save_ratings(self, title_id, rating_value, rating_name):
         """
         "Comprehensive Media Evaluation Rating System" or CMERS
         The CMERS system would operate as follows:
@@ -436,10 +448,6 @@ class SaveManager:
                 # Создаем копию данных
                 processed_data = episode_data.copy()
 
-                # Преобразуем timestamps если они есть в данных
-                if 'created_timestamp' in processed_data:
-                    processed_data['created_timestamp'] = datetime.fromtimestamp(processed_data['created_timestamp'], tz=timezone.utc)
-
                 existing_episode = session.query(Episode).filter_by(
                     uuid=processed_data['uuid'],
                     title_id=processed_data['title_id']
@@ -451,21 +459,29 @@ class SaveManager:
                     protected_fields = {'episode_id', 'title_id'}
 
                     # Особая обработка для created_timestamp
-                    if ('created_timestamp' in processed_data and
-                            existing_episode.created_timestamp == datetime.fromtimestamp(0, tz=timezone.utc) and
-                            processed_data['created_timestamp'] != datetime.fromtimestamp(0, tz=timezone.utc)):
-                        # Если у существующего эпизода дефолтная дата, а в новых данных есть нормальная дата
-                        existing_episode.created_timestamp = processed_data['created_timestamp']
-                        is_updated = True
-                        self.logger.debug(f"Updating incorrect timestamp for episode {episode_uuid}")
-
-                    for key, value in episode_data.items():
-                        if key not in protected_fields and getattr(existing_episode, key) != value:
-                            setattr(existing_episode, key, value)
-                            self.logger.debug(f"Existing episode: {protected_fields}")
+                    if 'created_timestamp' in processed_data:
+                        default_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
+                        if (existing_episode.created_timestamp == default_timestamp and
+                                processed_data['created_timestamp'] != default_timestamp):
+                            existing_episode.created_timestamp = processed_data['created_timestamp']
                             is_updated = True
+                            self.logger.debug(f"Updating incorrect timestamp for episode {episode_uuid}")
+
+                    for key, value in processed_data.items():
+                        if key not in protected_fields and hasattr(existing_episode, key):
+                            current_value = getattr(existing_episode, key)
+
+                            if isinstance(current_value, datetime) and isinstance(value, datetime):
+                                if current_value.tzinfo is None and value.tzinfo is not None:
+                                    # Добавляем часовой пояс к дате из БД для корректного сравнения
+                                    current_value = current_value.replace(tzinfo=timezone.utc)
+
+                            if current_value != value:
+                                setattr(existing_episode, key, value)
+                                is_updated = True
+                                self.logger.debug(f"Updated field '{key}' for episode {episode_uuid}")
+
                     if is_updated:
-                        existing_episode.last_updated = datetime.now(timezone.utc)
                         session.commit()
                         self.logger.debug(f"Successfully updated episode: {episode_uuid} for title_id: {title_id}")
                 else:

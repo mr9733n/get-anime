@@ -2,6 +2,7 @@ import os
 import io
 import sys
 import shutil
+import hashlib
 import argparse
 
 from datetime import datetime
@@ -19,7 +20,7 @@ db_dir1 = os.path.join(ROOT_DIR, 'db')
 db_dir2 = os.path.join(build_dir, 'db')
 DB_PATH1 = os.path.join(db_dir1, 'anime_player.db')
 DB_PATH2 = os.path.join(db_dir2, 'anime_player.db')
-RESULT_PATH = os.path.join(log_path, "find_duplicates_result.txt")
+RESULT_PATH = os.path.join(log_path, "result_enhanced_db_manager.txt")
 
 
 def backup_database(db_path):
@@ -855,8 +856,8 @@ def fix_duplicates_in_torrents(session, duplicates, keep_latest=True):
 
 def clean_torrents_by_title(session):
     """
-    Для каждого title_id оставляет только один торрент с максимальным количеством эпизодов
-    для каждого типа кодека (h264 и h265/HEVC).
+    Для каждого title_id удаляет только дубликаты торрентов с одинаковым кодеком
+    и одинаковым диапазоном эпизодов.
     """
     try:
         # Найдем все title_id, где есть более одной записи
@@ -886,43 +887,33 @@ def clean_torrents_by_title(session):
             # Получаем все торренты для данного title_id
             torrents = session.query(Torrent).filter_by(title_id=title_id).all()
 
-            # Группируем торренты по типу кодека (h264, h265)
-            codec_groups = {}
+            # Группируем торренты по типу кодека и диапазону эпизодов
+            torrent_groups = {}
             for t in torrents:
                 codec = t.encoder if t.encoder else 'unknown'
-                if codec not in codec_groups:
-                    codec_groups[codec] = []
-                codec_groups[codec].append(t)
+                episodes_range = t.episodes_range if t.episodes_range else 'unknown'
+                group_key = (codec, episodes_range)
+
+                if group_key not in torrent_groups:
+                    torrent_groups[group_key] = []
+                torrent_groups[group_key].append(t)
 
             deleted_for_title = 0
 
-            # Для каждого типа кодека оставляем только торрент с максимальным количеством эпизодов
-            for codec, codec_torrents in codec_groups.items():
-                if len(codec_torrents) > 1:
-                    print(f"  Кодек {codec} имеет {len(codec_torrents)} торрентов")
+            # Для каждой группы оставляем только торрент с максимальным размером
+            for (codec, episodes_range), group_torrents in torrent_groups.items():
+                if len(group_torrents) > 1:
+                    print(f"  Группа: кодек {codec}, эпизоды {episodes_range} имеет {len(group_torrents)} торрентов")
 
-                    # Сортируем по диапазону эпизодов и размеру
-                    # Пытаемся извлечь максимальное число из диапазона эпизодов (например, "1-16" => 16)
-                    def get_max_episode(t):
-                        try:
-                            eps_range = t.episodes_range
-                            if '-' in eps_range:
-                                return int(eps_range.split('-')[1])
-                            else:
-                                return int(eps_range)
-                        except:
-                            return 0
+                    # Сортируем по размеру
+                    group_torrents.sort(key=lambda t: t.total_size if t.total_size else 0, reverse=True)
 
-                    # Сортируем сначала по максимальному эпизоду, затем по размеру
-                    codec_torrents.sort(key=lambda t: (get_max_episode(t), t.total_size if t.total_size else 0),
-                                        reverse=True)
-
-                    # Оставляем первый (с наибольшим числом эпизодов и размером), удаляем остальные
-                    keep_torrent = codec_torrents[0]
+                    # Оставляем первый (с наибольшим размером), удаляем остальные
+                    keep_torrent = group_torrents[0]
                     print(
                         f"    Оставляем торрент: torrent_id={keep_torrent.torrent_id}, episodes={keep_torrent.episodes_range}, size={keep_torrent.total_size if keep_torrent.total_size else 'None'}")
 
-                    for t in codec_torrents[1:]:
+                    for t in group_torrents[1:]:
                         print(
                             f"    Удаляем торрент: torrent_id={t.torrent_id}, episodes={t.episodes_range}, size={t.total_size if t.total_size else 'None'}")
                         session.delete(t)
@@ -941,6 +932,7 @@ def clean_torrents_by_title(session):
         import traceback
         traceback.print_exc()
         return 0
+
 
 # FRANCHISES TABLE
 
@@ -1236,7 +1228,78 @@ def run_table_check(session, table_name, find_function, output_file=None):
     return duplicates
 
 
-def main(auto_fix=False, keep_latest=True, selected_tables=None, db_choice=None, skip_backup=False):
+def add_hash_column_if_not_exists(session):
+    """Добавляет столбец hash_value в таблицу posters, если его еще нет"""
+    try:
+        # Используем text для создания текстового SQL-запроса
+        result = session.execute(text("PRAGMA table_info(posters)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if 'hash_value' not in columns:
+            print("Добавляем столбец hash_value в таблицу posters...")
+            session.execute(text("ALTER TABLE posters ADD COLUMN hash_value VARCHAR(32)"))
+            session.commit()
+            print("Столбец hash_value успешно добавлен.")
+        else:
+            print("Столбец hash_value уже существует в таблице posters.")
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Ошибка при проверке/добавлении столбца hash_value: {e}")
+        return False
+
+
+def update_poster_hashes(session):
+    """Обновляет хеши для всех постеров, у которых они отсутствуют"""
+    try:
+        # Получаем все постеры без хеша
+        result = session.execute(text("SELECT poster_id, title_id FROM posters WHERE hash_value IS NULL"))
+        poster_data = result.fetchall()
+
+        if not poster_data:
+            print("Все постеры уже имеют хеши или в базе нет постеров.")
+            return
+
+        print(f"Начинаем обновление хешей для {len(poster_data)} постеров...")
+
+        updated_count = 0
+        for row in poster_data:
+            poster_id = row[0]
+            title_id = row[1]
+
+            # Получаем бинарные данные постера
+            blob_result = session.execute(
+                text("SELECT poster_blob FROM posters WHERE poster_id = :pid"),
+                {"pid": poster_id}
+            )
+            blob_data = blob_result.scalar()
+
+            if blob_data:
+                # Вычисляем MD5-хеш из бинарных данных постера
+                hash_value = hashlib.md5(blob_data).hexdigest()
+
+                # Обновляем запись
+                session.execute(
+                    text("UPDATE posters SET hash_value = :hash WHERE poster_id = :pid"),
+                    {"hash": hash_value, "pid": poster_id}
+                )
+
+                updated_count += 1
+
+                if updated_count % 100 == 0:  # Выводим прогресс каждые 100 записей
+                    session.commit()  # Коммитим изменения каждые 100 записей
+                    print(f"Обработано {updated_count}/{len(poster_data)} постеров...")
+
+        # Финальный коммит для оставшихся изменений
+        session.commit()
+        print(f"✅ Успешно обновлено {updated_count} постеров.")
+
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка при обновлении хешей постеров: {e}")
+
+
+def main(auto_fix=False, keep_latest=True, selected_tables=None, db_choice=None, skip_backup=False, update_poster_hashes=False):
     """Main function to run duplication checking and fixing.
 
     Args:
@@ -1266,11 +1329,76 @@ def main(auto_fix=False, keep_latest=True, selected_tables=None, db_choice=None,
     engine = create_engine(database_url)
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    try:
+        # Обработка флага update_poster_hashes
+        if update_poster_hashes:
+            # Проверяем наличие столбца hash_value
+            result = session.execute(text("PRAGMA table_info(posters)"))
+            columns = [row[1] for row in result.fetchall()]
+
+            if 'hash_value' not in columns:
+                print("Добавляем столбец hash_value в таблицу posters...")
+                session.execute(text("ALTER TABLE posters ADD COLUMN hash_value VARCHAR(32)"))
+                session.commit()
+                print("Столбец hash_value успешно добавлен.")
+            else:
+                print("Столбец hash_value уже существует в таблице posters.")
+
+            # Получаем все постеры без хеша
+            result = session.execute(text("SELECT poster_id, title_id FROM posters WHERE hash_value IS NULL"))
+            poster_data = result.fetchall()
+
+            if not poster_data:
+                print("Все постеры уже имеют хеши или в базе нет постеров.")
+                session.close()
+                return
+
+            print(f"Начинаем обновление хешей для {len(poster_data)} постеров...")
+
+            updated_count = 0
+            for row in poster_data:
+                poster_id = row[0]
+                title_id = row[1]
+
+                # Получаем бинарные данные постера
+                blob_result = session.execute(
+                    text("SELECT poster_blob FROM posters WHERE poster_id = :pid"),
+                    {"pid": poster_id}
+                )
+                blob_data = blob_result.scalar()
+
+                if blob_data:
+                    # Вычисляем MD5-хеш из бинарных данных постера
+                    hash_value = hashlib.md5(blob_data).hexdigest()
+
+                    # Обновляем запись
+                    session.execute(
+                        text("UPDATE posters SET hash_value = :hash WHERE poster_id = :pid"),
+                        {"hash": hash_value, "pid": poster_id}
+                    )
+
+                    updated_count += 1
+
+                    if updated_count % 100 == 0:  # Выводим прогресс каждые 100 записей
+                        session.commit()  # Коммитим изменения каждые 100 записей
+                        print(f"Обработано {updated_count}/{len(poster_data)} постеров...")
+
+            # Финальный коммит для оставшихся изменений
+            session.commit()
+            print(f"✅ Успешно обновлено {updated_count} постеров.")
+            session.close()
+            print("Обновление хешей постеров завершено.")
+            sys.exit(0)
+    except Exception as e:
+        print(f"❌ Произошла ошибка: {e}")
+
     output = io.StringIO()
     original_stdout = sys.stdout
 
     sys.stdout = output
     try:
+
         print("=== DUPLICATE DETECTION STARTED ===")
 
         # Dictionary to store all duplicate records
@@ -1435,6 +1563,7 @@ if __name__ == "__main__":
     parser.add_argument('--tables', type=str, help='Comma-separated list of tables to check (default: all)')
     parser.add_argument('--no-backup', action='store_true', help='Skip database backup')
     parser.add_argument('--db', type=str, choices=['1', '2'], help='Database to use (1=Development, 2=Production)')
+    parser.add_argument('--update-poster-hashes', action='store_true', help='Обновить хеши постеров')
 
     args = parser.parse_args()
 
@@ -1443,4 +1572,4 @@ if __name__ == "__main__":
 
     selected_tables = args.tables.split(',') if args.tables else None
     main(auto_fix=args.auto_fix, keep_latest=not args.keep_oldest,
-         selected_tables=selected_tables, db_choice=args.db, skip_backup=args.no_backup)
+         selected_tables=selected_tables, db_choice=args.db, skip_backup=args.no_backup, update_poster_hashes=args.update_poster_hashes)

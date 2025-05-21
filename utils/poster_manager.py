@@ -10,7 +10,7 @@ import threading
 from PIL import Image, UnidentifiedImageError
 
 MAX_RETRIES = 3
-RETRY_DELAY = 10  # Задержка в секундах между повторными попытками
+RETRY_DELAY = 10  # seconds
 MAX_IMAGE_SIZE_KB = 5000
 
 class PosterManager:
@@ -29,7 +29,6 @@ class PosterManager:
         """
         Add poster URLs (with title_id) to the list and start downloading in the background.
         """
-        self.clear_cache_and_memory()
         for title_id, link in links:
             if link not in map(lambda x: x[1], self.poster_links):
                 self.poster_links.append((title_id, link))
@@ -37,26 +36,16 @@ class PosterManager:
 
         self.start_background_download()
 
-    def extract_title_id_from_link(self, link):
-        """
-        Extract the title ID from the poster link.
-        """
-        try:
-            # '/storage/releases/posters/9792/...'
-            title_id = int(link.split('/')[-2])
-            return title_id, link
-        except (ValueError, IndexError):
-            self.logger.error(f"Unable to extract title ID from link: {link}")
-            return None
-
     def start_background_download(self):
         """
         Start the poster downloading process in a background thread.
         """
-        download_thread = threading.Thread(target=self.download_posters_in_background)
-        download_thread.start()
-        if download_thread is False:
-            download_thread.start()
+        if self._download_thread is None or not self._download_thread.is_alive():
+            self.logger.info("[!] Starting poster download thread")
+            self._download_thread = threading.Thread(
+                target=self.download_posters_in_background,
+            )
+            self._download_thread.start()
 
     def _process_save_queue(self):
         """Worker thread that processes save operations and terminates when queue is empty"""
@@ -165,12 +154,3 @@ class PosterManager:
         if items_queued:
             self.logger.info(f"[+] Starting save thread to process {self.save_queue.qsize()} posters")
             self._ensure_save_thread_running()
-
-    def clear_cache_and_memory(self):
-        """
-        Clears the cache file and memory to prepare for new poster data.
-        """
-        self.poster_links.clear()
-        self.logger.debug("[poster_links] cleared from memory.")
-
-

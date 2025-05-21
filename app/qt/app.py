@@ -1305,7 +1305,7 @@ class AnimePlayerAppVer3(QWidget):
             if need_download:
                 poster_link = self.db_manager.get_poster_link(title_id)
                 if poster_link:
-                    processed_link = self.perform_poster_link(poster_link)
+                    processed_link = self.perform_poster_link(title_id, poster_link)
                     if processed_link:
                         self.poster_manager.write_poster_links([(title_id, processed_link)])
                         self.logger.debug(f"Added poster for title_id {title_id} to download queue.")
@@ -1316,15 +1316,16 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
             return None
 
-    def perform_poster_link(self, poster_link):
+    def perform_poster_link(self, title_id, poster_link):
         try:
             self.logger.debug(f"Processing poster link: {poster_link}")
             poster_url = self.pre + self.base_url + poster_link
             standardized_url = self.standardize_url(poster_url)
             self.logger.debug(f"Standardize the poster URL: {standardized_url[-41:]}")
             # Check if the standardized URL is already in the cached poster links
-            if standardized_url in map(self.standardize_url, self.poster_manager.poster_links):
-                self.logger.debug(f"Poster URL already cached: {standardized_url[-41:]}. Skipping fetch.")
+            cached_urls = [url for _, url in self.poster_manager.poster_links]
+            if standardized_url in cached_urls:
+                self.logger.debug(f"Poster URL already cached: {standardized_url}. Skipping fetch.")
                 return None
             return standardized_url
         except Exception as e:

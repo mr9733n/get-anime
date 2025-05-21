@@ -2,14 +2,19 @@ import base64
 import json
 import os
 import logging
+import logging.config
 import re
 import ctypes
 import vlc
 import time
+import sys
+import argparse
 
+from PyQt5.QtGui import QIcon
 from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
+    QStyle, QSystemTrayIcon
+from PyQt5.QtCore import Qt, QTimer, QSharedMemory
 
 
 ES_CONTINUOUS       = 0x80000000  # постоянный режим
@@ -36,6 +41,8 @@ class VideoWindow(QWidget):
 class VLCPlayer(QWidget):
     def __init__(self, parent=None, current_template="default"):
         super().__init__(parent)
+        self.logger = logging.getLogger(__name__)
+
         self.current_template = current_template
         self.skip_data_cache = None
         self.current_episode = None
@@ -51,7 +58,6 @@ class VLCPlayer(QWidget):
         self.setMinimumHeight(100)
         self.setMaximumHeight(200)
         self.video_window = None
-        self.logger = logging.getLogger(__name__)
         self.instance = vlc.Instance()
         self.instance = vlc.Instance('--network-caching=2000')
 
@@ -225,7 +231,8 @@ class VLCPlayer(QWidget):
         else:
             self.logger.error("Failed to take screenshot.")
 
-    def get_timestamp(self):
+    @staticmethod
+    def get_timestamp():
         """Возвращает текущий таймкод в формате ЧЧ-ММ-СС."""
         return time.strftime("%H-%M-%S")
 
@@ -238,7 +245,8 @@ class VLCPlayer(QWidget):
             self.playlist_widget.show()
             self.resize(850, 200)
 
-    def is_url(self, path):
+    @staticmethod
+    def is_url(path):
         """Проверяет, является ли path URL."""
         return path.startswith(("http://", "https://"))
 
@@ -286,6 +294,7 @@ class VLCPlayer(QWidget):
             return title_id, episode_number, episode_quality
         except Exception as e:
             self.logger.error(f"!!! Error extracting from URL: {e}")
+            return None
 
     def load_playlist_from_url(self, url):
         """Loads and plays a playlist from a URL."""
@@ -353,7 +362,8 @@ class VLCPlayer(QWidget):
         self.list_player.play_item_at_index(index)
         self.timer.start()
 
-    def prevent_sleep(self):
+    @staticmethod
+    def prevent_sleep():
         """Предотвращает переход системы в спящий режим и отключение дисплея."""
         try:
             ctypes.windll.kernel32.SetThreadExecutionState(
@@ -362,7 +372,8 @@ class VLCPlayer(QWidget):
         except Exception as e:
             logging.getLogger(__name__).error("Error preventing sleep: %s", e)
 
-    def allow_sleep(self):
+    @staticmethod
+    def allow_sleep():
         """Разрешает системе переход в спящий режим (сбрасывает флаги)."""
         try:
             ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
@@ -436,7 +447,8 @@ class VLCPlayer(QWidget):
         self.play_button.setText("PAUSE")
         self.timer.start()
 
-    def format_time(self, seconds):
+    @staticmethod
+    def format_time(seconds):
         minutes = int(seconds // 60)
         seconds = int(seconds % 60)
         return f"{minutes:02}:{seconds:02}"
@@ -611,3 +623,61 @@ class VLCPlayer(QWidget):
             if match:
                 return int(match.group(1))
         return None
+
+if __name__ == "__main__":
+    if getattr(sys, 'frozen', False):
+        # Set up logging for frozen application
+        log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
+
+        try:
+            logging.config.fileConfig(os.path.join(os.path.dirname(sys.executable), 'config', 'logging.conf'),
+                                      disable_existing_loggers=False)
+        except Exception as e:
+            # Fallback logging setup
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                filename=os.path.join(log_dir, 'vlc_player.log')
+            )
+            logging.error(f"Could not load logging config: {e}")
+
+    parser = argparse.ArgumentParser(description='VLC Player')
+    parser.add_argument('--playlist', help='Path to playlist or m3u8 URL')
+    parser.add_argument('--title_id', type=int, help='Title ID')
+    parser.add_argument('--skip_data', help='Base64 encoded skip data')
+    parser.add_argument('--template', default="default", help='UI template name')
+    parser.add_argument('--prod_key')
+    args = parser.parse_args()
+
+    icon_path = os.path.join('static', 'icon.png')
+    icon_path = os.path.normpath(icon_path)
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("Anime Player VLC")
+    app.setWindowIcon(QIcon(icon_path))
+
+    if args.prod_key:
+        unique_key = str(args.prod_key) + '-APV'
+        shared_memory = QSharedMemory(unique_key)
+        if not shared_memory.create(1):
+            logging.getLogger().error("Anime Player VLC player is already running!")
+            sys.exit(1)
+
+        player = VLCPlayer(current_template=args.template)
+
+        if args.playlist:
+            player.load_playlist(args.playlist, args.title_id, args.skip_data)
+
+        player.show()
+        player.timer.start()
+
+    else:
+        message = "VLC player cannot be run without AnimePlayer application!"
+        logging.getLogger().error(message)
+        tray_icon = QSystemTrayIcon()
+        tray_icon.setIcon(app.style().standardIcon(QStyle.SP_MessageBoxWarning))
+        tray_icon.show()
+        tray_icon.showMessage("Error", message, QSystemTrayIcon.Warning, 5000)
+        QTimer.singleShot(500, lambda: sys.exit(1))
+
+    sys.exit(app.exec_())

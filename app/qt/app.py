@@ -1,17 +1,18 @@
 import ast
+import hashlib
 import json
 import logging
-import logging.config
 import os
 import platform
 import re
 import subprocess
 import base64
+import sys
 
 from datetime import datetime, timezone, timedelta
 from app.qt.vlc_player import VLCPlayer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
-from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
+from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
 from app.qt.ui_manger import UIManager
 from app.qt.app_state_manager import AppStateManager
@@ -24,12 +25,14 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
+from utils.library_loader import verify_library
 
 
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
 APP_Y_POS = 100
+VLC_PLAYER_HASH = "48b635950df4e6b37bfdcfa0d6190618d8fe24fbc9918ca01f1965b072def3ce"
 
 
 class APIClientError(Exception):
@@ -41,12 +44,21 @@ class APIClientError(Exception):
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
 
-    def __init__(self, db_manager, version, template_name):
+    def __init__(self, db_manager, version, template_name, prod_key=None):
         super().__init__()
         self.logger = logging.getLogger(__name__)
+
+        self.prod_key = prod_key
+        if prod_key is not None:
+            unique_key = str(prod_key) + '-APA'
+            self.shared_memory = QSharedMemory(unique_key)
+            if not self.shared_memory.create(1):
+                self.logger.error("Main application is already running!")
+                sys.exit(1)
+
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
-
+        self.thread_pool.setExpiryTimeout(30000)
         self.current_show_mode = None
         self.error_label = None
         self.tray_icon = None
@@ -135,9 +147,14 @@ class AnimePlayerAppVer3(QWidget):
     def on_add_title_browser_to_layout(self, title_browser, row, column):
         self.posters_layout.addWidget(title_browser, row, column)
 
+    @staticmethod
+    def current_platform():
+        current_platform = platform.system()
+        return current_platform
+
     def setup_paths(self):
         """Sets up paths based on the current platform and returns them for use."""
-        current_platform = platform.system()
+        current_platform = self.current_platform()
         video_player_path = self.config_manager.get_video_player_path(current_platform)
         torrent_client_path = self.config_manager.get_torrent_client_path(current_platform)
 
@@ -598,6 +615,8 @@ class AnimePlayerAppVer3(QWidget):
                     self.posters_layout.addWidget(title_widget, row, column)
 
             self.logger.debug(f"Displayed {show_mode} with {len(titles)} titles.")
+            app_state = self.get_current_state()
+            QTimer.singleShot(100, lambda: self.state_manager.save_state(app_state))
         except Exception as e:
             self.logger.error(f"Ошибка display_titles_in_ui: {e}")
 
@@ -1336,10 +1355,42 @@ class AnimePlayerAppVer3(QWidget):
         self.vlc_window.show()
         self.vlc_window.timer.start()
 
+    def open_standalone_vlc_player(self, playlist_path, title_id, skip_data=None):
+        """Launch VLC player as a separate process."""
+        if getattr(sys, 'frozen', False):
+            # TODO: add other platforms
+            current_platform = self.current_platform()
+            vlc_player_executable_name = self.config_manager.get_vlc_player_executable_name(current_platform)
+            vlc_player_executable = os.path.join(os.path.dirname(sys.executable), vlc_player_executable_name)
+
+            if VLC_PLAYER_HASH:
+                status = verify_library(vlc_player_executable, VLC_PLAYER_HASH)
+
+                if not status:
+                    self.logger.error(f"VLC player executable hash mismatch! Security risk detected.")
+                    self.show_error_notification("Security Error", "VLC player executable verification failed.")
+                    sys.exit(1)
+
+            cmd = [vlc_player_executable,
+                   "--playlist", playlist_path,
+                   "--title_id", str(title_id),
+                   "--template", self.current_template]
+            if skip_data:
+                cmd.extend(["--skip_data", skip_data])
+            if self.prod_key is not None:
+                cmd.extend(["--prod_key", str(self.prod_key)])
+
+            subprocess.Popen(cmd, close_fds=True)
+            self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")
+        else:
+            # TODO: DEVELOPMENT Version
+            self.open_vlc_player(playlist_path, title_id, skip_data)
+
     def play_link(self, link, title_id=None, skip_data=None):
         open_link = self.pre + self.stream_video_url + link
         if self.use_libvlc == "true":
-            self.open_vlc_player(open_link, title_id, skip_data)
+            # TODO: TEST
+            self.open_standalone_vlc_player(open_link, title_id, skip_data)
             self.logger.debug(f"title_id: {title_id}, Skip data base64: {skip_data}, Playing video link: {link} in libVLC")
         else:
             video_player_path = self.video_player_path
@@ -1352,18 +1403,28 @@ class AnimePlayerAppVer3(QWidget):
         Wrapper function to handle playing the playlist.
         Determines the file name and passes it to play_playlist.
         """
-        if not self.sanitized_titles:
-            self.logger.error("Playlist not found, please save playlist first.")
-            return
-        if not file_name:
-            file_name = self.playlist_filename
-        video_player_path = self.video_player_path
-        self.logger.debug(f"Attempting to play playlist: {file_name} with player: {video_player_path}")
+        try:
+            if not title_id:
+                title_id = self.current_title_id
+            if not self.sanitized_titles:
+                self.logger.error("No playlists available. Please save a playlist first.")
+                return
+            if not file_name:
+                file_name = self.playlist_filename
+                if not file_name:
+                    self.logger.error("No playlist filename available. Please save a playlist first.")
+                    return
+            file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
+            if not os.path.exists(file_path):
+                self.logger.error(f"Playlist file does not exist: {file_path}")
+                return
+            self.logger.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
 
-        file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
-        if self.use_libvlc == "true":
-            self.open_vlc_player(file_path, title_id, skip_data)
-        else:
-            self.playlist_manager.play_playlist(file_name, video_player_path)
+            if self.use_libvlc == "true":
+                self.open_standalone_vlc_player(file_path, title_id, skip_data)
+            else:
+                self.playlist_manager.play_playlist(file_name, self.video_player_path)
 
-        self.logger.debug("Opening video player...")
+            self.logger.debug("Video player launched successfully")
+        except Exception as e:
+            self.logger.error(f"Error in play_playlist_wrapper: {e}", exc_info=True)

@@ -17,7 +17,7 @@ class APIClient:
         url = f"{self.pre}api.{self.base_url}/{self.api_version}/{endpoint}"
         try:
             start_time = time.time()
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             end_time = time.time()
             data = response.json()

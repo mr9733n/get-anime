@@ -311,9 +311,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add query thread for saving posters
 - [x] More robust for downloading posters
 - [x] Small fixes
+- [x] Clean PosterManager
+- [ ] Remove unused logic
 
 ### 8.25. Some fixes
-- [ ] Remove unused logic
 - [ ] Add status for buttons (simple callback)
 - [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 - [ ] test build.spec for py installer 6.x

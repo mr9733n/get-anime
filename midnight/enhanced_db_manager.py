@@ -854,73 +854,38 @@ def fix_duplicates_in_torrents(session, duplicates, keep_latest=True):
     print(f"Total fixed duplicates in torrents: {fixed_count}")
 
 
-def clean_torrents_by_title(session):
+def clean_torrents_by_title(session, n=1):
     """
-    Для каждого title_id удаляет только дубликаты торрентов с одинаковым кодеком
-    и одинаковым диапазоном эпизодов.
+    Для каждого title_id оставляет только N самых больших по весу торрентов
+    для каждого уникального качества (quality).
+    Остальные удаляет.
     """
     try:
-        # Найдем все title_id, где есть более одной записи
-        duplicates_query = text("""
-        SELECT title_id, COUNT(*) as torrent_count
-        FROM torrents
-        GROUP BY title_id
-        HAVING COUNT(*) > 1
-        """)
-
-        duplicate_titles = session.execute(duplicates_query).fetchall()
-
-        if not duplicate_titles:
-            print("Торрентов для очистки не найдено.")
-            return 0
-
-        print(f"Найдено {len(duplicate_titles)} title_id с несколькими торрентами.")
-
+        title_ids = session.query(Torrent.title_id).group_by(Torrent.title_id).all()
         total_deleted = 0
 
-        # Для каждого title_id с несколькими торрентами
-        for row in duplicate_titles:
+        for row in title_ids:
             title_id = row[0]
-            torrent_count = row[1]
-            print(f"Обрабатываем title_id: {title_id} (количество торрентов: {torrent_count})")
-
-            # Получаем все торренты для данного title_id
-            torrents = session.query(Torrent).filter_by(title_id=title_id).all()
-
-            # Группируем торренты по типу кодека и диапазону эпизодов
-            torrent_groups = {}
+            torrents = (
+                session.query(Torrent)
+                .filter_by(title_id=title_id)
+                .all()
+            )
+            # Группируем торренты по quality
+            quality_groups = {}
             for t in torrents:
-                codec = t.encoder if t.encoder else 'unknown'
-                episodes_range = t.episodes_range if t.episodes_range else 'unknown'
-                group_key = (codec, episodes_range)
+                quality = t.quality if t.quality else 'unknown'
+                quality_groups.setdefault(quality, []).append(t)
 
-                if group_key not in torrent_groups:
-                    torrent_groups[group_key] = []
-                torrent_groups[group_key].append(t)
-
-            deleted_for_title = 0
-
-            # Для каждой группы оставляем только торрент с максимальным размером
-            for (codec, episodes_range), group_torrents in torrent_groups.items():
-                if len(group_torrents) > 1:
-                    print(f"  Группа: кодек {codec}, эпизоды {episodes_range} имеет {len(group_torrents)} торрентов")
-
-                    # Сортируем по размеру
-                    group_torrents.sort(key=lambda t: t.total_size if t.total_size else 0, reverse=True)
-
-                    # Оставляем первый (с наибольшим размером), удаляем остальные
-                    keep_torrent = group_torrents[0]
-                    print(
-                        f"    Оставляем торрент: torrent_id={keep_torrent.torrent_id}, episodes={keep_torrent.episodes_range}, size={keep_torrent.total_size if keep_torrent.total_size else 'None'}")
-
-                    for t in group_torrents[1:]:
-                        print(
-                            f"    Удаляем торрент: torrent_id={t.torrent_id}, episodes={t.episodes_range}, size={t.total_size if t.total_size else 'None'}")
+            for quality, group in quality_groups.items():
+                # Сортируем внутри группы по размеру
+                group.sort(key=lambda t: t.total_size or 0, reverse=True)
+                if len(group) > n:
+                    # Оставляем только N самых больших
+                    for t in group[n:]:
+                        print(f"Удаляем торрент: title_id={title_id}, torrent_id={t.torrent_id}, quality={quality}, size={t.total_size}")
                         session.delete(t)
                         total_deleted += 1
-                        deleted_for_title += 1
-
-            print(f"  Удалено {deleted_for_title} торрентов для title_id {title_id}")
 
         session.commit()
         print(f"Всего удалено {total_deleted} торрентов.")
@@ -932,6 +897,7 @@ def clean_torrents_by_title(session):
         import traceback
         traceback.print_exc()
         return 0
+
 
 
 # FRANCHISES TABLE

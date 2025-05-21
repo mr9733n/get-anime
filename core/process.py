@@ -123,7 +123,7 @@ class ProcessManager:
 
             if "hls" in episode:
                 try:
-                    self.logger.debug(f"Processing episode: {episode.get('episode')}")
+                    # self.logger.debug(f"Processing episode: {episode.get('episode')}")
 
                     created_timestamp = episode.get('created_timestamp')
                     if created_timestamp is not None and isinstance(created_timestamp, (int, float)):
@@ -157,6 +157,12 @@ class ProcessManager:
                 url = torrent.get("url")
                 if url:
                     try:
+                        uploaded_timestamp = torrent.get('uploaded_timestamp')
+                        if uploaded_timestamp is not None and isinstance(uploaded_timestamp, (int, float)):
+                            uploaded_timestamp = datetime.fromtimestamp(uploaded_timestamp, tz=timezone.utc)
+                        else:
+                            uploaded_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
+
                         torrent_data = {
                             'torrent_id': torrent.get('torrent_id'),
                             'title_id': title_data.get('id'),
@@ -172,8 +178,7 @@ class ProcessManager:
                             'size_string': torrent.get('size_string'),
                             'url': torrent.get('url'),
                             'magnet_link': torrent.get('magnet'),
-                            'uploaded_timestamp': torrent.get('uploaded_timestamp') if torrent.get(
-                                'uploaded_timestamp') is not None else 0,
+                            'uploaded_timestamp': uploaded_timestamp,
                             'hash': torrent.get('hash'),
                             'torrent_metadata': torrent.get('metadata'),
                             'raw_base64_file': torrent.get('raw_base64_file')

@@ -1,21 +1,20 @@
-import ast
-import hashlib
+import os
+import re
+import sys
 import json
 import logging
-import os
 import platform
-import re
 import subprocess
-import base64
-import sys
 
 from datetime import datetime, timezone, timedelta
-from app.qt.vlc_player import VLCPlayer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
-from app.qt.ui_manger import UIManager
 from app.qt.app_state_manager import AppStateManager
+from app.qt.app_handlers import LinkActionHandler
+from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
+from app.qt.vlc_player import VLCPlayer
+from app.qt.ui_manger import UIManager
 from app.qt.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
@@ -24,15 +23,14 @@ from utils.api_client import APIClient
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
-from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from utils.library_loader import verify_library
 
 
+VLC_PLAYER_HASH = "48b635950df4e6b37bfdcfa0d6190618d8fe24fbc9918ca01f1965b072def3ce"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
 APP_Y_POS = 100
-VLC_PLAYER_HASH = "48b635950df4e6b37bfdcfa0d6190618d8fe24fbc9918ca01f1965b072def3ce"
 
 
 class APIClientError(Exception):
@@ -132,6 +130,19 @@ class AnimePlayerAppVer3(QWidget):
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
         self.ui_manager = UIManager(self)
+
+        self.link_handler = LinkActionHandler(
+            logger=self.logger,
+            db_manager=self.db_manager,
+            get_titles_list_batch_size=self.get_titles_list_batch_size,
+            display_info=self.display_info,
+            display_titles=self.display_titles,
+            play_link=self.play_link,
+            play_playlist_wrapper=self.play_playlist_wrapper,
+            get_torrent_data=self.get_torrent_data,
+            save_torrent_wrapper=self.save_torrent_wrapper,
+            reset_offset=self.reset_offset
+        )
 
         self.callbacks = self.generate_callbacks()
         days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
@@ -1097,179 +1108,8 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(error_message)
 
     def on_link_click(self, url):
-        try:
-            link = url.toString()
-            if link.startswith('display_info/'):
-                title_id = int(link.split('/')[1])
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
-            elif link.startswith('filter_by_franchise/'):
-                title_ids = ast.literal_eval(link.split('/')[1])
-                self.logger.debug(f"Filtering by franchise for title_ids: {title_ids}")
-                QTimer.singleShot(100, lambda: self.display_titles(title_ids=title_ids))
-            elif link.startswith('filter_by_genre/'):
-                genre_id = link.split('/')[1]
-                self.logger.debug(f"Filtering by genre: {genre_id}")
-                title_ids = self.db_manager.get_titles_by_genre(genre_id)
-                if title_ids:
-                    QTimer.singleShot(100, lambda: self.display_titles(
-                        show_mode='titles_genre_list',
-                        batch_size=self.titles_list_batch_size,
-                        title_ids=title_ids
-                    ))
-                else:
-                    self.logger.warning(f"No titles found with genre: '{genre_id}'")
-            elif link.startswith('filter_by_team_member/'):
-                team_member = link.split('/')[1]
-                self.logger.debug(f"Filtering by team_member: {team_member}")
-                title_ids = self.db_manager.get_titles_by_team_member(team_member)
-                if title_ids:
-                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_team_member_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
-                else:
-                    self.logger.warning(f"No titles found with team_member: '{team_member}'")
-            elif link.startswith('filter_by_year/'):
-                year = int(link.split('/')[1])
-                self.logger.debug(f"Filtering by year: {year}")
-                title_ids = self.db_manager.get_titles_by_year(year)
-                if title_ids:
-                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_year_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
-                else:
-                    self.logger.warning(f"No titles found with year: '{year}'")
-            elif link.startswith('filter_by_status/'):
-                status_code = int(link.split('/')[1])
-                self.logger.debug(f"Filtering by status: {status_code}, type: {type(status_code)}")
-                title_ids = self.db_manager.get_titles_by_status(status_code)
-                self.logger.debug(f"Query returned {len(title_ids)} titles: {title_ids[:5] if title_ids else []}")
-                if title_ids:
-                    QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_status_list', batch_size=self.titles_list_batch_size, title_ids=title_ids))
-                else:
-                    self.logger.warning(f"No titles found with status: '{status_code}'")
-            elif link.startswith('reload_template/'):
-                template_name = link.split('/')[1]
-                self.db_manager.save_template(template_name)
-                QTimer.singleShot(100, lambda: self.display_titles(start=True))
-            elif link.startswith('reset_offset/'):
-                reset_status = link.split('/')[1]
-                if reset_status:
-                    self.current_offset = 0
-                    QTimer.singleShot(100, lambda: self.display_titles(start=True))
-            elif link.startswith('reload_info/'):
-                title_id = int(link.split('/')[1])
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
-            elif link.startswith('set_download_status/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    user_id = int(parts[1])
-                    title_id = int(parts[2])
-                    torrent_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
-                    self.logger.debug(f"Setting user:{user_id} download status for title_id, torrent_id: {title_id}, {torrent_id}")
-                    _, current_download_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id, torrent_id=torrent_id)
-                    new_download_status = not current_download_status
-                    self.logger.debug(f"Setting download status for user_id: {user_id}, title_id: {title_id}, torrent_id: {torrent_id}, status: {new_download_status}")
-                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, torrent_id=torrent_id, is_download=new_download_status)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_download_status/ link structure: {link}")
-            elif link.startswith('set_need_to_see/'):
-                parts = link.split('/')
-                if len(parts) >= 3:
-                    user_id = int(parts[1])
-                    title_id = int(parts[2])
-                    self.logger.debug(f"Setting user:{user_id} need to see status for title_id: {title_id}")
-                    current_status = self.db_manager.get_need_to_see(user_id=user_id, title_id=title_id)
-                    new_watch_status = not current_status
-                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, status: {new_watch_status}")
-                    self.db_manager.save_need_to_see(user_id=user_id, title_id=title_id, need_to_see=new_watch_status)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_need_to_see/ link structure: {link}")
-            elif link.startswith('set_watch_status/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    user_id = int(parts[1])
-                    title_id = int(parts[2])
-                    episode_id = int(parts[3]) if len(parts) > 3 and parts[3] != 'None' else None
-                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, episode_id: {title_id}, {episode_id}")
-                    current_status = self.db_manager.get_history_status(user_id=user_id, title_id=title_id,episode_id=episode_id)
-                    current_watched_status, _ = current_status
-                    new_watch_status = not current_watched_status
-                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, status: {new_watch_status}")
-                    self.db_manager.save_watch_status(user_id=user_id, title_id=title_id, episode_id=episode_id, is_watched=new_watch_status)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_watch_status/ link structure: {link}")
-            elif link.startswith('set_watch_all_episodes_status/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    user_id = int(parts[1])
-                    title_id = int(parts[2])
-                    episode_ids = ast.literal_eval(parts[3])
-                    if not isinstance(episode_ids, list):
-                        raise ValueError("Invalid episode_ids, expected a list.")
-                    self.logger.debug(f"Setting user:{user_id} watch status for title_id, all_episodes: {title_id}")
-                    current_watched_status = self.db_manager.get_all_episodes_watched_status(user_id=user_id, title_id=title_id)
-                    new_watch_status = not current_watched_status
-                    self.logger.debug(f"Setting watch status for user_id: {user_id}, title_id: {title_id} all_episodes status: {new_watch_status}")
-                    self.db_manager.save_watch_all_episodes(user_id, title_id, is_watched=new_watch_status, episode_ids=episode_ids)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_watch_all_episodes_status/ link structure: {link}")
-            elif link.startswith('set_rating/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    title_id = int(parts[1])
-                    rating_name = parts[2]
-                    rating_value = parts[3]
-                    self.logger.debug(f"Setting rating for title_id: {title_id}, rating: {rating_name}:{rating_value}")
-                    self.db_manager.save_ratings(title_id, rating_name=rating_name, rating_value=rating_value)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid set_rating/ link structure: {link}")
-            elif link.startswith('play_all/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    title_id = int(parts[1])
-                    filename = parts[2]
-                    skip_data = parts[3].strip("[]")
-
-                    self.logger.debug(f"Play_all: title_id: {title_id}, Skip data base64: {skip_data}, filename: {filename}")
-                    self.play_playlist_wrapper(filename, title_id, skip_data)
-                    QTimer.singleShot(100, lambda: self.display_info(title_id))
-                else:
-                    self.logger.error(f"Invalid play_all link structure: {link}")
-            # play_m3u8/8330/[]/[/videos/media/ts/8330/12/1080/6304ca1f37c6192732ee93dddd40e465.m3u8]
-            elif link.startswith('play_m3u8/'):
-                parts = link.split('/')
-                if len(parts) >= 4:
-                    try:
-                        title_id = int(parts[1])  # Идентификатор тайтла
-                        # Убираем квадратные скобки и приводим строки к спискам или None
-                        skip_data = parts[2].strip("[]")
-                        extracted_link = parts[3].strip("[]")  # Убираем квадратные скобки из ссылки
-                        decoded_link = base64.urlsafe_b64decode(extracted_link).decode()
-                        self.logger.debug(
-                            f"Skip data base64: {skip_data}, Extracted link: {extracted_link}, Decoded link: {decoded_link}")
-                        link = decoded_link
-                        self.logger.info(f"Sending video link: {link} to VLC")
-                        self.play_link(link, title_id, skip_data)
-                    except (ValueError, SyntaxError) as e:
-                        self.logger.error(f"Error parsing: {e}")
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
-            elif '/torrent/download.php' in link:
-                title_id, title_code, torrent_id = self.torrent_data
-                self.save_torrent_wrapper(link, title_code, torrent_id)
-                self.logger.info(
-                    f"Torrent data: ["
-                    f"title_id: {title_id}, "
-                    f"title_code: {title_code}, "
-                    f"torrent_id: {torrent_id}"
-                    f"]"
-                )
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
-            else:
-                self.logger.error(f"Unknown link type: {link}")
-        except Exception as e:
-            error_message = f"An error occurred while processing the link: {str(e)}"
-            self.logger.error(error_message)
+        link = url.toString()
+        self.link_handler.handle(link)
 
     def get_poster_or_placeholder(self, title_id):
         """
@@ -1305,7 +1145,7 @@ class AnimePlayerAppVer3(QWidget):
             if need_download:
                 poster_link = self.db_manager.get_poster_link(title_id)
                 if poster_link:
-                    processed_link = self.perform_poster_link(title_id, poster_link)
+                    processed_link = self.perform_poster_link(poster_link)
                     if processed_link:
                         self.poster_manager.write_poster_links([(title_id, processed_link)])
                         self.logger.debug(f"Added poster for title_id {title_id} to download queue.")
@@ -1316,7 +1156,7 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
             return None
 
-    def perform_poster_link(self, title_id, poster_link):
+    def perform_poster_link(self, poster_link):
         try:
             self.logger.debug(f"Processing poster link: {poster_link}")
             poster_url = self.pre + self.base_url + poster_link
@@ -1429,3 +1269,12 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.debug("Video player launched successfully")
         except Exception as e:
             self.logger.error(f"Error in play_playlist_wrapper: {e}", exc_info=True)
+
+    def reset_offset(self):
+        self.current_offset = 0
+
+    def get_torrent_data(self):
+        return self.torrent_data
+
+    def get_titles_list_batch_size(self):
+        return self.titles_list_batch_size

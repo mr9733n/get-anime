@@ -521,53 +521,50 @@ class SaveManager:
 
     def save_torrent(self, torrent_data):
         with self.Session as session:
-            # Создаем копию данных
             processed_data = torrent_data.copy()
 
-            # Сериализуем torrent_metadata в строку с помощью ast, если это словарь
             if isinstance(processed_data.get('torrent_metadata'), dict):
                 processed_data['torrent_metadata'] = repr(processed_data['torrent_metadata'])
-
-            # Преобразуем timestamps если они есть в данных
-            if 'uploaded_timestamp' in processed_data:
-                processed_data['uploaded_timestamp'] = datetime.fromtimestamp(processed_data['uploaded_timestamp'],
-                                                                              tz=timezone.utc)
 
             title_id = processed_data['title_id']
             torrent_id = processed_data['torrent_id']
             self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
             try:
-                # Проверяем, существует ли уже торрент с данным `torrent_id`
-                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_id).first()
+                existing_torrent = session.query(Torrent).filter_by(
+                    title_id=processed_data['title_id'],
+                    quality=processed_data['quality'],
+                    quality_type=processed_data['quality_type'],
+                    encoder=processed_data['encoder'],
+                ).first()
 
                 if existing_torrent:
                     is_updated = False
+                    protected_fields = {'title_id'}
 
-                    # Особая обработка для uploaded_timestamp
-                    if ('uploaded_timestamp' in processed_data and
-                            existing_torrent.uploaded_timestamp == datetime.fromtimestamp(0, tz=timezone.utc) and
-                            processed_data['uploaded_timestamp'] != datetime.fromtimestamp(0, tz=timezone.utc)):
-                        # Если у существующего торрента дефолтная дата, а в новых данных есть нормальная дата
-                        existing_torrent.uploaded_timestamp = processed_data['uploaded_timestamp']
-                        is_updated = True
-                        self.logger.debug(f"Updating incorrect timestamp for torrent {torrent_id}")
-
-                    # Проверка на изменение остальных данных
                     for key, value in processed_data.items():
-                        if key != 'uploaded_timestamp' and getattr(existing_torrent, key) != value:
-                            is_updated = True
-                            break
+                        if key not in protected_fields and hasattr(existing_torrent, key):
+                            current_value = getattr(existing_torrent, key)
+                            if isinstance(current_value, datetime) and isinstance(value, datetime):
+                                if current_value.tzinfo is None:
+                                    current_value = current_value.replace(tzinfo=timezone.utc)
+                            if current_value != value:
+                                setattr(existing_torrent, key, value)
+                                is_updated = True
+                                self.logger.debug(f"Updated field '{key}' for torrent {torrent_id}")
 
                     if is_updated:
-                        # Обновляем данные, если они изменились
-                        session.merge(Torrent(**processed_data))
+                        session.commit()
                         self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
                 else:
-                    # Добавляем новый торрент, если его еще нет в базе
-                    session.add(Torrent(**processed_data))
+                    # Новая запись
+                    if 'uploaded_timestamp' not in processed_data or processed_data[
+                        'uploaded_timestamp'] == datetime.fromtimestamp(0, tz=timezone.utc):
+                        processed_data['uploaded_timestamp'] = datetime.now(timezone.utc)
+                    new_torrent = Torrent(**processed_data)
+                    session.add(new_torrent)
+                    session.commit()
                     self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
 
-                session.commit()
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")

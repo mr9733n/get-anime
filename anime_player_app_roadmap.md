@@ -295,7 +295,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
  
 ### 8.23. Some fixes
 - [x] Updated deprecated Datetime calls
-- [x] Fixed saving date in torrents and episodes tables
+- [x] Fixed saving date in episodes tables
 - [x] Show franchises links in title
 - [x] Filter titles by franchise
 - [x] Show day of week in title 
@@ -305,13 +305,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Some fixes in Rating
 - [x] Some fixed in Episode saving
 
-### 8.24. Some fixes
+### 8.24. Refactoring and bug fixes  
 - [x] Add standalone for vlc_player
 - [x] Moved custom vlc player to another process thread
 - [x] Add query thread for saving posters
 - [x] More robust for downloading posters
 - [x] Small fixes
 - [x] Clean PosterManager
+- [x] Added LinkActionHandler
+- [x] Fixed saving date in torrents tables
+- [x] Fixed updating torrents in torrents tables
+- [x] Fixed cleaning torrent duplicates in enhanced_db_manager
 - [ ] Remove unused logic
 
 ### 8.25. Some fixes

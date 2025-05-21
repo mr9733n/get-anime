@@ -13,6 +13,13 @@ class ConfigManager:
         except KeyError as e:
             raise KeyError(f"Missing section '{section}' or setting '{setting}' in config: {e}")
 
+    @staticmethod
+    def get_vlc_player_executable_name(platform_name):
+        vlc_player_executable_name = "AnimePlayerVlc"
+        if platform_name == "Windows":
+            vlc_player_executable_name = vlc_player_executable_name + ".exe"
+        return vlc_player_executable_name
+
     def get_video_player_path(self, platform_name):
         if platform_name == "Windows":
             return self.get_setting('Settings', 'win_video_player_path')

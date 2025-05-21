@@ -102,24 +102,15 @@ if __name__ == "__main__":
 
     sys.excepthook = log_exception
 
-    # Create object with unique key
-    if not DEVELOPMENT_MODE:
-        unique_key = prod_key  # use key generated on build
-        shared_memory = QSharedMemory(unique_key)
-        if not shared_memory.create(1):
-            logging.getLogger(__name__).error("App is already running!")
-            sys.exit(1)
-    else:
-        logging.getLogger(__name__).info("Development mode: single instance check disabled.")
-
     # Check vlc library
     try:
         expected_hash = "a2625d21b2cbca52ae5a9799e375529c715dba797a5646adf62f1c0289dbfb68"
         lib_file_path = load_library(lib_dir, 'libvlc.dll')
-        verify_library(lib_file_path, expected_hash)
+        status = verify_library(lib_file_path, expected_hash)
+        if not status:
+            sys.exit(1)
     except Exception as e:
         logger.error(f"Failed to initialize library: {e}", exc_info=True)
-        exit(1)
 
     # Ensure the database directory exists
     if not os.path.exists(db_dir):
@@ -150,7 +141,12 @@ if __name__ == "__main__":
 
     icon_path = os.path.join(icon_dir, 'icon.png')
     app_pyqt.setWindowIcon(QIcon(icon_path))
-    window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name)
+
+    if not DEVELOPMENT_MODE:
+        window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name, prod_key)
+    else:
+        logging.getLogger(__name__).info("Development mode: single instance check disabled.")
+        window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name)
 
     if app_state:
         window_pyqt.restore_state(app_state)

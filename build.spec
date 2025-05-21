@@ -1,11 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 # For python version 3.12.x
 
-
-# ---
-# main.spec
-
 import os
+import platform
 import re
 import site
 import sys
@@ -20,6 +17,20 @@ from datetime import datetime
 from pathlib import Path
 from PyInstaller.building.api import PYZ, COLLECT, EXE
 from PyInstaller.building.build_main import Analysis
+
+# ---
+# main.spec
+
+def calculate_sha256(file_path):
+    hash_function = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(8192):
+            hash_function.update(chunk)
+    return hash_function.hexdigest()
+
+def current_platform():
+    cur_pl = platform.system()
+    return cur_pl
 
 if sys.platform == "win32":
     # Windows: using site.getsitepackages()
@@ -127,6 +138,124 @@ datas = [
 	(os.path.join(project_dir, 'sql_commands.md'), '.'),
 	(str(build_env_path), '.')
 ]
+
+# ---
+# vlc_player.spec
+
+print("\n--- Building VLC Player ---")
+block_cipher = None
+project_dir = os.getcwd()
+vlc_player_name = "AnimePlayerVlc"
+
+# Analyze VLC player script
+v = Analysis(
+    ['app/qt/vlc_player.py'],
+    pathex=[
+        project_dir,
+        PACKAGES_FOLDER,
+    ],
+    binaries=[],
+    datas=[
+        (os.path.join(project_dir, 'config/logging.conf'), 'config'),
+        (os.path.join(project_dir, 'static/icon.png'), 'static'),
+    ],
+    hiddenimports=[
+        'logging.config',
+        'ctypes',
+        'vlc',
+        're',
+        'json',
+        'base64',
+        'time',
+        'argparse',
+        'utils.runtime_manager',
+        'setproctitle',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz_vlc = PYZ(v.pure, v.zipped_data, cipher=block_cipher)
+
+exe_vlc = EXE(
+    pyz_vlc,
+    v.scripts,
+    [],
+    exclude_binaries=True,
+    name=vlc_player_name,
+    icon='favicon.ico',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    onefile=False,
+)
+
+coll_vlc = COLLECT(
+    exe_vlc,
+    v.binaries,
+    v.zipfiles,
+    v.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name=vlc_player_name
+)
+
+# Copy VLC player to the main application directory and calculate its hash
+dist_dir = os.path.join(project_dir, 'dist')
+compiled_dir1 = os.path.join(dist_dir, 'AnimePlayer')
+vlc_player_compiled_dir = os.path.join(dist_dir, vlc_player_name)
+
+# Source and destination paths
+# TODO: add for MacOS & Linux platforms
+current_platform = current_platform()
+if current_platform == "Windows":
+    vlc_player_name = vlc_player_name + '.exe'
+vlc_binary_source = os.path.join(vlc_player_compiled_dir, vlc_player_name)
+
+vlc_hash = calculate_sha256(vlc_binary_source)
+app_path = os.path.join(project_dir, 'app', 'qt', 'app.py')
+
+try:
+    with open(app_path, "r+", encoding="utf-8") as f:
+        content = f.read()
+        # Check if VLC_PLAYER_HASH constant exists, otherwise add it
+        if "VLC_PLAYER_HASH" in content:
+            updated_content = re.sub(
+                r'VLC_PLAYER_HASH\s*=\s*".*?"',
+                f'VLC_PLAYER_HASH = "{vlc_hash}"',
+                content
+            )
+        else:
+            # Find a good place to insert the constant - after imports but before class definition
+            import_section_end = content.find("class AnimePlayerAppVer3")
+            if import_section_end > 0:
+                updated_content = (
+                        content[:import_section_end] +
+                        f"\n# Hash of compiled VLC player executable\nVLC_PLAYER_HASH = \"{vlc_hash}\"\n\n" +
+                        content[import_section_end:]
+                )
+            else:
+                # If can't find class definition, add at the top
+                updated_content = f"# Hash of compiled VLC player executable\nVLC_PLAYER_HASH = \"{vlc_hash}\"\n\n" + content
+
+        f.seek(0)
+        f.write(updated_content)
+        f.truncate()
+    print(f"✅ Updated app.py with VLC player hash: {vlc_hash}")
+except Exception as e:
+    print(f"❌ Error updating app.py with VLC player hash: {e}")
+
 
 a = Analysis(
     ['main.py'],
@@ -267,6 +396,17 @@ coll = COLLECT(
 )
 
 
+# Source and destination paths
+vlc_binary_source = os.path.join(vlc_player_compiled_dir, vlc_player_name)
+vlc_binary_dest = os.path.join(compiled_dir1, vlc_player_name)
+
+# Copy the VLC player executable to the main app directory
+if os.path.exists(vlc_binary_source):
+    shutil.copyfile(vlc_binary_source, vlc_binary_dest)
+    print(f"✅ Copied VLC player executable to main application directory")
+else:
+    print(f"❌ Error: VLC player executable not found at {vlc_binary_source}")
+
 # ---
 # merge_utility.spec
 
@@ -337,13 +477,6 @@ binary_file = os.path.join(compiled_dir2, 'merge_utility.exe')
 binary_file_path = os.path.join(compiled_dir1, 'merge_utility.exe')
 sync_script = os.path.join(project_dir, 'sync.py')
 shutil.copyfile(binary_file, binary_file_path)
-
-def calculate_sha256(file_path):
-    hash_function = hashlib.sha256()
-    with open(file_path, 'rb') as f:
-        while chunk := f.read(8192):
-            hash_function.update(chunk)
-    return hash_function.hexdigest()
 
 def write_to_file(checksum, file_path):
     try:

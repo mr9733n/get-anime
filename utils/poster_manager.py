@@ -1,25 +1,29 @@
 # utils/poster_manager.py
-import threading
-import time
-import requests
 import io
+import time
+import queue
 import logging
 import hashlib
+import requests
+import threading
+
 from PIL import Image, UnidentifiedImageError
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # Задержка в секундах между повторными попытками
+MAX_IMAGE_SIZE_KB = 5000
 
 class PosterManager:
-    def __init__(self, display_callback=None, save_callback=None):
-        self._download_thread = None
+    def __init__(self, save_callback=None):
+
         self.logger = logging.getLogger(__name__)
-        self.poster_blobs = None
         self.poster_links = []
-        self.poster_images = []
-        self.current_poster_index = 0
-        self.display_callback = display_callback
         self.save_callback = save_callback
+        self.save_queue = queue.Queue()
+        self._save_thread = None
+        self._download_thread = None
+        self._thread_complete_event = threading.Event()
+        self._thread_complete_event.set()
 
     def write_poster_links(self, links):
         """
@@ -31,7 +35,6 @@ class PosterManager:
                 self.poster_links.append((title_id, link))
                 self.logger.debug(f"Added poster link for title ID {title_id}: {link[-41:]}")
 
-        # Асинхронная загрузка всех постеров
         self.start_background_download()
 
     def extract_title_id_from_link(self, link):
@@ -39,8 +42,8 @@ class PosterManager:
         Extract the title ID from the poster link.
         """
         try:
-            # Предполагается, что title_id содержится в пути ссылки, например: '/storage/releases/posters/9792/...'
-            title_id = int(link.split('/')[-2])  # Извлекаем ID из предпоследнего элемента пути
+            # '/storage/releases/posters/9792/...'
+            title_id = int(link.split('/')[-2])
             return title_id, link
         except (ValueError, IndexError):
             self.logger.error(f"Unable to extract title ID from link: {link}")
@@ -55,13 +58,49 @@ class PosterManager:
         if download_thread is False:
             download_thread.start()
 
+    def _process_save_queue(self):
+        """Worker thread that processes save operations and terminates when queue is empty"""
+        try:
+            while True:
+                try:
+                    title_id, content, hash_value = self.save_queue.get(timeout=1.0)
+                except queue.Empty:
+                    self.logger.info("[!] Save queue is empty, terminating thread")
+                    break
+                try:
+                    if self.save_callback:
+                        self.save_callback(title_id, content, hash_value)
+                        self.logger.info(f"[*] Saved poster for title_id: {title_id}")
+                    time.sleep(0.5)
+                except Exception as e:
+                    self.logger.error(f"Error saving poster for title_id {title_id}: {e}")
+                finally:
+                    self.save_queue.task_done()
+
+        except Exception as e:
+            self.logger.error(f"Error in save thread: {e}")
+        finally:
+            self._thread_complete_event.set()
+            self.logger.info("[!!!] Poster save thread terminated")
+
+    def _ensure_save_thread_running(self):
+        """Start the save thread if it's not already running"""
+        if self._thread_complete_event.is_set():
+            self.logger.info("[!] Starting poster save thread")
+            self._thread_complete_event.clear()
+            self._save_thread = threading.Thread(target=self._process_save_queue)
+            self._save_thread.start()
+            return True
+        return False
+
     def download_posters_in_background(self):
         """
         Download posters asynchronously and store them in memory.
         """
-        retries = 0
+        items_queued = False
         while self.poster_links:
             title_id, link = self.poster_links.pop(0)
+            retries = 0
             while retries < MAX_RETRIES:
                 try:
                     headers = {
@@ -82,33 +121,39 @@ class PosterManager:
 
                     content = response.content
                     hash_value = hashlib.md5(content).hexdigest()
-                    # Open and process the image
+
                     link_io = io.BytesIO(content)
-                    poster_image = Image.open(link_io)
-                    self.poster_images.append(poster_image)
-
-                    # self.display_callback(poster_image)
+                    img = Image.open(link_io)
+                    img.load()
+                    width, height = img.size
+                    img_format = img.format
                     num_kilobytes = len(response.content) / 1024
-                    self.logger.debug(f"Successfully downloaded poster. URL: '{link[-41:]}', "
-                                      f"Time taken: {end_time - start_time:.2f} seconds, "
-                                      f"Image size: {num_kilobytes:.2f} Kb."
-                                      f"Hash: {hash_value}")
 
-                    # Display and save poster
-                    if self.display_callback:
-                        self.display_callback(poster_image, title_id)
-                        self.logger.warning(f"!!!Display callback")
+                    if width < 10 or height < 10 or width > 10000 or height > 10000:
+                        self.logger.error(f"Invalid image dimensions: {width}x{height} for title_id {title_id}")
+                        continue
 
-                    if self.save_callback:
-                        self.save_callback(title_id, content, hash_value)
-                        self.logger.warning(f"!!!Save callback title_id: {title_id}")
+                    if img_format not in ["JPEG", "PNG", "GIF", "WEBP"]:
+                        self.logger.error(f"Unsupported image format: {img_format} for title_id {title_id}")
+                        continue
 
-                    self.poster_images.append((poster_image, title_id))
+                    if num_kilobytes > MAX_IMAGE_SIZE_KB:
+                        self.logger.error(
+                            f"Image too large ({num_kilobytes:.2f}KB > {MAX_IMAGE_SIZE_KB}KB) for title_id {title_id}")
+                        continue
 
+                    self.logger.info(f"Successfully downloaded poster for title_id {title_id}")
+                    self.logger.debug(f"Poster details - URL: '{link[-41:]}', Format: {img_format}")
+                    self.logger.debug(f"Poster metrics - Dimensions: {width}x{height}, Size: {num_kilobytes:.2f} KB")
+                    self.logger.debug(f"Performance - Time: {end_time - start_time:.2f}s, Hash: {hash_value}...")
+
+                    self.save_queue.put((title_id, content, hash_value))
+                    items_queued = True
+                    self.logger.debug(f"Queued poster save for title_id: {title_id}")
                     break
-                except UnidentifiedImageError:
+                except (UnidentifiedImageError, IOError, OSError) as img_err:
                     retries += 1
-                    self.logger.error(f"Failed to identify and process the image data from: {link}")
+                    self.logger.error(f"Failed to identify and process the image data from: {link}: {img_err}")
                 except Exception as e:
                     retries += 1
                     self.logger.error(f"An error occurred while downloading the poster from {link}: {str(e)}")
@@ -117,19 +162,15 @@ class PosterManager:
                     time.sleep(RETRY_DELAY)
                 else:
                     self.logger.error("Maximum number of retries reached. Unable to download posters.")
-
-    def next_poster(self):
-        if self.poster_images:
-            self.current_poster_index = (self.current_poster_index + 1) % len(self.poster_images)
-            return self.poster_images[self.current_poster_index]
-        return None
+        if items_queued:
+            self.logger.info(f"[+] Starting save thread to process {self.save_queue.qsize()} posters")
+            self._ensure_save_thread_running()
 
     def clear_cache_and_memory(self):
         """
         Clears the cache file and memory to prepare for new poster data.
         """
         self.poster_links.clear()
-        self.poster_images.clear()
-        self.logger.debug("Poster images cleared from memory.")
+        self.logger.debug("[poster_links] cleared from memory.")
 
 

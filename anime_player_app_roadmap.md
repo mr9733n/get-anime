@@ -304,10 +304,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Reload schedule rework
 - [x] Some fixes in Rating
 - [x] Some fixed in Episode saving
-- [ ] Add status for buttons (simple callback)
-- [ ] remove unused logic
 
 ### 8.24. Some fixes
+- [x] Add standalone for vlc_player
+- [x] Moved custom vlc player to another process thread
+- [x] Add query thread for saving posters
+- [x] More robust for downloading posters
+- [x] Small fixes
+
+### 8.25. Some fixes
+- [ ] Remove unused logic
+- [ ] Add status for buttons (simple callback)
 - [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
@@ -315,7 +322,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] refactoring app.py
 - [ ] ...
 
-### 8.24. change one title view & redesign system browser 2
+### 8.26. change one title view & redesign system browser 2
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window

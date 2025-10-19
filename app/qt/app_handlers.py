@@ -1,6 +1,7 @@
 # app_handlers.py
 import ast
 import base64
+from urllib.parse import urlparse, parse_qs, unquote
 
 from PyQt5.QtCore import QTimer
 
@@ -9,23 +10,21 @@ class LinkActionHandler:
     def __init__(self,
                  logger,
                  db_manager,
-                 get_titles_list_batch_size,
+                 titles_list_batch_size,
                  display_info,
                  display_titles,
                  play_link,
                  play_playlist_wrapper,
-                 get_torrent_data,
                  save_torrent_wrapper,
                  reset_offset):
 
         self.logger = logger
         self.db_manager = db_manager
-        self.titles_list_batch_size = get_titles_list_batch_size
+        self.titles_list_batch_size = titles_list_batch_size
         self.display_info = display_info
         self.display_titles = display_titles
         self.play_link = play_link
         self.play_playlist_wrapper = play_playlist_wrapper
-        self.torrent_data = get_torrent_data
         self.save_torrent_wrapper = save_torrent_wrapper
         self.reset_offset = reset_offset
 
@@ -46,15 +45,13 @@ class LinkActionHandler:
             'set_rating': self._handle_set_rating,
             'play_all': self._handle_play_all,
             'play_m3u8': self._handle_play_m3u8,
+            'download_torrent': self._handle_torrent_download
         }
 
     def handle(self, link):
         try:
             parts = link.split('/')
             action = parts[0]
-
-            if '/torrent/download.php' in link:
-                return self._handle_torrent_download(link)
 
             handler = self.dispatch.get(action)
             if handler:
@@ -66,9 +63,18 @@ class LinkActionHandler:
             self.logger.error(f"Error handling link: {e}")
             return None
 
-    def _handle_torrent_download(self, link):
-        title_id, title_code, torrent_id = self.torrent_data
-        self.save_torrent_wrapper(link, title_code, torrent_id)
+    def _handle_torrent_download(self, parts):
+        parsed = urlparse(parts)
+        title_id = int(parts[1])
+        torrent_id = int(parts[2])
+        title_code = parts[3]
+        query_params = parse_qs(parsed.query)
+        if 'link' in query_params:
+            link = unquote(query_params['link'][0])
+            self.save_torrent_wrapper(link, title_code, torrent_id)
+        else:
+            self.logger.warning(f"No valid link for torrent_id={torrent_id}, skipping download")
+            return
         QTimer.singleShot(100, lambda: self.display_info(title_id))
 
     def _handle_display_info(self, parts):

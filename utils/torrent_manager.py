@@ -18,7 +18,7 @@ class TorrentManager:
         :param link: URL of the torrent file.
         :param file_name: The name to save the torrent file as.
         """
-        file_path = os.path.join(self.torrent_save_path, file_name)
+        file_path = os.path.abspath(os.path.join(self.torrent_save_path, file_name))
         url = f"{self.pre}anilibria.tv" + link
 
         try:

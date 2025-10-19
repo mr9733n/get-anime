@@ -2,6 +2,7 @@
 import json
 import base64
 import logging
+from urllib.parse import quote
 
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtGui import QPixmap
@@ -264,11 +265,12 @@ class UIGenerator:
             for torrent in torrents:
                 torrent_quality = torrent.quality if torrent.quality else "Unknown Quality"
                 torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
-                torrent_link = torrent.url if torrent.url else "#"
                 download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
-                torrent_link_html = f'<a href="{torrent_link}" target="_blank" title="DDownload torrent file">{torrent_quality} ({torrent_size})</a>'
+                if torrent.url:
+                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}?link={quote(torrent.url)}" title="Download torrent file">{torrent_quality} ({torrent_size})</a>'
+                else:
+                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}" title="Download torrent file">{torrent_quality} ({torrent_size})</a>'
                 torrents_html += f'<li>{torrent_link_html}{blank_spase * 4}{download_html}</li>'
-                self.app.torrent_data = torrent.title_id, title.code, torrent.torrent_id
             torrents_html += "</ul>"
 
             return torrents_html

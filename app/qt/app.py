@@ -74,7 +74,6 @@ class AnimePlayerAppVer3(QWidget):
         self.title_search_entry = None
         self.current_titles = None
         self.selected_quality = None
-        self.torrent_data = None
 
         self.discovered_links = []
         self.sanitized_titles = []
@@ -134,12 +133,11 @@ class AnimePlayerAppVer3(QWidget):
         self.link_handler = LinkActionHandler(
             logger=self.logger,
             db_manager=self.db_manager,
-            get_titles_list_batch_size=self.get_titles_list_batch_size,
+            titles_list_batch_size=self.titles_list_batch_size,
             display_info=self.display_info,
             display_titles=self.display_titles,
             play_link=self.play_link,
             play_playlist_wrapper=self.play_playlist_wrapper,
-            get_torrent_data=self.get_torrent_data,
             save_torrent_wrapper=self.save_torrent_wrapper,
             reset_offset=self.reset_offset
         )
@@ -1272,9 +1270,3 @@ class AnimePlayerAppVer3(QWidget):
 
     def reset_offset(self):
         self.current_offset = 0
-
-    def get_torrent_data(self):
-        return self.torrent_data
-
-    def get_titles_list_batch_size(self):
-        return self.titles_list_batch_size

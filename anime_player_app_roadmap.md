@@ -339,6 +339,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix random title load
 - [x] add check for 404 for api client
 - [x] add docs
+- [x] Enabled torrent loading on schedule
+- [x] Fix mapping status_code & status_string
+- [x] Fix presenting day of eek on schedule
+- [x] Builder 5.x checked
 
 ## 10. Check maybe obsolete
 ### 9.0. Some fixes

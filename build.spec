@@ -269,12 +269,13 @@ a = Analysis(
         'pkg_resources',
         'pkg_resources.extern',
 		'multiprocessing',
-		'requests.compat',
+		'requests.compat', # ???
 		'cryptography',
 		'PIL.Image',
 		'numpy',  # Used conditionally in PIL
 		'sqlalchemy.dialects.sqlite',
-		'urllib3.contrib.socks',
+		'urllib3.contrib.socks', # ???
+        'httpx',
         'uuid',
         'jinja2',
         'python-vlc',

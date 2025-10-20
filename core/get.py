@@ -479,39 +479,50 @@ class GetManager:
             try:
                 query = session.query(Title).options(
                     joinedload(Title.genres).joinedload(TitleGenreRelation.genre),
-                    joinedload(Title.episodes)
+                    joinedload(Title.episodes),
+                    joinedload(Title.schedules).joinedload(Schedule.day),  # <-- сразу тянем day
                 )
 
+                # Фильтры по ID/списку ID
                 if title_id:
                     query = query.filter(Title.title_id == title_id)
                 elif title_ids:
                     query = query.filter(Title.title_id.in_(title_ids))
+                # Фильтр по дню недели (1..7) только если не show_all
                 elif not show_all:
-                    query = query.join(Schedule).filter(Schedule.day_of_week == day_of_week)
+                    try:
+                        wd = int(day_of_week)
+                    except (TypeError, ValueError):
+                        return []  # некорректный фильтр — пусто
+                    if not (1 <= wd <= 7):
+                        return []
+                    query = query.join(Schedule).filter(Schedule.day_of_week == wd)
+
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
 
                 titles = query.all()
-                for title in titles:
-                    genre_data = [(relation.genre.name, relation.genre.genre_id)
-                                  for relation in title.genres if relation.genre]
-                    if genre_data:
-                        title.genre_names, title.genre_ids = zip(*genre_data)
-                    else:
-                        title.genre_names = []
-                        title.genre_ids = []
 
-                    # Add day of week
+                for t in titles:
+                    # жанры
+                    genre_data = [(rel.genre.name, rel.genre.genre_id) for rel in t.genres if rel.genre]
+                    t.genre_names, t.genre_ids = (zip(*genre_data) if genre_data else ([], []))
+
+                    # расписание → день недели
                     if not show_all and day_of_week:
-                        title.day_of_week = day_of_week
+                        # при фильтре ставим выбранный wd, имя берём из подходящего Schedule (если есть)
+                        s = next((sc for sc in t.schedules if sc.day_of_week == wd),
+                                 t.schedules[0] if t.schedules else None)
+                        t.day_of_week = wd
                     else:
-                        schedule = session.query(Schedule).filter(Schedule.title_id == title.title_id).first()
-                        title.day_of_week = schedule.day_of_week if schedule else None
+                        s = t.schedules[0] if t.schedules else None
+                        t.day_of_week = s.day_of_week if s else None
+
+                    t.day_name = (s.day.day_name if s and s.day else None)
 
                 return titles
-
             except Exception as e:
-                self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
+                self.logger.error(f"DB error in get_titles_from_db: {e}")
                 return []
 
     def get_titles_by_year(self, year):

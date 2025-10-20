@@ -28,7 +28,7 @@ class APIAdapter:
         try:
             from datetime import datetime
 
-            today = datetime.now().weekday()
+            today = datetime.now().isoweekday()
 
             if day == today:
                 self.logger.info(f"Requesting TODAY's schedule (day={day}) via /schedule/now")
@@ -84,7 +84,7 @@ class APIAdapter:
                 self.logger.error(f"Unexpected week schedule format: {type(week_data)}")
                 return {'error': 'Invalid schedule format'}
 
-            days_map = {i: [] for i in range(7)}
+            days_map = {i: [] for i in range(1, 8)}
 
             for item in week_data:
                 release_data = item.get('release', {})
@@ -94,13 +94,13 @@ class APIAdapter:
                     self.logger.warning(f"Release {release_data.get('id')} has no publish_day")
                     continue
 
-                our_day = (publish_day_value - 1) % 7
+                our_day = int(publish_day_value)
 
                 adapted = self._enrich_and_adapt(release_data)
                 days_map[our_day].append(adapted)
 
             result = []
-            for day_num in range(7):
+            for day_num in range(1, 8):
                 result.append({
                     'day': day_num,
                     'list': days_map[day_num]

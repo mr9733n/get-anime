@@ -19,3 +19,6 @@ requests_toolbelt
 SQLAlchemy~=2.0.41
 tqdm~=4.67.1
 typing_extensions~=4.13.2
+
+httpx~=0.27.2
+playwright~=1.52.0

@@ -86,11 +86,10 @@ def qt_message_handler(mode, context, message):
         logger.debug(f"Qt: {message}")
 
 def on_app_quit():
-    logger.info(f"AnimePlayerApp Version {version} is closed.")
     # Save app current state
     app_state = window_pyqt.get_current_state()
     state_manager.save_state(app_state)
-
+    logger.info(f"AnimePlayerApp Version {version} is closed.")
 
 if __name__ == "__main__":
     logger = logging.getLogger(__name__)

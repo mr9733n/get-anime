@@ -1,9 +1,12 @@
 # api_client.py - ТУПЫЙ HTTP клиент для API v1
+import json
 import os
 import time
-import requests
+import httpx
+import random
 import logging
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class APIClient:
     """
@@ -18,8 +21,51 @@ class APIClient:
         self.pre = "https://"
         self.utils_folder = "temp"
         os.makedirs(self.utils_folder, exist_ok=True)
+        self._http = httpx.Client(
+            base_url=f"{self.pre}{self.base_url}/api/{self.api_version}/",
+            http2=False,
+            timeout=httpx.Timeout(15.0, read=30.0, connect=10.0),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            },
+            limits=httpx.Limits(max_keepalive_connections=6, max_connections=6),
+        )
+        self._cache = {}  # key: (endpoint, frozenset(params.items()) or None) -> (expires_ts, data)
+        self._cache_ttls = {
+            "anime/schedule/week": 60,
+            "anime/schedule/now": 30,
+            "anime/releases/": 60,
+            "anime/torrents/release/": 60,
+            "anime/releases_members/": 60,  # псевдо-метка, см. ниже
+            "anime/franchises/release/": 120,
+            "anime/releases_episodes/": 60,  # псевдо-метка
+        }
 
-    def _send_request(self, endpoint, params=None, method='GET'):
+    def _cache_key(self, endpoint, params):
+        p = None
+        if params:
+            try:
+                p = frozenset(sorted(params.items()))
+            except Exception:
+                p = None
+        return (endpoint, p)
+
+    def _cache_ttl_for(self, endpoint):
+        # Простое сопоставление по префиксам
+        for prefix, ttl in self._cache_ttls.items():
+            if endpoint.startswith(prefix):
+                return ttl
+        # Спец-случаи:
+        if endpoint.startswith("anime/releases/") and endpoint.endswith("/members"):
+            return self._cache_ttls["anime/releases_members/"]
+        if endpoint.startswith("anime/releases/") and endpoint.endswith("/episodes"):
+            return self._cache_ttls["anime/releases_episodes/"]
+        return 0
+
+    def _send_request(self, endpoint, params=None, method='GET', attempts=3, backoff=0.6):
         """
         Универсальный метод для отправки запросов.
 
@@ -31,49 +77,91 @@ class APIClient:
         Returns:
             dict: JSON ответ или {'error': 'описание ошибки'}
         """
-        url = f"{self.pre}{self.base_url}/api/{self.api_version}/{endpoint}"
+        url = endpoint  # base_url уже в self._http
+        last_err = None
+        utils_json = os.path.join(self.utils_folder, 'response.json')
+        utils_bin = os.path.join(self.utils_folder, 'response.bin')
 
+        cache_ttl = self._cache_ttl_for(endpoint) if method == 'GET' else 0
+        if cache_ttl:
+            key = self._cache_key(endpoint, params)
+            rec = self._cache.get(key)
+            now = time.time()
+            if rec and rec[0] > now:
+                return rec[1]
+
+        for i in range(attempts):
+            response = None
+            try:
+                t0 = time.time()
+                if method == 'POST':
+                    response = self._http.post(url, json=params)
+                else:
+                    response = self._http.get(url, params=params)
+
+                ct = response.headers.get("Content-Type", "")
+                ce = response.headers.get("Content-Encoding", "")
+                self.logger.debug(f"HTTP {response.status_code} {endpoint} | CT:{ct} | CE:{ce}")
+
+                response.raise_for_status()
+
+                # пытаемся сразу распарсить JSON
+                try:
+                    data = response.json()
+                    if cache_ttl:
+                        self._cache[key] = (time.time() + cache_ttl, data)
+                    # красивый дамп распакованного JSON
+                    with open(utils_json, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    self.logger.info(f"API {endpoint}: {time.time() - t0:.2f}s; {len(response.content)} bytes")
+                    return data
+                except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                    # сохраняем и бинарь, и «безопасный» текст (если распаковка была)
+                    try:
+                        with open(utils_bin, 'wb') as fb:
+                            fb.write(response.content)
+                    except Exception as dump_err:
+                        self.logger.warning(f"Dump(bin) write error: {dump_err}")
+                    try:
+                        text_safe = response.text  # httpx сам попытается декодировать по r.encoding
+                        with open(utils_json, 'w', encoding='utf-8', errors='replace') as f:
+                            f.write(text_safe)
+                    except Exception as dump_err:
+                        self.logger.warning(f"Dump(text) write error: {dump_err}")
+                    self.logger.error(f"JSON decode error: {e} | CT:{ct} CE:{ce}")
+                    return {"error": "JSON decode error", "content_type": ct, "content_encoding": ce}
+
+            except httpx.HTTPStatusError as e:
+                last_err = e
+                body_snip = ""
+                try:
+                    body_snip = (response.text[:300] + "…") if response is not None else ""
+                except Exception:
+                    pass
+                self.logger.error(f"HTTP {e.response.status_code} on {url} | body: {body_snip}")
+                # нет смысла ретраить 4xx; 5xx можно, но уже попали сюда после raise_for_status
+                if 400 <= e.response.status_code < 500:
+                    return {"error": f"HTTP {e.response.status_code}", "body": body_snip}
+
+            except httpx.RequestError as e:
+                last_err = e
+                # сетевые ошибки — ретраим с backoff
+                sleep_s = backoff * (2 ** i) + random.random() * 0.1
+                time.sleep(sleep_s)
+
+            except Exception as e:
+                last_err = e
+                self.logger.error(f"Unexpected error: {e} - URL: {url}")
+                return {"error": f"Unexpected error: {e}", "url": url}
+
+        self.logger.error(f"HTTP error after retries: {last_err} - URL: {url}")
+        return {"error": str(last_err) if last_err else "Unknown error", "url": url}
+
+    def close(self):
         try:
-            start_time = time.time()
-
-            if method == 'POST':
-                response = requests.post(url, json=params, timeout=30)
-            else:
-                response = requests.get(url, params=params, timeout=30)
-
-            response.raise_for_status()
-            end_time = time.time()
-
-            data = response.json()
-
-            # Сохраняем для отладки
-            utils_json = os.path.join(self.utils_folder, 'response.json')
-            with open(utils_json, 'w', encoding='utf-8') as file:
-                file.write(response.text)
-
-            num_items = len(response.text) if response.text else 0
-            self.logger.info(
-                f"API call to {endpoint}: "
-                f"{end_time - start_time:.2f}s, "
-                f"{num_items} bytes"
-            )
-
-            return data
-
-        except requests.exceptions.HTTPError as http_err:
-            error_message = f"HTTP error: {http_err} - URL: {url}"
-            self.logger.error(error_message)
-            return {'error': error_message}
-
-        except requests.exceptions.RequestException as req_err:
-            error_message = f"Request error: {req_err} - URL: {url}"
-            self.logger.error(error_message)
-            return {'error': error_message}
-
-        except Exception as e:
-            error_message = f"Unexpected error: {e} - URL: {url}"
-            self.logger.error(error_message)
-            return {'error': error_message}
+            self._http.close()
+        except Exception:
+            pass
 
     # ============================================
     # ЭНДПОИНТЫ API v1
@@ -184,3 +272,71 @@ class APIClient:
             list или dict: Франшизы, связанные с релизом
         """
         return self._send_request(f'anime/franchises/release/{release_id}')
+
+    def fetch_release_bundle(self, release_id, need=('torrents', 'members', 'franchises', 'episodes'), max_workers=4):
+        """
+        Забирает полную информацию по релизу ПАРАЛЛЕЛЬНО:
+        - базовый релиз (обязательно)
+        - торренты
+        - команда (members)
+        - франшизы
+        - эпизоды (если не пришли внутри базового релиза)
+        Возвращает единый dict "как из get_release_by_id", но дополненный полями.
+        """
+        # 1) базовый релиз (синхронно — чтобы знать, что уже есть)
+        base = self.get_release_by_id(release_id)
+        if not base or 'error' in base:
+            return base
+
+        tasks = {}
+        # 2) параллельно дёргаем всё остальное
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            if 'torrents' in need:
+                tasks['torrents'] = ex.submit(self.get_release_torrents, release_id)
+            if 'members' in need:
+                tasks['members'] = ex.submit(self.get_release_members, release_id)
+            if 'franchises' in need:
+                tasks['franchises'] = ex.submit(self.get_franchise_by_release, release_id)
+            if 'episodes' in need and not base.get('episodes'):
+                tasks['episodes'] = ex.submit(self.get_release_episodes, release_id)
+
+            # 3) собираем результаты
+            results = {k: f.result() for k, f in tasks.items()}
+
+        # 4) аккуратно мержим в базовый ответ
+        torrents = results.get('torrents')
+        if torrents and 'error' not in torrents:
+            # API может вернуть list или {"data": [...]}
+            base['torrents'] = torrents['data'] if isinstance(torrents, dict) and 'data' in torrents else torrents
+
+        members = results.get('members')
+        if members and 'error' not in members:
+            base['members'] = members
+
+        franchises = results.get('franchises')
+        if franchises and 'error' not in franchises:
+            base['franchises'] = franchises
+
+        episodes = results.get('episodes')
+        if episodes and 'error' not in episodes and not base.get('episodes'):
+            base['episodes'] = episodes
+
+        return base
+
+    def fetch_release_bundles(self, release_ids, need=('torrents', 'members', 'franchises', 'episodes'), max_workers=8):
+        """
+        Параллельно собирает полные бандлы по списку релизов.
+        Возвращает dict: { release_id: bundle_or_error }
+        """
+        out = {}
+
+        def job(rid):
+            return rid, self.fetch_release_bundle(rid, need=need)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = [ex.submit(job, rid) for rid in release_ids]
+            for fut in as_completed(futures):
+                rid, bundle = fut.result()
+                out[rid] = bundle
+
+        return out

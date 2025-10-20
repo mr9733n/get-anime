@@ -126,7 +126,7 @@ class APIAdapter:
                     self._enrich_and_adapt(
                         release,
                         fetch_episodes=True,  # возьмём встроенные, но...
-                        fetch_torrents=False,  # ...не трогаем сеть
+                        fetch_torrents=True,  # ...не трогаем сеть
                         fetch_team=False,
                         fetch_franchises=False,
                         allow_network=False  # ← критично
@@ -378,20 +378,20 @@ class APIAdapter:
         if isinstance(v, str):
             vs = v.strip().lower()
             if vs in {'released', 'release', 'complete', 'completed', 'finished', 'done'}:
-                return {'code': 1, 'string': 'Завершён'}
+                return {'code': 2, 'string': 'Завершён'}
             if vs in {'ongoing', 'in_work', 'current'}:
-                return {'code': 2, 'string': 'В работе'}
+                return {'code': 1, 'string': 'В работе'}
             if vs in {'announcement', 'announced', 'in_production', 'production', 'planned', 'pending'}:
                 return {'code': 3, 'string': 'Анонс'}
 
         # 2) Фолбэк на флаги
         if release.get('is_ongoing'):
-            return {'code': 2, 'string': 'В работе'}
+            return {'code': 1, 'string': 'В работе'}
         if release.get('is_in_production'):
             return {'code': 3, 'string': 'Анонс'}
 
         # 3) Дефолт безопасный
-        return {'code': 1, 'string': 'Завершён'}
+        return {'code': 2, 'string': 'Завершён'}
 
     def _to_timestamp(self, iso_date):
         """Конвертирует ISO дату → unix timestamp, терпимо относится к 'Z' и отсутствующей TZ."""

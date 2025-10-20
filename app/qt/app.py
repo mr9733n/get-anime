@@ -27,7 +27,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "48b635950df4e6b37bfdcfa0d6190618d8fe24fbc9918ca01f1965b072def3ce"
+VLC_PLAYER_HASH = "f8c1f9cab2ec0b274244c5b9b7b6905b57b25309d8dd4e0aa309a19e0ba3e82f"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
@@ -1030,11 +1030,12 @@ class AnimePlayerAppVer3(QWidget):
             keywords = [kw.strip() for kw in keywords]
             if len(keywords) == 1 and keywords[0].isdigit():
                 title_id = int(keywords[0])
-                data = self.api_adapter.get_search_by_title_id(title_id)
+                data = self.api_adapter.get_release_full(title_id)
             elif all(kw.isdigit() for kw in keywords):
                 title_ids = [int(kw) for kw in keywords]
-                data = self.api_adapter.get_search_by_title_ids(title_ids)
+                data = self.api_adapter.get_releases_full(title_ids)
             else:
+                # TODO: create bundle loading if needed
                 data = self.api_adapter.get_search_by_title(search_text)
 
             if isinstance(data, dict) and 'error' in data:

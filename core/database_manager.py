@@ -30,13 +30,13 @@ class DatabaseManager:
         # Создаем таблицы, если они еще не существуют
         Base.metadata.create_all(self.engine)
         days = [
-            {"day_of_week": 0, "day_name": "Monday"},
-            {"day_of_week": 1, "day_name": "Tuesday"},
-            {"day_of_week": 2, "day_name": "Wednesday"},
-            {"day_of_week": 3, "day_name": "Thursday"},
-            {"day_of_week": 4, "day_name": "Friday"},
-            {"day_of_week": 5, "day_name": "Saturday"},
-            {"day_of_week": 6, "day_name": "Sunday"},
+            {"day_of_week": 1, "day_name": "Monday"},
+            {"day_of_week": 2, "day_name": "Tuesday"},
+            {"day_of_week": 3, "day_name": "Wednesday"},
+            {"day_of_week": 4, "day_name": "Thursday"},
+            {"day_of_week": 5, "day_name": "Friday"},
+            {"day_of_week": 6, "day_name": "Saturday"},
+            {"day_of_week": 7, "day_name": "Sunday"},
         ]
         with self.Session as session:
                 try:

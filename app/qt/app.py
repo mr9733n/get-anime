@@ -153,7 +153,7 @@ class AnimePlayerAppVer3(QWidget):
         self.callbacks = self.generate_callbacks()
         days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
         for i, day in enumerate(days_of_week):
-            self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i)
+            self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
 
         self.init_ui()
 
@@ -330,7 +330,7 @@ class AnimePlayerAppVer3(QWidget):
         try:
             day = self.current_day_of_week
             if not day:
-                day = 0  # Monday
+                day = 1  # Monday (1–7)
 
             current_titles = self.total_titles if self.total_titles else set()
             status, new_title_ids = self.check_and_update_schedule(day, current_titles)

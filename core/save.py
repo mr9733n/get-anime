@@ -597,7 +597,11 @@ class SaveManager:
 
                 # Если записи найдены, удаляем их
                 if result:
-                    deleted_count = schedules_to_update.delete(synchronize_session='fetch')
+                    deleted_count = (
+                        session.query(Schedule)
+                        .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
+                        .delete(synchronize_session=False)
+                    )
                     session.commit()
                     self.logger.debug(
                         f"Removed {deleted_count} schedules for day {day_of_week} and titles {title_ids}"

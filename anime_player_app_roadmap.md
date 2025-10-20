@@ -319,6 +319,29 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Remove unused logic
 
 ### 8.25. Some fixes
+- [x] save torrent fix for api v3
+
+### 8.26. New feature
+- [x] API v3 obsolete - disabled
+- [x] API v1 implemented
+
+### 8.27. Some fixes
+- [x] switch day_of_week from api v3 to api v1
+- [x] fix removing titles from schedule
+
+### 8.28. Some fixes
+- [x] added httpx as easy async fix
+- [x] fixes in adapter
+- [x] fix saving torrents
+
+### 8.29. Some fixes
+- [x] enrich fetch episodes checks
+- [x] fix random title load
+- [x] add check for 404 for api client
+- [x] add docs
+
+## 10. Check maybe obsolete
+### 9.0. Some fixes
 - [ ] Add status for buttons (simple callback)
 - [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 - [ ] test build.spec for py installer 6.x
@@ -327,20 +350,19 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] refactoring app.py
 - [ ] ...
 
-### 8.26. change one title view & redesign system browser 2
+### 9.1. change one title view & redesign system browser 2
 - [ ] show production studio
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 - [ ] add/update table data
 - [ ] ...
 
-
-## 9. TECH DEBT
-### 9.1. Использование Pydantic для Валидации
+## 10. TECH DEBT
+### 10.1. Использование Pydantic для Валидации
 - [ ] Установить Pydantic и создать схемы для валидации данных (`TitleSchema`, `EpisodeSchema` и т.д.).
 - [ ] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
 
-### 9.2. Обработка Ошибок и Резервное Копирование
+### 10.2. Обработка Ошибок и Резервное Копирование
 - [ ] Merge algorithm is unstable
 - [ ] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
@@ -348,14 +370,14 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition
 
-### 9.3. add watch history bulk selection
+### 10.3. add watch history bulk selection
 - [ ] select many >_< 
 
-## Этап 10. Тестирование и Оптимизация
-### 10.1. Тестирование Методов `DatabaseManager`
+## Этап 11. Тестирование и Оптимизация
+### 11.1. Тестирование Методов `DatabaseManager`
 - [ ] Написать юнит-тесты для каждого метода `DatabaseManager` (создание, чтение, обновление, удаление данных).
 - [ ] Тестировать работу с базой данных на корректность добавления и получения данных.
 
-### 10.2. Тестирование Интеграции
+### 11.2. Тестирование Интеграции
 - [ ] Тестировать взаимодействие базы данных с остальным приложением, чтобы убедиться в правильности логики сохранения и загрузки данных.
 - [ ] Тестировать новый интерфейс, чтобы проверить отображение данных и правильность работы функционала.

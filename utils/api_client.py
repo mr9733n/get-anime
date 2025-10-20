@@ -133,6 +133,20 @@ class APIClient:
 
             except httpx.HTTPStatusError as e:
                 last_err = e
+                # --- Спец-обработка 404 для /episodes ---
+                try:
+                    _status = e.response.status_code
+                    if _status == 404 and endpoint.endswith("/episodes"):
+                        # Это нормальная ситуация для части релизов — эпизоды пока не заведены
+                        try:
+                            self.logger.debug(f"404 on {endpoint} — episodes endpoint not available yet")
+                        except Exception:
+                            pass
+                        return None  # <-- тихо выходим без ошибки
+                except Exception:
+                    pass
+                # --- /спец-обработка ---
+
                 body_snip = ""
                 try:
                     body_snip = (response.text[:300] + "…") if response is not None else ""
@@ -273,23 +287,34 @@ class APIClient:
         """
         return self._send_request(f'anime/franchises/release/{release_id}')
 
+    # Внутри api_client.py (рядом с методом) — утилита локально к классу:
+
+    def _episodes_to_list(self, eps_obj):
+        """
+        Приводит эпизоды к списку:
+        - list -> list
+        - {"data": list} -> list
+        - None/пусто/не то -> []
+        """
+        if not eps_obj:
+            return []
+        if isinstance(eps_obj, list):
+            return eps_obj
+        if isinstance(eps_obj, dict) and 'data' in eps_obj:
+            data = eps_obj.get('data') or []
+            return data if isinstance(data, list) else []
+        return []
+
     def fetch_release_bundle(self, release_id, need=('torrents', 'members', 'franchises', 'episodes'), max_workers=4):
-        """
-        Забирает полную информацию по релизу ПАРАЛЛЕЛЬНО:
-        - базовый релиз (обязательно)
-        - торренты
-        - команда (members)
-        - франшизы
-        - эпизоды (если не пришли внутри базового релиза)
-        Возвращает единый dict "как из get_release_by_id", но дополненный полями.
-        """
-        # 1) базовый релиз (синхронно — чтобы знать, что уже есть)
+        # 1) базовый релиз
         base = self.get_release_by_id(release_id)
         if not base or 'error' in base:
             return base
 
+        # Нормализуем имеющиеся эпизоды, чтобы понять, надо ли качать ещё
+        base_eps_list = self._episodes_to_list(base.get('episodes'))
+
         tasks = {}
-        # 2) параллельно дёргаем всё остальное
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             if 'torrents' in need:
                 tasks['torrents'] = ex.submit(self.get_release_torrents, release_id)
@@ -297,16 +322,15 @@ class APIClient:
                 tasks['members'] = ex.submit(self.get_release_members, release_id)
             if 'franchises' in need:
                 tasks['franchises'] = ex.submit(self.get_franchise_by_release, release_id)
-            if 'episodes' in need and not base.get('episodes'):
+            # Эпизоды запрашиваем ТОЛЬКО если их нет в base по факту (после нормализации)
+            if 'episodes' in need and not base_eps_list:
                 tasks['episodes'] = ex.submit(self.get_release_episodes, release_id)
 
-            # 3) собираем результаты
             results = {k: f.result() for k, f in tasks.items()}
 
-        # 4) аккуратно мержим в базовый ответ
+        # 4) мерджим
         torrents = results.get('torrents')
         if torrents and 'error' not in torrents:
-            # API может вернуть list или {"data": [...]}
             base['torrents'] = torrents['data'] if isinstance(torrents, dict) and 'data' in torrents else torrents
 
         members = results.get('members')
@@ -317,9 +341,10 @@ class APIClient:
         if franchises and 'error' not in franchises:
             base['franchises'] = franchises
 
+        # ВАЖНО: episodes нормализуем к списку и кладём как список
         episodes = results.get('episodes')
-        if episodes and 'error' not in episodes and not base.get('episodes'):
-            base['episodes'] = episodes
+        if not base_eps_list and episodes and 'error' not in episodes:
+            base['episodes'] = self._episodes_to_list(episodes)
 
         return base
 

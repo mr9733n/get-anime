@@ -192,3 +192,70 @@ FROM titles t
 LEFT JOIN posters p ON t.title_id = p.title_id
 WHERE p.poster_id IS NULL
 ```
+
+12. fix day_of_week for api v1
+```sql
+-- 0) Посмотреть распределение до апдейта (по желанию)
+SELECT day_of_week, COUNT(*) 
+FROM schedule 
+GROUP BY day_of_week 
+ORDER BY 1;
+
+-- 1) Выключаем проверку внешних ключей на время апдейта
+PRAGMA foreign_keys = OFF;
+
+-- 2) Сдвигаем 0–6 -> 1–7 (NULL и >=7/<=-1 не трогаем)
+UPDATE schedule
+SET day_of_week = day_of_week + 1
+WHERE day_of_week BETWEEN 0 AND 6;
+
+-- 3) Включаем проверку FK обратно
+PRAGMA foreign_keys = ON;
+
+-- 4) Проверяем, что всё согласовано
+PRAGMA foreign_key_check;
+
+-- 5) Контрольное распределение после апдейта
+SELECT day_of_week, COUNT(*) 
+FROM schedule 
+GROUP BY day_of_week 
+ORDER BY 1; 
+```
+
+13. fix torrent url for api v1
+```sql
+-- Обновляем URL торрентов со старого формата на новый
+-- Работает только если есть hash (иначе пропускаем)
+
+UPDATE torrents
+SET url = '/api/v1/anime/torrents/' || hash || '/file'
+WHERE (
+    url LIKE '/public/torrent/%' 
+    OR url LIKE '/storage/torrents/%'
+)
+AND hash IS NOT NULL 
+AND hash != '';
+
+-- Проверка результата:
+SELECT 
+    COUNT(*) as updated_count
+FROM torrents
+WHERE url LIKE '/api/v1/anime/torrents/%/file';
+
+-- Проверка оставшихся старых URL:
+SELECT 
+    torrent_id,
+    title_id,
+    url,
+    hash
+FROM torrents
+WHERE (
+    url LIKE '/public/torrent/%' 
+    OR url LIKE '/storage/torrents/%'
+)
+LIMIT 10; 
+```
+
+
+
+

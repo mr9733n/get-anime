@@ -74,6 +74,8 @@ class ProcessManager:
                 'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
                 'last_updated': datetime.now(timezone.utc),
             }
+            self.logger.debug(f"STATUS INCOMING: code={title_data.get('status', {}).get('code')} "
+                              f"str='{title_data.get('status', {}).get('string')}' | id={title_data.get('id')}")
             self.save_manager.save_title(title_data)
 
             title_id = title_data['title_id']

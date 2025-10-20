@@ -415,25 +415,12 @@ class APIAdapter:
           3) Если и там пусто — финальный fallback: полный релиз /anime/releases/{id}
         """
         try:
-            # 1) Встроенные
+            # 1) Встроенные из того, что уже есть
             episodes_list = release.get('episodes') or []
-            # НОРМАЛИЗАЦИЯ: если это dict с "data", вытаскиваем список
             if isinstance(episodes_list, dict) and 'data' in episodes_list:
                 episodes_list = episodes_list.get('data') or []
 
-            # 2) /episodes (если разрешена сеть)
-            if not episodes_list and allow_network:
-                try:
-                    eps = self.client.get_release_episodes(release_id)
-                    if eps and 'error' not in eps:
-                        if isinstance(eps, dict) and 'data' in eps:
-                            episodes_list = eps['data'] or []
-                        elif isinstance(eps, list):
-                            episodes_list = eps
-                except Exception as e:
-                    self.logger.debug(f"Failed to fetch episodes via /episodes for {release_id}: {e}")
-
-            # 3) Fallback на полный релиз
+            # 2) Полный релиз: часто содержит episodes и экономит лишний запрос к /episodes
             if not episodes_list and allow_network:
                 try:
                     full_release = self.client.get_release_by_id(release_id)
@@ -442,8 +429,25 @@ class APIAdapter:
                         if isinstance(eps2, dict) and 'data' in eps2:
                             eps2 = eps2.get('data') or []
                         episodes_list = eps2
+                        # Чтобы дальше обогащение шло из «полного» ответа
+                        if episodes_list:
+                            release = full_release
                 except Exception as e:
                     self.logger.debug(f"Failed to fetch full release for episodes {release_id}: {e}")
+
+            # 3) Отдельный /episodes — НО только если он «разрешён» для этого id
+            can_try_eps = getattr(self.client, "episodes_supported", lambda _id: True)(release_id)
+            if not episodes_list and allow_network and can_try_eps:
+                try:
+                    eps = self.client.get_release_episodes(release_id)
+                    # Если клиент сам вернул None после 404 — просто пропускаем
+                    if eps and 'error' not in eps:
+                        if isinstance(eps, dict) and 'data' in eps:
+                            episodes_list = eps['data'] or []
+                        elif isinstance(eps, list):
+                            episodes_list = eps
+                except Exception as e:
+                    self.logger.debug(f"Failed to fetch episodes via /episodes for {release_id}: {e}")
 
             if not episodes_list:
                 return None

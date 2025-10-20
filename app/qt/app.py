@@ -20,6 +20,7 @@ from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 from utils.config_manager import ConfigManager
 from utils.api_client import APIClient
+from utils.api_adapter import APIAdapter
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
@@ -91,8 +92,8 @@ class AnimePlayerAppVer3(QWidget):
         self.config_manager = ConfigManager('config/config.ini')
 
         """Loads the configuration settings needed by the application."""
-        # self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        self.stream_video_url = None
+        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
+        # self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
@@ -109,7 +110,8 @@ class AnimePlayerAppVer3(QWidget):
         # Initialize TorrentManager with the correct paths
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
-            torrent_client_path=self.torrent_client_path
+            torrent_client_path=self.torrent_client_path,
+            base_url=self.base_url  # Передаём base_url из конфига
         )
         # Corrected debug logging of paths using setup values
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
@@ -117,6 +119,12 @@ class AnimePlayerAppVer3(QWidget):
 
         # Initialize other components
         self.api_client = APIClient(self.base_url, self.api_version)
+        self.api_adapter = APIAdapter(
+            self.api_client,
+            stream_video_host=self.stream_video_url,
+            api_version=self.api_version
+        )
+
         self.playlist_manager = PlaylistManager()
         self.db_manager = db_manager
         self.poster_manager = PosterManager(
@@ -844,7 +852,7 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.show_loader("Fetching random title...")
             self.ui_manager.set_buttons_enabled(False)
 
-            data = self.api_client.get_random_title()
+            data = self.api_adapter.get_random_title()
 
             if not isinstance(data, dict):
                 self.logger.error(f"Unexpected response format: {type(data).__name__}")
@@ -896,7 +904,7 @@ class AnimePlayerAppVer3(QWidget):
             APIClientError: Если произошла ошибка при запросе или обработке данных.
         """
         try:
-            data = self.api_client.get_schedule(day)
+            data = self.api_adapter.get_schedule(day)
             if data is None:
                 raise APIClientError(f"No data returned for day {day}.")
             if isinstance(data, dict) and 'error' in data:
@@ -1007,12 +1015,12 @@ class AnimePlayerAppVer3(QWidget):
             keywords = [kw.strip() for kw in keywords]
             if len(keywords) == 1 and keywords[0].isdigit():
                 title_id = int(keywords[0])
-                data = self.api_client.get_search_by_title_id(title_id)
+                data = self.api_adapter.get_search_by_title_id(title_id)
             elif all(kw.isdigit() for kw in keywords):
                 title_ids = [int(kw) for kw in keywords]
-                data = self.api_client.get_search_by_title_ids(title_ids)
+                data = self.api_adapter.get_search_by_title_ids(title_ids)
             else:
-                data = self.api_client.get_search_by_title(search_text)
+                data = self.api_adapter.get_search_by_title(search_text)
 
             if isinstance(data, dict) and 'error' in data:
                 self.logger.error(data['error'])
@@ -1226,16 +1234,47 @@ class AnimePlayerAppVer3(QWidget):
             self.open_vlc_player(playlist_path, title_id, skip_data)
 
     def play_link(self, link, title_id=None, skip_data=None):
-        open_link = self.pre + self.stream_video_url + link
-        if self.use_libvlc == "true":
-            # TODO: TEST
-            self.open_standalone_vlc_player(open_link, title_id, skip_data)
-            self.logger.debug(f"title_id: {title_id}, Skip data base64: {skip_data}, Playing video link: {link} in libVLC")
-        else:
-            video_player_path = self.video_player_path
-            media_player_command = [video_player_path, open_link]
-            subprocess.Popen(media_player_command)
-            self.logger.info(f"Playing video link: {link} in VLC")
+        """
+        Воспроизводит ссылку на эпизод.
+
+        Логика:
+        1. Если link уже полный URL (https://...) - используем как есть
+        2. Если link это путь (/videos/...) - получаем host из БД и строим URL
+        """
+        try:
+            # Проверяем, полный ли это URL
+            if link.startswith(("http://", "https://")):
+                open_link = link
+                self.logger.debug("Using full URL from link")
+            else:
+                # Получаем host из БД (или fallback из конфига)
+                host = self.stream_video_url
+
+                if title_id:
+                    titles = self.db_manager.get_titles_from_db(title_id=title_id)
+                    if titles and titles[0] and titles[0].host_for_player:
+                        host = titles[0].host_for_player
+                        self.logger.debug(f"Using host from DB: {host}")
+                    else:
+                        self.logger.debug(f"Using fallback host: {host}")
+
+                # Убеждаемся, что путь начинается с /
+                if not link.startswith('/'):
+                    link = '/' + link
+
+                # Строим полный URL
+                open_link = f"https://{host}{link}"
+
+            # Воспроизводим
+            if self.use_libvlc == "true":
+                self.open_standalone_vlc_player(open_link, title_id, skip_data)
+            else:
+                subprocess.Popen([self.video_player_path, open_link])
+
+            self.logger.info(f"Playing: {open_link[-50:]}")
+
+        except Exception as e:
+            self.logger.error(f"Error playing link: {e}", exc_info=True)
 
     def play_playlist_wrapper(self, file_name=None, title_id=None, skip_data=None):
         """

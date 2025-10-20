@@ -64,18 +64,60 @@ class LinkActionHandler:
             return None
 
     def _handle_torrent_download(self, parts):
-        parsed = urlparse(parts)
-        title_id = int(parts[1])
-        torrent_id = int(parts[2])
-        title_code = parts[3]
-        query_params = parse_qs(parsed.query)
-        if 'link' in query_params:
-            link = unquote(query_params['link'][0])
-            self.save_torrent_wrapper(link, title_code, torrent_id)
-        else:
-            self.logger.warning(f"No valid link for torrent_id={torrent_id}, skipping download")
-            return
-        QTimer.singleShot(100, lambda: self.display_info(title_id))
+        """
+        Обрабатывает ссылки на скачивание торрентов.
+
+        Формат ссылки:
+        download_torrent/9978/35565/tougen-anki?link=/api/v1/anime/torrents/{hash}/file
+
+        parts = ['download_torrent', '9978', '35565', 'tougen-anki?link=/api/v1/...']
+
+        ИСПРАВЛЕНО:
+        1. Правильный парсинг parts (это list, а не строка)
+        2. Корректная обработка URL с query параметрами
+        """
+        try:
+            if len(parts) < 4:
+                self.logger.error(f"Invalid torrent link structure: {parts}")
+                return
+
+            title_id = int(parts[1])
+            torrent_id = int(parts[2])
+            last_part = parts[3] if len(parts) == 4 else '/'.join(parts[3:])
+
+            if '?' not in last_part:
+                self.logger.error(f"No query parameters in link: {last_part}")
+                return
+
+            title_code, query_string = last_part.split('?', 1)
+
+            # Парсим query параметры
+            query_params = parse_qs(query_string)
+
+            if 'link' not in query_params:
+                self.logger.error(f"No 'link' parameter in query: {query_string}")
+                return
+
+            # Получаем URL торрента
+            torrent_link = unquote(query_params['link'][0])
+
+            if not torrent_link:  # ← ДОБАВЬТЕ ПРОВЕРКУ
+                self.logger.error(f"Empty torrent link for title_id={title_id}")
+                return
+
+            self.logger.info(f"Downloading torrent: title_id={title_id}, torrent_id={torrent_id}")
+            self.logger.debug(f"Torrent URL: {torrent_link}")
+
+            # Вызываем обработчик сохранения
+            self.save_torrent_wrapper(torrent_link, title_code, torrent_id)
+
+            # Обновляем UI
+            QTimer.singleShot(100, lambda: self.display_info(title_id))
+
+        except ValueError as e:
+            self.logger.error(f"Invalid numeric value in torrent link: {e}")
+        except Exception as e:
+            self.logger.error(f"Error handling torrent download: {e}", exc_info=True)
 
     def _handle_display_info(self, parts):
         title_id = int(parts[1])

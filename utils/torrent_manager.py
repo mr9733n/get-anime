@@ -4,38 +4,56 @@ import subprocess
 import logging
 
 class TorrentManager:
-    def __init__(self, torrent_save_path="torrents/", torrent_client_path=None):
+    def __init__(self, torrent_save_path="torrents/", torrent_client_path=None, base_url=None):
         self.logger = logging.getLogger(__name__)
         self.torrent_save_path = torrent_save_path
         self.torrent_client_path = torrent_client_path
         self.pre = "https://"
+        self.base_url = base_url
         os.makedirs(self.torrent_save_path, exist_ok=True)
 
-    def save_torrent_file(self, link, file_name):
+    def save_torrent_file(self, torrent_url, file_name):
         """
         Download and save the torrent file from the given URL.
-        :type link: object
-        :param link: URL of the torrent file.
+        :type torrent_url: object
+        :param torrent_url: URL of the torrent file.
         :param file_name: The name to save the torrent file as.
+        ИСПРАВЛЕНИЕ: Поддержка новых URL API v1:
+        /api/v1/anime/torrents/{hash}/file
         """
-        file_path = os.path.abspath(os.path.join(self.torrent_save_path, file_name))
-        url = f"{self.pre}anilibria.tv" + link
-
         try:
-            response = requests.get(url, stream=True)
-            response.raise_for_status()  # Raise an exception for HTTP errors
+            # Строим полный URL
+            if torrent_url.startswith(("http://", "https://")):
+                full_url = torrent_url
+            else:
+                base_url = self.base_url
+                full_url = f"{self.pre}{base_url}{torrent_url}"
 
-            # Save the torrent file
-            with open(file_path, 'wb') as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    file.write(chunk)
+            self.logger.info(f"Downloading torrent from: {full_url}")
 
-            self.logger.debug(f"Torrent file saved successfully at {file_path}.")
-            self.open_torrent_client(file_path)
+            # Скачиваем файл
+            response = requests.get(full_url, timeout=30)
+            response.raise_for_status()
 
+            # Сохраняем
+            file_path = os.path.join(self.torrent_save_path, file_name)
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+
+            self.logger.info(f"Torrent saved: {file_path}")
+
+            # Открываем торрент-клиент
+            if self.torrent_client_path:
+                self.open_torrent_client(file_path)
+
+            return True
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error downloading torrent: {e}")
+            return False
         except Exception as e:
-            error_message = f"Failed to save or open torrent file: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error saving torrent: {e}", exc_info=True)
+            return False
 
     def open_torrent_client(self, file_path):
         """

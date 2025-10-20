@@ -247,7 +247,15 @@ class VLCPlayer(QWidget):
 
     @staticmethod
     def is_url(path):
-        """Проверяет, является ли path URL."""
+        """
+        Проверяет, является ли path полным URL.
+
+        Args:
+            path: строка для проверки
+
+        Returns:
+            bool: True если это полный URL с протоколом
+        """
         return path.startswith(("http://", "https://"))
 
     def load_playlist(self, path, title_id, skip_data=None):
@@ -297,64 +305,93 @@ class VLCPlayer(QWidget):
             return None
 
     def load_playlist_from_url(self, url):
-        """Loads and plays a playlist from a URL."""
+        """
+        Загружает и воспроизводит один эпизод по URL.
+
+        ВАЖНО: Ожидается ПОЛНЫЙ URL от app.py:
+        https://cache.libria.fun/videos/media/ts/9978/1/1080/hash.m3u8
+        """
         try:
+            # Проверяем, что получили полный URL
+            if not self.is_url(url):
+                self.logger.error(f"Expected full URL, got: {url}")
+                return
+
+            # Извлекаем метаданные из URL
             title_id, episode_number, episode_quality = self.extract_from_link(url)
             self.current_episode = episode_number
-            self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
+            self.logger.debug(f"Playing title {title_id} episode {episode_number}")
 
-            # Получаем данные о пропуске из кэша (если есть)
+            # Получаем данные о пропуске
             skip_opening, skip_ending = None, None
-            if self.skip_data_cache.get("episode_number") == episode_number:
+            if self.skip_data_cache and self.skip_data_cache.get("episode_number") == episode_number:
                 skip_opening = self.skip_data_cache.get("skip_opening", [])
                 skip_ending = self.skip_data_cache.get("skip_ending", [])
 
-
             self.logger.debug(f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
+            # Создаём медиа и воспроизводим
             media = self.instance.media_new(url)
             self.media_list.add_media(media)
             self.playlist_widget.addItem(url)
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
 
-            self.logger.info(f"Playing stream URL: {url[-15:]}")
+            self.logger.info(f"Playing stream URL: {url[-50:]}")
         except Exception as e:
-            self.logger.error(f"!!! Error playing stream URL: {e}")
+            self.logger.error(f"Error playing stream URL: {e}", exc_info=True)
 
     def load_playlist_from_file(self, file_path):
-        """Загружает и воспроизводит плейлист из локального файла."""
+        """
+        Загружает и воспроизводит плейлист из локального файла.
+
+        ВАЖНО: Плейлист должен содержать ПОЛНЫЕ URL.
+        """
         if not os.path.exists(file_path):
-            self.logger.error(f"!!! Playlist file not found: {file_path}")
+            self.logger.error(f"Playlist file not found: {file_path}")
             return
 
         try:
             with open(file_path, "r", encoding="utf-8") as playlist_file:
-                for link in playlist_file:
-                    link = link.strip()
-                    if link and not link.startswith("#"):
-                        title_id, episode_number, episode_quality = self.extract_from_link(link)
-                        self.current_episode = episode_number
-                        self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
+                for line in playlist_file:
+                    link = line.strip()
 
-                        skip_opening, skip_ending = None, None
-                        if self.skip_data_cache and episode_number:
-                            for skip_entry in self.skip_data_cache.get("episode_skips", []):
-                                if skip_entry["episode_number"] == episode_number:
-                                    skip_opening = skip_entry.get("skip_opening", [])
-                                    skip_ending = skip_entry.get("skip_ending", [])
-                                    break
+                    # Пропускаем комментарии и пустые строки
+                    if not link or link.startswith("#"):
+                        continue
 
-                        self.logger.debug(f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
+                    # Проверяем, что это полный URL
+                    if not self.is_url(link):
+                        self.logger.warning(f"Skipping invalid URL: {link}")
+                        continue
 
-                        media = self.instance.media_new(link)
-                        self.media_list.add_media(media)
-                        self.playlist_widget.addItem(link)
+                    # Извлекаем метаданные
+                    title_id, episode_number, episode_quality = self.extract_from_link(link)
+                    self.current_episode = episode_number
+                    self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
+
+                    # Получаем данные о пропуске
+                    skip_opening, skip_ending = None, None
+                    if self.skip_data_cache and episode_number:
+                        for skip_entry in self.skip_data_cache.get("episode_skips", []):
+                            if skip_entry["episode_number"] == episode_number:
+                                skip_opening = skip_entry.get("skip_opening", [])
+                                skip_ending = skip_entry.get("skip_ending", [])
+                                break
+
+                    self.logger.debug(
+                        f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
+
+                    # Добавляем в плейлист
+                    media = self.instance.media_new(link)
+                    self.media_list.add_media(media)
+                    self.playlist_widget.addItem(link)
+
             self.list_player.set_media_list(self.media_list)
             self.list_player.play()
             self.logger.info(f"Playlist playing from file: {file_path}")
         except Exception as e:
-            self.logger.error(f"!!! Error playing playlist file: {e}", exc_info=True)
+            self.logger.error(f"Error playing playlist file: {e}", exc_info=True)
 
     def play_selected_item(self, item):
         """Воспроизводит выбранную серию."""

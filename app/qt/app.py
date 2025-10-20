@@ -155,6 +155,10 @@ class AnimePlayerAppVer3(QWidget):
         for i, day in enumerate(days_of_week):
             self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
 
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.api_client.close)
+
         self.init_ui()
 
     def closeEvent(self, event):
@@ -753,10 +757,21 @@ class AnimePlayerAppVer3(QWidget):
                 titles = item.get("list", [])
                 titles_list.extend(titles)
 
-            self.logger.debug(f"Total titles: {len(titles_list)}")
-            self._save_titles_list(titles_list)
+            self.logger.debug(f"Total titles (light): {len(titles_list)}")
+            # Берём ID для параллельной догрузки всего нужного «одним махом»
+            ids = [t.get('id') for t in titles_list if t.get('id') is not None]
+            if ids:
+                full_list = self.api_adapter.get_releases_full(ids, max_workers=4)
+                if full_list:
+                    self.logger.debug(f"Full bundles fetched: {len(full_list)} (parallel)")
+                    self._save_titles_list(full_list)   # сохраняем уже «толстые» данные
+                else:
+                    # fallback: если вдруг не удалось — сохраняем как есть (лёгкие)
+                    self._save_titles_list(titles_list)
+            else:
+                self._save_titles_list(titles_list)
 
-            new_title_ids = {title_data.get('id') for title_data in titles_list}
+            new_title_ids = set(ids)
             return True, new_title_ids
         except Exception as e:
             self.logger.error(f"Error while fetching and processing schedule: {e}")

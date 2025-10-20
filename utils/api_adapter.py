@@ -26,22 +26,20 @@ class APIAdapter:
     def get_schedule(self, day):
         """Получает расписание для конкретного дня."""
         try:
-            from datetime import datetime
-
             today = datetime.now().isoweekday()
-
+            day = int(day)
             if day == today:
                 self.logger.info(f"Requesting TODAY's schedule (day={day}) via /schedule/now")
                 return self._get_schedule_now(day)
             else:
                 self.logger.info(f"Requesting schedule for day={day} (today={today}) via /schedule/week")
-                return self._get_schedule_week()
+                return self._get_schedule_week(day)
 
         except Exception as e:
             self.logger.error(f"Error in get_schedule: {e}")
             return {'error': str(e)}
 
-    def _get_schedule_now(self, day):
+    def _get_schedule_now(self, day: int):
         """Загружает расписание на СЕГОДНЯ."""
         try:
             now_data = self.client.get_schedule_now()
@@ -58,8 +56,23 @@ class APIAdapter:
             adapted_releases = []
             for item in today_items:
                 release_data = item.get('release', {})
-                adapted = self._enrich_and_adapt(release_data)
+                adapted = self._enrich_and_adapt(release_data, fetch_episodes=False)
+
+                ep = item.get('published_release_episode') or {}
+                if ep:
+                    adapted.setdefault('meta', {})['last_episode'] = {
+                        'id': ep.get('id'),
+                        'num': ep.get('ordinal'),
+                        'name': ep.get('name'),
+                        'updated_at': ep.get('updated_at'),
+                        'hls_480': ep.get('hls_480'),
+                        'hls_720': ep.get('hls_720'),
+                        'hls_1080': ep.get('hls_1080'),
+                        'duration': ep.get('duration'),
+                    }
+
                 adapted_releases.append(adapted)
+
 
             self.logger.info(f"Loaded today's schedule: {len(adapted_releases)} releases")
 
@@ -72,47 +85,54 @@ class APIAdapter:
             self.logger.error(f"Error in _get_schedule_now: {e}")
             return {'error': str(e)}
 
-    def _get_schedule_week(self):
-        """Загружает расписание на ВСЮ НЕДЕЛЮ."""
+    def _get_schedule_week(self, day_index: int, *, max_workers=2):
+        """Загружает расписание на ВСЮ НЕДЕЛЮ, но обогащает только выбранный день."""
         try:
+            day_index = int(day_index)
+            raw = int(day_index)
+            api_day = raw if 1 <= raw <= 7 else (raw + 1 if 0 <= raw <= 6 else ((raw - 1) % 7) + 1)
+
             week_data = self.client.get_schedule_week()
-
-            if 'error' in week_data:
-                return week_data
-
+            if isinstance(week_data, dict) and 'error' in week_data: return week_data
             if not isinstance(week_data, list):
                 self.logger.error(f"Unexpected week schedule format: {type(week_data)}")
                 return {'error': 'Invalid schedule format'}
 
-            days_map = {i: [] for i in range(1, 8)}
+            # раскладываем по publish_day (внутри release)
+            buckets = {i: [] for i in range(1, 8)}
+            miss = 0
+            for r in week_data:
+                rel = r.get('release') or {}
+                pd = (rel.get('publish_day') or {}).get('value')
+                try:
+                    pd = int(pd) if pd is not None else None
+                except:
+                    pd = None
+                if isinstance(pd, int) and 1 <= pd <= 7:
+                    buckets[pd].append(r)
+                else:
+                    miss += 1
 
-            for item in week_data:
-                release_data = item.get('release', {})
-                publish_day_value = release_data.get('publish_day', {}).get('value')
+            day_list = buckets.get(api_day, []) or []
 
-                if publish_day_value is None:
-                    self.logger.warning(f"Release {release_data.get('id')} has no publish_day")
-                    continue
+            # адаптируем без сетевых догрузок
+            adapted_list = []
+            for r in day_list:
+                release = (r.get('release') or r)
+                adapted_list.append(
+                    self._enrich_and_adapt(
+                        release,
+                        fetch_episodes=True,  # возьмём встроенные, но...
+                        fetch_torrents=False,  # ...не трогаем сеть
+                        fetch_team=False,
+                        fetch_franchises=False,
+                        allow_network=False  # ← критично
+                    )
+                )
 
-                our_day = int(publish_day_value)
-
-                adapted = self._enrich_and_adapt(release_data)
-                days_map[our_day].append(adapted)
-
-            result = []
-            for day_num in range(1, 8):
-                result.append({
-                    'day': day_num,
-                    'list': days_map[day_num]
-                })
-
-            total_releases = sum(len(d['list']) for d in result)
-            self.logger.info(f"Loaded full week schedule: {total_releases} releases")
-
-            return result
-
+            return [{'day': api_day, 'list': adapted_list}]
         except Exception as e:
-            self.logger.error(f"Error in _get_schedule_week: {e}")
+            self.logger.error(f"Error in _get_schedule_week: {type(e).__name__}: {e}")
             return {'error': str(e)}
 
     def get_search_by_title(self, search_text):
@@ -211,7 +231,9 @@ class APIAdapter:
     # АДАПТАЦИЯ ДАННЫХ
     # ============================================
 
-    def _enrich_and_adapt(self, release):
+    def _enrich_and_adapt(self, release, *, fetch_episodes=True, fetch_torrents=True,
+                          fetch_team=True, fetch_franchises=True, single_episode=None,
+                          allow_network=True):
         """
         Главный метод адаптации.
 
@@ -225,27 +247,31 @@ class APIAdapter:
             adapted = self._adapt_structure(release)
 
             # 2. Эпизоды - ПРИОРИТЕТ вложенным данным
-            episodes = self._fetch_episodes(release, release_id)
-            if episodes:
-                adapted['player']['list'] = episodes
+            if fetch_episodes:
+                episodes = self._fetch_episodes(release, release_id, allow_network=allow_network)
+                if episodes:
+                    adapted['player']['list'] = episodes
 
             # 3. Торренты - ПРИОРИТЕТ вложенным данным
-            torrents = self._fetch_torrents(release, release_id)
-            if torrents:
-                adapted['torrents'] = {'list': torrents}
+            if fetch_torrents:
+                torrents = self._fetch_torrents(release, release_id)
+                if torrents:
+                    adapted['torrents'] = {'list': torrents}
 
             # 4. Команда - ПРИОРИТЕТ вложенным данным
-            team = self._fetch_team(release, release_id)
-            if team:
-                adapted['team'] = team
+            if fetch_team:
+                team = self._fetch_team(release, release_id)
+                if team:
+                    adapted['team'] = team
 
             # 5. Франшизы - требуют отдельного запроса
-            try:
-                franchises = self._fetch_franchises(release_id)
-                if franchises:
-                    adapted['franchises'] = franchises
-            except Exception as e:
-                self.logger.debug(f"Franchises not available for {release_id}: {e}")
+            if fetch_franchises:
+                try:
+                    franchises = self._fetch_franchises(release_id)
+                    if franchises:
+                        adapted['franchises'] = franchises
+                except Exception as e:
+                    self.logger.debug(f"Franchises not available for {release_id}: {e}")
 
             return adapted
 
@@ -363,49 +389,52 @@ class APIAdapter:
     # ЭПИЗОДЫ
     # ============================================
 
-    def _fetch_episodes(self, release, release_id):
+    def _fetch_episodes(self, release, release_id, allow_network=True):
         """
-        КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ:
-        1. Сначала проверяем ВЛОЖЕННЫЕ эпизоды
-        2. Если их нет - запрашиваем ПОЛНЫЙ релиз (не /episodes!)
+        Правильный порядок:
+          1) Пробуем встроенные episodes из release
+          2) Если их нет и allow_network=True — дергаем /anime/releases/{id}/episodes
+          3) Если и там пусто — финальный fallback: полный релиз /anime/releases/{id}
         """
         try:
-            # 1. ПРИОРИТЕТ: Вложенные эпизоды
-            episodes_list = release.get('episodes', [])
+            # 1) Встроенные
+            episodes_list = release.get('episodes', []) or []
 
-            if not episodes_list:
-                # 2. Запрашиваем ПОЛНЫЙ релиз (эндпоинта /episodes не существует!)
-                self.logger.debug(f"No embedded episodes, fetching full release for {release_id}")
+            # 2) /episodes (если разрешена сеть)
+            if not episodes_list and allow_network:
+                try:
+                    eps = self.client.get_release_episodes(release_id)
+                    if eps and 'error' not in eps:
+                        # API может вернуть list или {"data": [...]}
+                        if isinstance(eps, dict) and 'data' in eps:
+                            episodes_list = eps['data']
+                        elif isinstance(eps, list):
+                            episodes_list = eps
+                except Exception as e:
+                    self.logger.debug(f"Failed to fetch episodes via /episodes for {release_id}: {e}")
 
+            # 3) Fallback на полный релиз
+            if not episodes_list and allow_network:
                 try:
                     full_release = self.client.get_release_by_id(release_id)
-
-                    if 'error' in full_release or not full_release:
-                        self.logger.warning(f"Could not fetch full release {release_id}")
-                        return None
-
-                    episodes_list = full_release.get('episodes', [])
-
+                    if full_release and 'error' not in full_release:
+                        episodes_list = full_release.get('episodes', []) or []
                 except Exception as e:
-                    self.logger.warning(f"Failed to fetch full release {release_id}: {e}")
-                    return None
+                    self.logger.debug(f"Failed to fetch full release for episodes {release_id}: {e}")
 
             if not episodes_list:
                 return None
 
-            # 3. Адаптируем в формат {episode_number: episode_data}
+            # Преобразуем к «старому» формату (dict по номеру эпизода)
             adapted_episodes = {}
-
             for episode in episodes_list:
                 adapted_ep = self._adapt_episode(episode)
-                episode_num = str(adapted_ep.get('episode', 0))
-
-                if episode_num != '0':
-                    adapted_episodes[episode_num] = adapted_ep
+                num = str(adapted_ep.get('episode', 0))
+                if num != '0':
+                    adapted_episodes[num] = adapted_ep
 
             self.logger.debug(f"Adapted {len(adapted_episodes)} episodes for {release_id}")
-
-            return adapted_episodes if adapted_episodes else None
+            return adapted_episodes or None
 
         except Exception as e:
             self.logger.error(f"Error fetching episodes for {release_id}: {e}")
@@ -732,3 +761,31 @@ class APIAdapter:
             'items_per_page': 1,
             'total_items': 1
         }
+
+    # ============================================
+    # Асинхронная загрузка пакетами
+    # ============================================
+
+    def get_release_full(self, release_id, *, need=('torrents','members','franchises','episodes'), max_workers=4):
+        """
+        Полные данные по релизу за один вызов адаптера.
+        Внутри: параллельно тянем части (через APIClient.fetch_release_bundle),
+        затем адаптируем в старый формат.
+        """
+        bundle = self.client.fetch_release_bundle(release_id, need=need, max_workers=max_workers)
+        if not bundle or ('error' in bundle):
+            return bundle
+        # В bundle уже есть episodes/torrents/members/franchises — _enrich_and_adapt их подхватит без доп. запросов.
+        return self._enrich_and_adapt(bundle)
+
+    def get_releases_full(self, release_ids, *, need=('torrents','members','franchises','episodes'), max_workers=8):
+        """
+        Полные данные по нескольким релизам (параллельно), результат — список уже адаптированных элементов.
+        """
+        bundles = self.client.fetch_release_bundles(release_ids, need=need, max_workers=max_workers)
+        out = []
+        for rid in release_ids:
+            b = bundles.get(rid)
+            if b and ('error' not in b):
+                out.append(self._enrich_and_adapt(b))
+        return out

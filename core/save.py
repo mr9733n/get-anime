@@ -530,16 +530,12 @@ class SaveManager:
             torrent_id = processed_data['torrent_id']
             self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
             try:
-                existing_torrent = session.query(Torrent).filter_by(
-                    title_id=processed_data['title_id'],
-                    quality=processed_data['quality'],
-                    quality_type=processed_data['quality_type'],
-                    encoder=processed_data['encoder'],
-                ).first()
+                # 1) ПЕРВИЧНО: ищем по torrent_id (уникальный ключ!)
+                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_id).one_or_none()
 
                 if existing_torrent:
                     is_updated = False
-                    protected_fields = {'title_id'}
+                    protected_fields = {'torrent_id'}  # НИКОГДА не меняем torrent_id
 
                     for key, value in processed_data.items():
                         if key not in protected_fields and hasattr(existing_torrent, key):
@@ -556,7 +552,7 @@ class SaveManager:
                         session.commit()
                         self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
                 else:
-                    # Новая запись
+                    # 2) Нет такого torrent_id — добавляем новую запись
                     if 'uploaded_timestamp' not in processed_data or processed_data[
                         'uploaded_timestamp'] == datetime.fromtimestamp(0, tz=timezone.utc):
                         processed_data['uploaded_timestamp'] = datetime.now(timezone.utc)

@@ -1,5 +1,6 @@
 # api_adapter.py - УМНЫЙ адаптер для API v1 (OPTIMIZED)
 import logging
+import threading
 from datetime import datetime, timezone
 
 
@@ -17,7 +18,9 @@ class APIAdapter:
         self.api_version = api_version
         self.logger = logging.getLogger(__name__)
         self.client = api_client
-        self.stream_video_host = stream_video_host  # Хост для потокового видео
+        self.stream_video_host = stream_video_host
+        self._title_locks = {}
+        self._title_locks_guard = threading.Lock()
 
     # ============================================
     # ПУБЛИЧНЫЕ МЕТОДЫ
@@ -374,16 +377,31 @@ class APIAdapter:
             return {'code': 1, 'string': 'Завершён'}
 
     def _to_timestamp(self, iso_date):
-        """Конвертирует ISO дату → unix timestamp."""
+        """Конвертирует ISO дату → unix timestamp, терпимо относится к 'Z' и отсутствующей TZ."""
         if not iso_date:
             return 0
-
         try:
-            dt = datetime.fromisoformat(iso_date.replace('+00:00', '+00:00'))
+            s = str(iso_date)
+            # '2025-10-20T21:36:25Z' → '+00:00'
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
+            # если вообще нет смещения и 'T', добавим UTC
+            if 'T' in s and ('+' not in s and '-' in s.split('T')[-1] and s[-6:-5] == ':') is False and (
+                    '+' not in s and 'Z' not in s):
+                # грубо: если нет явной TZ, добавим UTC
+                s = s + '+00:00'
+            dt = datetime.fromisoformat(s)
             return int(dt.timestamp())
-        except Exception as e:
-            self.logger.error(f"Error converting timestamp '{iso_date}': {e}")
-            return 0
+        except Exception:
+            try:
+                # обрежем миллисекунды, если кривые
+                core = s.split('.')[0]
+                if core.endswith('Z'):
+                    core = core[:-1]
+                dt = datetime.fromisoformat(core)
+                return int(dt.replace(tzinfo=timezone.utc).timestamp())
+            except Exception:
+                return 0
 
     # ============================================
     # ЭПИЗОДЫ
@@ -398,16 +416,18 @@ class APIAdapter:
         """
         try:
             # 1) Встроенные
-            episodes_list = release.get('episodes', []) or []
+            episodes_list = release.get('episodes') or []
+            # НОРМАЛИЗАЦИЯ: если это dict с "data", вытаскиваем список
+            if isinstance(episodes_list, dict) and 'data' in episodes_list:
+                episodes_list = episodes_list.get('data') or []
 
             # 2) /episodes (если разрешена сеть)
             if not episodes_list and allow_network:
                 try:
                     eps = self.client.get_release_episodes(release_id)
                     if eps and 'error' not in eps:
-                        # API может вернуть list или {"data": [...]}
                         if isinstance(eps, dict) and 'data' in eps:
-                            episodes_list = eps['data']
+                            episodes_list = eps['data'] or []
                         elif isinstance(eps, list):
                             episodes_list = eps
                 except Exception as e:
@@ -418,14 +438,16 @@ class APIAdapter:
                 try:
                     full_release = self.client.get_release_by_id(release_id)
                     if full_release and 'error' not in full_release:
-                        episodes_list = full_release.get('episodes', []) or []
+                        eps2 = full_release.get('episodes') or []
+                        if isinstance(eps2, dict) and 'data' in eps2:
+                            eps2 = eps2.get('data') or []
+                        episodes_list = eps2
                 except Exception as e:
                     self.logger.debug(f"Failed to fetch full release for episodes {release_id}: {e}")
 
             if not episodes_list:
                 return None
 
-            # Преобразуем к «старому» формату (dict по номеру эпизода)
             adapted_episodes = {}
             for episode in episodes_list:
                 adapted_ep = self._adapt_episode(episode)
@@ -762,6 +784,14 @@ class APIAdapter:
             'total_items': 1
         }
 
+    def _lock_for(self, release_id: int):
+        with self._title_locks_guard:
+            lock = self._title_locks.get(release_id)
+            if not lock:
+                lock = threading.Lock()
+                self._title_locks[release_id] = lock
+            return lock
+
     # ============================================
     # Асинхронная загрузка пакетами
     # ============================================
@@ -772,11 +802,12 @@ class APIAdapter:
         Внутри: параллельно тянем части (через APIClient.fetch_release_bundle),
         затем адаптируем в старый формат.
         """
-        bundle = self.client.fetch_release_bundle(release_id, need=need, max_workers=max_workers)
-        if not bundle or ('error' in bundle):
-            return bundle
-        # В bundle уже есть episodes/torrents/members/franchises — _enrich_and_adapt их подхватит без доп. запросов.
-        return self._enrich_and_adapt(bundle)
+        lock = self._lock_for(int(release_id))
+        with lock:
+            bundle = self.client.fetch_release_bundle(release_id, need=need, max_workers=max_workers)
+            if not bundle or ('error' in bundle):
+                return bundle
+            return self._enrich_and_adapt(bundle)
 
     def get_releases_full(self, release_ids, *, need=('torrents','members','franchises','episodes'), max_workers=8):
         """

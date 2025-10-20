@@ -368,13 +368,30 @@ class APIAdapter:
         return [g.get('name', '') for g in genres_list if g.get('name')]
 
     def _map_status(self, release):
-        """Маппинг статуса."""
+        """
+        Приводим статус к старому формату:
+          code: 1 = Завершён, 2 = В работе, 3 = Анонс
+        Приоритет: status.value (если есть) → флаги → дефолт.
+        """
+        # 1) Нормализуем по status.value
+        v = (release.get('status') or {}).get('value')
+        if isinstance(v, str):
+            vs = v.strip().lower()
+            if vs in {'released', 'release', 'complete', 'completed', 'finished', 'done'}:
+                return {'code': 1, 'string': 'Завершён'}
+            if vs in {'ongoing', 'in_work', 'current'}:
+                return {'code': 2, 'string': 'В работе'}
+            if vs in {'announcement', 'announced', 'in_production', 'production', 'planned', 'pending'}:
+                return {'code': 3, 'string': 'Анонс'}
+
+        # 2) Фолбэк на флаги
         if release.get('is_ongoing'):
             return {'code': 2, 'string': 'В работе'}
-        elif release.get('is_in_production'):
+        if release.get('is_in_production'):
             return {'code': 3, 'string': 'Анонс'}
-        else:
-            return {'code': 1, 'string': 'Завершён'}
+
+        # 3) Дефолт безопасный
+        return {'code': 1, 'string': 'Завершён'}
 
     def _to_timestamp(self, iso_date):
         """Конвертирует ISO дату → unix timestamp, терпимо относится к 'Z' и отсутствующей TZ."""

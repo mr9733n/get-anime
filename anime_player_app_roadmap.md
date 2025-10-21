@@ -345,7 +345,11 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Builder 5.x checked
 - [x] remove possible duplicates on saving torrents
 
-## 10. Check maybe obsolete
+### 8.30. docs
+- [x] Readme eng added
+- [x] License eng added
+
+## 9. Check maybe obsolete
 ### 9.0. Some fixes
 - [ ] Add status for buttons (simple callback)
 - [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value

@@ -2,7 +2,7 @@
 import ast
 import logging
 
-from sqlalchemy import or_
+from sqlalchemy import or_, and_, nullslast
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
@@ -519,51 +519,89 @@ class SaveManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении расписания: {e}")
 
-    def save_torrent(self, torrent_data):
+    def save_torrent(self, torrent_data: dict):
         with self.Session as session:
-            processed_data = torrent_data.copy()
+            p = torrent_data.copy()
 
-            if isinstance(processed_data.get('torrent_metadata'), dict):
-                processed_data['torrent_metadata'] = repr(processed_data['torrent_metadata'])
+            # Приводим metadata к строке, как у тебя было
+            if isinstance(p.get('torrent_metadata'), dict):
+                p['torrent_metadata'] = repr(p['torrent_metadata'])
 
-            title_id = processed_data['title_id']
-            torrent_id = processed_data['torrent_id']
-            self.logger.debug(f"Saving torrent_id: {torrent_id} for title_id: {title_id}")
+            title_id = p['title_id']
+            q_type = p.get('quality_type') or ''
+            resolution = p.get('resolution') or ''
+            encoder = p.get('encoder') or ''
+            new_size = int(p.get('total_size') or 0)
+
             try:
-                # 1) ПЕРВИЧНО: ищем по torrent_id (уникальный ключ!)
-                existing_torrent = session.query(Torrent).filter_by(torrent_id=torrent_id).one_or_none()
+                # 1) Читаем все строки слота (одна транзакция)
+                slot_rows = (
+                    session.query(Torrent)
+                    .filter(Torrent.title_id == title_id)
+                    .filter(Torrent.quality_type == q_type)
+                    .filter(Torrent.resolution == resolution)
+                    .filter(Torrent.encoder == encoder)
+                    .all()
+                )
 
-                if existing_torrent:
-                    is_updated = False
-                    protected_fields = {'torrent_id'}  # НИКОГДА не меняем torrent_id
-
-                    for key, value in processed_data.items():
-                        if key not in protected_fields and hasattr(existing_torrent, key):
-                            current_value = getattr(existing_torrent, key)
-                            if isinstance(current_value, datetime) and isinstance(value, datetime):
-                                if current_value.tzinfo is None:
-                                    current_value = current_value.replace(tzinfo=timezone.utc)
-                            if current_value != value:
-                                setattr(existing_torrent, key, value)
-                                is_updated = True
-                                self.logger.debug(f"Updated field '{key}' for torrent {torrent_id}")
-
-                    if is_updated:
-                        session.commit()
-                        self.logger.debug(f"Updated torrent_id: {torrent_id} for title_id: {title_id}")
-                else:
-                    # 2) Нет такого torrent_id — добавляем новую запись
-                    if 'uploaded_timestamp' not in processed_data or processed_data[
-                        'uploaded_timestamp'] == datetime.fromtimestamp(0, tz=timezone.utc):
-                        processed_data['uploaded_timestamp'] = datetime.now(timezone.utc)
-                    new_torrent = Torrent(**processed_data)
-                    session.add(new_torrent)
+                # 2) Если слота нет — вставляем одну новую
+                if not slot_rows:
+                    if (
+                            'uploaded_timestamp' not in p
+                            or not isinstance(p['uploaded_timestamp'], datetime)
+                    ):
+                        p['uploaded_timestamp'] = datetime.now(timezone.utc)
+                    session.add(Torrent(**p))
                     session.commit()
-                    self.logger.debug(f"Successfully saved torrent_data for title_id: {title_id}")
+                    self.logger.debug(f"[save_torrent] inserted: slot empty; size={new_size}")
+                    return
+
+                # 3) Выбираем текущего лучшего по total_size
+                def _size(t) -> int:
+                    # защитимся от None/пустых
+                    return int(getattr(t, 'total_size', 0) or 0)
+
+                best = max(slot_rows, key=_size)
+                best_size = _size(best)
+
+                # 4) Если новый лучше — заменяем весь слот одной новой строкой
+                if new_size > best_size:
+                    for r in slot_rows:
+                        session.delete(r)
+                    session.flush()  # чтобы освободить PK/уникальные ограничения перед вставкой
+
+                    if (
+                            'uploaded_timestamp' not in p
+                            or not isinstance(p['uploaded_timestamp'], datetime)
+                    ):
+                        p['uploaded_timestamp'] = datetime.now(timezone.utc)
+
+                    session.add(Torrent(**p))  # тут будет НОВЫЙ torrent_id (PK) как и нужно
+                    session.commit()
+                    self.logger.debug(
+                        f"[save_torrent] replaced slot ({q_type}, {resolution}, {encoder}) "
+                        f"{best_size} -> {new_size}"
+                    )
+                    return
+
+                # 5) Новый не лучше — оставляем текущего лучшего, остальные чистим
+                removed = 0
+                for r in slot_rows:
+                    if r is not best:
+                        session.delete(r)
+                        removed += 1
+                if removed:
+                    session.commit()
+                    self.logger.debug(
+                        f"[save_torrent] kept best size={best_size}, pruned {removed} duplicates in slot"
+                    )
+                else:
+                    # Ничего не менялось — просто выходим
+                    self.logger.debug(f"[save_torrent] no changes: incoming size={new_size} <= best size={best_size}")
 
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
+                self.logger.error(f"[save_torrent] ошибка при сохранении торрента: {e}")
 
     def remove_schedule_day(self, title_ids, day_of_week):
         with self.Session as session:

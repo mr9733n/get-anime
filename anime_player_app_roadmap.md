@@ -343,6 +343,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix mapping status_code & status_string
 - [x] Fix presenting day of eek on schedule
 - [x] Builder 5.x checked
+- [x] remove possible duplicates on saving torrents
 
 ## 10. Check maybe obsolete
 ### 9.0. Some fixes

@@ -1,61 +1,63 @@
-Примечание: Это приложение предназначено для личного использования и не должно использоваться для нарушения авторских прав или других законов.
+Note: This application is for personal use only and should not be used to infringe copyright or other laws.
 
 # AnimePlayerApp
-AnimePlayerApp - это приложение на основе Qt, предназначенное для просмотра и управления аниме контентом. Создает локальную базу данных для хранения ссылок и постеров, позволяет пользователям просматривать расписание аниме, искать аниме по названию, просматривать детальную информацию о выбранном аниме, сохранять плейлисты и воспроизводить их через встроенный проигрыватель, либо через VLC Media Player.
+AnimePlayerApp is a Qt-based application for viewing and managing anime content. It creates a local database for storing links and posters, allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using the built-in player or VLC Media Player.
+    - api v3 obsolete and deprecated
+    - tested with api v1
+AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime content. It allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using VLC Media Player.
+    - not tested with api v1
 
-AnimePlayerAppLite - это приложение на основе Tkinter, предназначенное для просмотра и управления аниме контентом. Оно позволяет пользователям просматривать расписание аниме, искать аниме по названию, просматривать детальную информацию о выбранном аниме, сохранять плейлисты и воспроизводить их через VLC Media Player.
+## Features
+- View the anime schedule for different days of the week.
+- Update the schedule.
+- Search for anime by title.
+- Display detailed information about a selected anime, including description, status, genres, and release year.
+- Ability to specify viewing history.
+- Ability to mark a rating.
+- Ability to mark a title as "watch later."
+- Display a list of titles, franchises, and a "watch later" list.
+- Display a list of anime by status, year, genre, and cast members.
+- Saving playlists with anime episodes.
+- Playing playlists with VLC Media Player.
+- Selecting viewing quality (FHD, HD, SD).
+- Downloading torrent files and transferring them to a torrent client.
 
-## Особенности
-- Просмотр расписания аниме на разные дни недели.
-- Обновление расписания.
-- Поиск аниме по названию.
-- Отображение подробной информации о выбранном аниме, включая описание, статус, жанры и год выпуска.
-- Возможность указать историю просмотра.
-- Возможность отметить рейтинг.
-- Возможность отметить посмотреть позже для тайтла
-- Отображение списка тайтлов, франшиз и списка посмотреть позже. 
-- Показать список аниме по статусу, году, жанру, участников команды.
-- Сохранение плейлистов с сериями аниме.
-- Воспроизведение плейлистов через VLC Media Player.
-- Выбор качества просмотра (FHD, HD, SD).
-- Скачивание торрент-файлов и передача в торрент-клиент
-
-## Настройка и использование
-Установка зависимостей:
-Перед запуском приложения убедитесь, что у вас установлен Python 3 и VLC Player. Также вам потребуется установить необходимые зависимости:
-Установите необходимые библиотеки, используя pip:
+## Setup and Usage
+Installing Dependencies:
+Before running the application, make sure you have Python 3 and VLC Player installed. You will also need to install the necessary dependencies:
+Install the necessary libraries using pip:
 
 ```bash
 pip install -r requirements.txt
 ```
-## Конфигурация:
-Настройте файл config.ini с соответствующими параметрами, включая URL API, путь к VLC Media Player и другие настройки.
+## Configuration:
+Configure the config.ini file with the appropriate parameters, including the API URL, the path to VLC Media Player, and other settings.
 
-## Запуск приложения:
-Запустите приложение, выполнив скрипт Python:
+## Launch the application:
+Run the application by running the Python script:
 
 ```bash
 python main.py
 ```
 
-## Получение текущего списка тайтлов с сайта:
+## Get the current list of titles from the website:
 ```bash
 cd midnight
 python scrapper.py
 ```
 
-## Сравнить полученный список тайтлов с локальной базой данных:
+## Compare the retrieved list of titles with the local database:
 ```bash
 cd midnight
 python compare_titles.py
 ```
 
-## Собрать приложение
+## Build the application
 ```bash
 pyinstaller build.spec --noconfirm
 ```
 
-## Создать архив скомпилированных production версий
+## Create an archive of compiled production versions
 ```bash
 cd midnight
 python create_archive.py
@@ -82,21 +84,21 @@ python enhanced_duplicate_finder.py --auto-fix --keep-oldest
 python enhanced_duplicate_finder.py --output /logs/find_duplicates_result.txt
 ```
 
-## Использование приложения:
+## Using the app:
 
-Используйте кнопки дней недели для просмотра расписания.
-Нажмите RS⮂ для обновления данных по текущему отображенному дню недели.
+Use the day of the week buttons to view the schedule.
+Press RS⮂ to refresh the data for the currently displayed day of the week.
 
-Нажмите "Random" для выбора случайного аниме.
+Click "Random" to select a random anime.
 
-Используйте поле ввода и кнопку "Find" для поиска по названию или ID (поддерживается ввод нескольких ID через запятую).
-Нажмите UT⮂ для обновления данных по title_id в поле ввода или текущему тайтлу.
+Use the input field and the "Find" button to search by title or ID (multiple IDs can be entered separated by commas).
+Press UT⮂ to update the title_id in the input field or the current title.
 
-Плейлист открытого аниме сохраняется автоматически.
+The playlist for an open anime is saved automatically.
 
-Создавайте комплексные плейлисты из нескольких тайтлов с помощью соответствующих кнопок.
+Create complex playlists from multiple titles using the corresponding buttons.
 
-При закрытии приложения текущее состояние сохраняется и восстанавливается при следующем запуске.
+When the application closes, the current state is saved and restored the next time it is launched.
 
-## Логирование:
-Приложение ведет журнал своей работы, сохраняя логи в папке logs. 
+## Logging:
+The application maintains a log of its operation, saving the logs in the logs folder.

@@ -648,7 +648,16 @@ class APIAdapter:
             'uploaded_timestamp': self._to_timestamp(torrent.get('created_at')),
             'hash': torrent_hash,
             'metadata': None,
-            'raw_base64_file': None
+            'raw_base64_file': None,
+            'label':  torrent.get('label', ''),
+            'filename': torrent.get('filename', ''),
+            'episodes_total': torrent.get('release', {}).get('episodes_total', 0),
+            'is_in_production': (
+                torrent.get('release', {}).get('is_in_production')
+                if isinstance(torrent.get('release'), dict)
+                else torrent.get('is_in_production', False)
+            ),
+            'updated_at': self._to_timestamp(torrent.get('updated_at')),
         }
 
     # ============================================

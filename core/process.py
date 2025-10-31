@@ -165,10 +165,17 @@ class ProcessManager:
                         else:
                             uploaded_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
 
+                        api_updated_at = torrent.get('updated_at')
+                        if api_updated_at is not None and isinstance(api_updated_at, (int, float)):
+                            api_updated_at = datetime.fromtimestamp(api_updated_at, tz=timezone.utc)
+                        else:
+                            api_updated_at = datetime.fromtimestamp(0, tz=timezone.utc)
+
                         torrent_data = {
                             'torrent_id': torrent.get('torrent_id'),
                             'title_id': title_data.get('id'),
                             'episodes_range': torrent.get('episodes', {}).get('string', 'Неизвестный диапазон'),
+
                             'quality': torrent.get('quality', {}).get('string', 'Качество не указано'),
                             'quality_type': torrent.get('quality', {}).get('type'),
                             'resolution': torrent.get('quality', {}).get('resolution'),
@@ -181,6 +188,11 @@ class ProcessManager:
                             'url': torrent.get('url'),
                             'magnet_link': torrent.get('magnet'),
                             'uploaded_timestamp': uploaded_timestamp,
+                            'api_updated_at': api_updated_at,
+                            'is_in_production': torrent.get('is_in_production'),
+                            'label': torrent.get('label'),
+                            'filename': torrent.get('filename'),
+                            'episodes_total': torrent.get('episodes_total'),
                             'hash': torrent.get('hash'),
                             'torrent_metadata': torrent.get('metadata'),
                             'raw_base64_file': torrent.get('raw_base64_file')

@@ -7,7 +7,7 @@ AnimePlayerApp is a Qt-based application for viewing and managing anime content.
     - api v3 obsolete and deprecated
     - tested with api v1
 AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime content. It allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using VLC Media Player.
-    - not tested with api v1
+    - not supported with API v1 yet
 
 ## Features
 - View the anime schedule for different days of the week.

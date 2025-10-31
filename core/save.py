@@ -1,10 +1,13 @@
 # save.py
 import ast
+import json
 import logging
+import re
+from itertools import count
 
-from sqlalchemy import or_, and_, nullslast
+from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists
 from datetime import datetime, timezone
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, aliased
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
     Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio
@@ -519,89 +522,262 @@ class SaveManager:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении расписания: {e}")
 
-    def save_torrent(self, torrent_data: dict):
-        with self.Session as session:
-            p = torrent_data.copy()
+    def save_torrent(self, torrent_data):
+        """
+        list[dict]: ПОЛНАЯ замена по title_id (доверяем API, атомарно)
+        dict:       upsert одной записи + ОБЯЗАТЕЛЬНОЕ удаление покрытых диапазонов,
+                    чтобы 1–4 сразу чистил 1–3 даже "в производстве"
+        """
+        import json, re
+        from datetime import datetime, timezone
+        from sqlalchemy import select, delete, func, case, and_, exists
+        from sqlalchemy.orm import aliased
+        T = Torrent
 
-            # Приводим metadata к строке, как у тебя было
-            if isinstance(p.get('torrent_metadata'), dict):
-                p['torrent_metadata'] = repr(p['torrent_metadata'])
-
-            title_id = p['title_id']
-            q_type = p.get('quality_type') or ''
-            resolution = p.get('resolution') or ''
-            encoder = p.get('encoder') or ''
-            new_size = int(p.get('total_size') or 0)
-
+        # ---------- utils ----------
+        def _to_bytes(size_string: str) -> int:
+            if not size_string:
+                return 0
+            s = str(size_string).strip().upper().replace(',', '.')
             try:
-                # 1) Читаем все строки слота (одна транзакция)
-                slot_rows = (
-                    session.query(Torrent)
-                    .filter(Torrent.title_id == title_id)
-                    .filter(Torrent.quality_type == q_type)
-                    .filter(Torrent.resolution == resolution)
-                    .filter(Torrent.encoder == encoder)
-                    .all()
-                )
+                num = float(s.split()[0])
+            except Exception:
+                return 0
+            mult = {'TB': 1024 ** 4, 'GB': 1024 ** 3, 'MB': 1024 ** 2, 'KB': 1024, 'B': 1}
+            for u in ('TB', 'GB', 'MB', 'KB', 'B'):
+                if u in s:
+                    return int(num * mult[u])
+            return int(num)
 
-                # 2) Если слота нет — вставляем одну новую
-                if not slot_rows:
-                    if (
-                            'uploaded_timestamp' not in p
-                            or not isinstance(p['uploaded_timestamp'], datetime)
-                    ):
-                        p['uploaded_timestamp'] = datetime.now(timezone.utc)
-                    session.add(Torrent(**p))
-                    session.commit()
-                    self.logger.debug(f"[save_torrent] inserted: slot empty; size={new_size}")
-                    return
+        def _prep_one(p: dict) -> dict:
+            q = dict(p)
 
-                # 3) Выбираем текущего лучшего по total_size
-                def _size(t) -> int:
-                    # защитимся от None/пустых
-                    return int(getattr(t, 'total_size', 0) or 0)
+            # нормализация/преобразования
+            if isinstance(q.get('torrent_metadata'), dict):
+                q['torrent_metadata'] = json.dumps(q['torrent_metadata'], ensure_ascii=False)
 
-                best = max(slot_rows, key=_size)
-                best_size = _size(best)
+            if not isinstance(q.get('uploaded_timestamp'), datetime):
+                q['uploaded_timestamp'] = datetime.now(timezone.utc)
 
-                # 4) Если новый лучше — заменяем весь слот одной новой строкой
-                if new_size > best_size:
-                    for r in slot_rows:
-                        session.delete(r)
-                    session.flush()  # чтобы освободить PK/уникальные ограничения перед вставкой
+            # total_size
+            if q.get('total_size') is None:
+                q['total_size'] = _to_bytes(q.get('size_string') or "")
+            else:
+                try:
+                    q['total_size'] = int(q['total_size'])
+                except Exception:
+                    q['total_size'] = _to_bytes(q.get('size_string') or "")
 
-                    if (
-                            'uploaded_timestamp' not in p
-                            or not isinstance(p['uploaded_timestamp'], datetime)
-                    ):
-                        p['uploaded_timestamp'] = datetime.now(timezone.utc)
+            # resolution из quality/resolution
+            if not q.get('resolution'):
+                m = re.search(r'(\d{3,4})p', ((q.get('quality') or '') + ' ' + (q.get('resolution') or '')), re.I)
+                if m:
+                    q['resolution'] = f"{m.group(1)}p"
 
-                    session.add(Torrent(**p))  # тут будет НОВЫЙ torrent_id (PK) как и нужно
-                    session.commit()
-                    self.logger.debug(
-                        f"[save_torrent] replaced slot ({q_type}, {resolution}, {encoder}) "
-                        f"{best_size} -> {new_size}"
-                    )
-                    return
+            # строковые нормализации (strip+lower где уместно)
+            q['resolution'] = (q.get('resolution') or "").strip().lower()
+            q['quality'] = (q.get('quality') or "").strip().lower()
+            q['encoder'] = (q.get('encoder') or "").strip().lower()
 
-                # 5) Новый не лучше — оставляем текущего лучшего, остальные чистим
-                removed = 0
-                for r in slot_rows:
-                    if r is not best:
-                        session.delete(r)
-                        removed += 1
-                if removed:
-                    session.commit()
-                    self.logger.debug(
-                        f"[save_torrent] kept best size={best_size}, pruned {removed} duplicates in slot"
-                    )
+            # episodes_range из description/label при отсутствии
+            if not q.get('episodes_range'):
+                for source in (q.get('episodes_range'), q.get('description'), q.get('label')):
+                    if source:
+                        m = re.search(r'(\d+)\s*[-–—]\s*(\d+)', str(source))
+                        if m:
+                            q['episodes_range'] = f"{m.group(1)}-{m.group(2)}"
+                            break
+
+            q['episodes_range'] = (q.get('episodes_range') or "").strip()
+            q['label'] = (q.get('label') or "").strip()
+            q['filename'] = (q.get('filename') or "").strip()
+
+            # api flags
+            q['api_updated_at'] = q.get('api_updated_at') or q.get('updated_at') or datetime.now(timezone.utc)
+            q['is_in_production'] = int(bool(q.get('is_in_production')))
+            q['episodes_total'] = int(q.get('episodes_total') or 0)
+
+            # range_first/last
+            rng = (q.get('episodes_range') or "").strip()
+            if rng:
+                m = re.search(r'(\d+)\s*[-–—]\s*(\d+)', rng)
+                if m:
+                    q['range_first'] = int(m.group(1))
+                    q['range_last'] = int(m.group(2))
                 else:
-                    # Ничего не менялось — просто выходим
-                    self.logger.debug(f"[save_torrent] no changes: incoming size={new_size} <= best size={best_size}")
+                    m1 = re.fullmatch(r'\s*(\d+)\s*', rng)
+                    if m1:
+                        q['range_first'] = q['range_last'] = int(m1.group(1))
+                    else:
+                        if re.search(r'(фильм|movie|ova|special|ona)', rng, re.I):
+                            q['range_first'] = q['range_last'] = 1
+                        else:
+                            q['range_first'] = q['range_last'] = None
+            else:
+                q['range_first'] = q['range_last'] = None
 
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"[save_torrent] ошибка при сохранении торрента: {e}")
+            return q
+
+        def _codec_family_sql(expr):
+            expr_lc = func.lower(func.trim(func.coalesce(expr, '')))
+            return case(
+                (expr_lc.like('%av1%'), 'av1'),
+                (expr_lc.like('%vp9%'), 'vp9'),
+                (expr_lc.like('%265%'), 'h265'),
+                (expr_lc.like('%hevc%'), 'h265'),
+                (expr_lc.like('%264%'), 'h264'),
+                (expr_lc.like('%avc%'), 'h264'),
+                else_=expr_lc
+            )
+
+        def _norm_res_sql(expr):
+            return func.lower(func.trim(func.coalesce(expr, '')))
+
+        # ---------- pruning helpers ----------
+        def _prune_covered_ranges(session, title_id: int):
+            """Удалить записи, полностью покрытые более широким диапазоном в той же (resolution, codec_family)."""
+            A = aliased(T);
+            B = aliased(T)
+            covered_ids = (
+                select(B.torrent_id)
+                .where(
+                    B.title_id == title_id,
+                    exists(
+                        select(1).select_from(A).where(and_(
+                            A.title_id == B.title_id,
+                            _norm_res_sql(A.resolution) == _norm_res_sql(B.resolution),
+                            _codec_family_sql(A.encoder) == _codec_family_sql(B.encoder),
+                            A.range_first.isnot(None), A.range_last.isnot(None),
+                            B.range_first.isnot(None), B.range_last.isnot(None),
+                            A.range_first <= B.range_first,
+                            A.range_last >= B.range_last,
+                            A.torrent_id != B.torrent_id,
+                        ))
+                    )
+                )
+            )
+            session.execute(
+                delete(T)
+                .where(T.title_id == title_id)
+                .where(T.torrent_id.in_(covered_ids))
+            )
+
+        def _prune_triplet(session, title_id: int):
+            """Внутри (quality, encoder, episodes_range) оставить лучший (size desc, ts desc, id desc)."""
+            subq = (
+                select(
+                    T.torrent_id.label("tid"),
+                    func.row_number().over(
+                        partition_by=(
+                            func.coalesce(T.quality, ''),
+                            func.coalesce(T.encoder, ''),
+                            func.coalesce(T.episodes_range, '')
+                        ),
+                        order_by=(
+                            func.coalesce(T.total_size, 0).desc(),
+                            func.coalesce(T.uploaded_timestamp, datetime(1970, 1, 1)).desc(),
+                            T.torrent_id.desc()
+                        )
+                    ).label("rn")
+                )
+                .where(T.title_id == title_id)
+                .subquery()
+            )
+            keep = select(subq.c.tid).where(subq.c.rn == 1)
+            session.execute(
+                delete(T)
+                .where(T.title_id == title_id)
+                .where(~T.torrent_id.in_(keep))
+            )
+
+        def _prune_res_codec(session, title_id: int):
+            """Внутри (resolution_norm, codec_family, episodes_range) оставить лучший."""
+            enc_lc = func.lower(func.coalesce(T.encoder, ''))
+            codec_family = case(
+                (enc_lc.like('%av1%'), 'av1'),
+                (enc_lc.like('%vp9%'), 'vp9'),
+                (enc_lc.like('%265%'), 'h265'),
+                (enc_lc.like('%hevc%'), 'h265'),
+                (enc_lc.like('%264%'), 'h264'),
+                (enc_lc.like('%avc%'), 'h264'),
+                else_=enc_lc
+            )
+            subq = (
+                select(
+                    T.torrent_id.label("tid"),
+                    func.row_number().over(
+                        partition_by=(
+                            func.coalesce(T.resolution, ''),
+                            codec_family,
+                            func.coalesce(T.episodes_range, '')
+                        ),
+                        order_by=(
+                            func.coalesce(T.total_size, 0).desc(),
+                            func.coalesce(T.uploaded_timestamp, datetime(1970, 1, 1)).desc(),
+                            T.torrent_id.desc()
+                        )
+                    ).label("rn")
+                )
+                .where(T.title_id == title_id)
+                .subquery()
+            )
+            keep = select(subq.c.tid).where(subq.c.rn == 1)
+            session.execute(
+                delete(T)
+                .where(T.title_id == title_id)
+                .where(~T.torrent_id.in_(keep))
+            )
+
+        # ---------- main logic ----------
+        # Полная замена по title_id (доверяем API-снэпшоту)
+        if isinstance(torrent_data, list):
+            if not torrent_data:
+                return
+            if any(not isinstance(t, dict) for t in torrent_data):
+                raise TypeError("save_torrent(list): ожидались dict, нашлись не-dict элементы")
+
+            prepared = [_prep_one(t) for t in torrent_data]
+            title_id = prepared[0]['title_id']
+            if any(t['title_id'] != title_id for t in prepared):
+                raise ValueError("В батче обнаружены разные title_id — replace невозможен")
+
+            # атомарный replace + мягкий дедуп
+            with self.Session as session, session.begin():
+                session.query(T).filter(T.title_id == title_id).delete(synchronize_session=False)
+                session.bulk_save_objects([T(**t) for t in prepared])
+
+                _prune_triplet(session, title_id)
+                _prune_covered_ranges(session, title_id)
+                _prune_res_codec(session, title_id)
+
+            self.logger.info(f"[replace] title_id={title_id}: inserted {len(prepared)}")
+            return
+
+        # Upsert одиночной записи + ОБЯЗАТЕЛЬНАЯ чистка покрытых (даже «в производстве»)
+        if isinstance(torrent_data, dict):
+            p = _prep_one(torrent_data)
+            if p.get('torrent_id') is None:
+                raise ValueError("torrent_id обязателен для одиночного save")
+
+            with self.Session as session, session.begin():
+                session.merge(T(**p))
+
+            # ВАЖНО: покрытие чистим ВСЕГДА (решает кейс «1–4» накрывает «1–3» немедленно)
+            with self.Session as session, session.begin():
+                _prune_covered_ranges(session, p['title_id'])
+
+                # Остальные — по желанию, мягче для «в производстве»
+                if not p.get('is_in_production'):
+                    _prune_triplet(session, p['title_id'])
+                    _prune_res_codec(session, p['title_id'])
+
+            self.logger.debug(
+                f"[dict] title={p['title_id']} q='{p.get('quality') or ''}' "
+                f"enc='{p.get('encoder') or ''}' rng='{p.get('episodes_range') or ''}' — upsert ok"
+            )
+            return
+
+        raise TypeError("save_torrent ожидает dict или list[dict]")
 
     def remove_schedule_day(self, title_ids, day_of_week):
         with self.Session as session:

@@ -256,6 +256,20 @@ WHERE (
 LIMIT 10; 
 ```
 
+14. fixes for torrents table
+```sql
+ALTER TABLE torrents ADD COLUMN api_updated_at   TEXT DEFAULT NULL;
+ALTER TABLE torrents ADD COLUMN is_in_production INTEGER DEFAULT 0;
+ALTER TABLE torrents ADD COLUMN episodes_total   INTEGER DEFAULT 0;
+ALTER TABLE torrents ADD COLUMN label            TEXT;
+ALTER TABLE torrents ADD COLUMN filename         TEXT;
 
+ALTER TABLE torrents ADD COLUMN range_first      INTEGER DEFAULT NULL;
+ALTER TABLE torrents ADD COLUMN range_last       INTEGER DEFAULT NULL;
 
-
+CREATE INDEX IF NOT EXISTS idx_torrents_title                 ON torrents(title_id);
+CREATE INDEX IF NOT EXISTS idx_torrents_title_range           ON torrents(title_id, episodes_range);
+CREATE INDEX IF NOT EXISTS idx_torrents_title_res_enc         ON torrents(title_id, resolution, encoder);
+CREATE INDEX IF NOT EXISTS idx_torrents_covering              ON torrents(title_id, resolution, encoder, range_first, range_last);
+CREATE INDEX IF NOT EXISTS idx_torrents_title_q_enc_rng       ON torrents(title_id, quality, encoder, episodes_range);
+```

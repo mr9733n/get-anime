@@ -2,6 +2,7 @@
 import json
 import base64
 import logging
+import re
 from urllib.parse import quote
 
 from PyQt5.QtWidgets import QHBoxLayout
@@ -263,14 +264,17 @@ class UIGenerator:
 
             torrents_html = "<ul>"
             for torrent in torrents:
+                torrent_quality_type = torrent.quality_type if torrent.quality_type else "Unknown Quality Type"
                 torrent_quality = torrent.quality if torrent.quality else "Unknown Quality"
+                torrent_encoder = torrent.encoder if torrent.encoder else "Unknown Encoder"
+                torrent_episodes_range = torrent.episodes_range if torrent.episodes_range else "Unknown Episodes Range"
                 torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
                 download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
                 if torrent.url:
-                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}?link={quote(torrent.url)}" title="Download torrent file">{torrent_quality} ({torrent_size})</a>'
+                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}?link={quote(torrent.url)}" title="Download torrent file">{torrent_quality_type}{blank_spase}{torrent_quality}{blank_spase}{torrent_encoder}{blank_spase}{torrent_episodes_range}{blank_spase}({torrent_size})</a>'
                 else:
-                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}" title="Download torrent file">{torrent_quality} ({torrent_size})</a>'
-                torrents_html += f'<li>{torrent_link_html}{blank_spase * 4}{download_html}</li>'
+                    torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}" title="Download torrent file">{torrent_quality_type}{blank_spase}{torrent_quality}{blank_spase}{torrent_encoder}{blank_spase}{torrent_episodes_range}{blank_spase}({torrent_size})</a>'
+                torrents_html += f'<li>{torrent_link_html}{blank_spase * 2}{download_html}</li>'
             torrents_html += "</ul>"
 
             return torrents_html
@@ -504,7 +508,6 @@ class UIGenerator:
             episode_ids = []
             episode_links = []
 
-            # Глобальный набор для play_all, если он вам нужен
             global_skip_data = {"episode_skips": []}
             for episode in title.episodes:
                 global_skip_data["episode_skips"].append({
@@ -516,20 +519,26 @@ class UIGenerator:
             play_all_html = self.generate_play_all_html(title, global_skip_data_encoded)
 
             for i, episode in enumerate(title.episodes):
-                episode_name = episode.name if episode.name else f'Серия {episode.episode_number}'
+                name = (episode.name or "").strip()
+                num = episode.episode_number
+
+                if not name:
+                    episode_name = f"Серия {num}"
+                elif re.search(r'\b(серия|episode)\b', name, re.IGNORECASE):
+                    episode_name = name
+                else:
+                    episode_name = f"{num}. {name}"
                 skip_opening = episode.skips_opening if episode.skips_opening else []
                 skip_ending = episode.skips_ending if episode.skips_ending else []
 
-                # Собираем данные о пропусках для конкретного эпизода
                 episode_skip_data = {
                     "episode_number": episode.episode_number,
                     "skip_opening": skip_opening,
                     "skip_ending": skip_ending
                 }
-                # Добавляем данные в глобальный набор для возможности «play all»
+
                 global_skip_data["episode_skips"].append(episode_skip_data)
 
-                # Кодируем данные о пропусках для конкретного эпизода
                 episode_skip_data_encoded = base64.urlsafe_b64encode(
                     json.dumps(episode_skip_data).encode()
                 ).decode()
@@ -547,7 +556,6 @@ class UIGenerator:
 
                 if link:
                     episode_ids.append(episode.episode_id)
-                    # Сохраняем кортеж, где дополнительно передаём закодированные данные пропусков для данного эпизода
                     episode_links.append((episode.episode_id, episode_name, link, episode_skip_data_encoded))
                 else:
                     self.logger.warning(
@@ -563,7 +571,7 @@ class UIGenerator:
                     # if image not symbol
                     # f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 4}'
                     f'<p class="header_episodes">{watch_all_episodes_html}{blank_space * 2}'
-                    f'Episodes:{blank_space * 6}{play_all_html}</p><ul>'
+                    f'Episodes:{blank_space * 4}{play_all_html}</p><ul>'
                 )
 
                 for episode_id, episode_name, link, episode_skip_data_encoded in episode_links:

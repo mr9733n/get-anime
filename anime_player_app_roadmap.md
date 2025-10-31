@@ -349,6 +349,12 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Readme eng added
 - [x] License eng added
 
+### 8.31. saving torrents
+- [x] fix saving torrents
+- [x] deduplicate torrents
+- [x] add more info on UI for torrents
+- [x] add more info on UI for episodes
+
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes
 - [ ] Add status for buttons (simple callback)

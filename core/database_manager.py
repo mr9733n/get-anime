@@ -243,6 +243,10 @@ class DatabaseManager:
         """Titles by status"""
         return self.get_manager.get_titles_by_status(status_code)
 
+    def get_ongoing_titles(self, batch_size=None, offset=0):
+        """Titles by status ongoing"""
+        return self.get_manager.get_ongoing_titles(batch_size, offset)
+
     def get_total_titles_count(self, show_mode=None):
         """Titles count"""
         return self.get_manager.get_total_titles_count(show_mode)

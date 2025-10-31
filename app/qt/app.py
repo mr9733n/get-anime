@@ -377,15 +377,14 @@ class AnimePlayerAppVer3(QWidget):
                 self.display_titles(show_next=True)
             elif callback_name == "display_titles_text_list":
                 self.display_titles(show_mode='titles_list', batch_size=self.titles_list_batch_size)
-                ## self.current_offset += self.titles_list_batch_size
+            elif callback_name == "display_ongoing_list":
+                self.display_titles(show_mode='ongoing_list', batch_size=self.titles_list_batch_size)
             elif callback_name == "display_franchises":
                 self.display_titles(show_mode='franchise_list', batch_size=self.titles_list_batch_size)
-                ## self.current_offset += self.titles_list_batch_size
-            elif callback_name == "display_system":
-                self.display_titles(show_mode='system')
             elif callback_name == "toggle_need_to_see":
                 self.display_titles(show_mode='need_to_see_list', batch_size=self.titles_list_batch_size)
-                ## self.current_offset += self.titles_list_batch_size
+            elif callback_name == "display_system":
+                self.display_titles(show_mode='system')
             else:
                 self.logger.warning(f"Неизвестный колбек: {callback_name}")
 
@@ -524,7 +523,7 @@ class AnimePlayerAppVer3(QWidget):
                 batch_size=batch_size
             )
             description = data_factory.get_metadata_description(show_mode=show_mode)
-            show_modes = ['titles_list', 'franchise_list', 'need_to_see_list']
+            show_modes = ['titles_list', 'franchise_list', 'need_to_see_list', 'ongoing_list']
 
             if not titles and description:
                 self.logger.info("Нет доступных данных для отображения, сбрасываем оффсет.")

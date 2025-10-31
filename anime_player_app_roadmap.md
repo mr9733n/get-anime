@@ -359,7 +359,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 ### 8.32. simple callback
 - [x] add ongoing titles button
 - [ ] Add status for buttons (simple callback)
-- [ ]  
+- [ ] fix app version 0.1.x 
 
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes

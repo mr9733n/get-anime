@@ -446,7 +446,8 @@ class GetManager:
             'franchise_list': lambda session: session.query(Title).join(FranchiseRelease).join(Franchise).filter(
                 FranchiseRelease.franchise_id.isnot(None)
             ),
-            'need_to_see_list': lambda session: session.query(Title).join(History).filter(History.need_to_see == True)
+            'need_to_see_list': lambda session: session.query(Title).join(History).filter(History.need_to_see == True),
+            'ongoing_list': lambda session: session.query(Title).filter(Title.status_code.in_([1, 3])),
         }
 
         with self.Session as session:
@@ -549,6 +550,21 @@ class GetManager:
 
             except Exception as e:
                 self.logger.error(f"Ошибка при поиске тайтлов по status {status_code}: {e}")
+                return []
+
+    def get_ongoing_titles(self, batch_size=None, offset=0):
+        """Получает список title_id по году выпуска."""
+        with self.Session as session:
+            try:
+                query = session.query(Title).filter(or_(Title.status_code == 1, Title.status_code == 3))
+                if batch_size:
+                    query = query.offset(offset).limit(batch_size)
+                titles = query.all()
+
+                return titles
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при поиске тайтлов по status 1, 3: {e}")
                 return []
 
     def get_titles_by_genre(self, genre_id):

@@ -328,6 +328,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 ### 8.27. Some fixes
 - [x] switch day_of_week from api v3 to api v1
 - [x] fix removing titles from schedule
+- [x] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 
 ### 8.28. Some fixes
 - [x] added httpx as easy async fix
@@ -355,10 +356,13 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] add more info on UI for torrents
 - [x] add more info on UI for episodes
 
+### 8.32. simple callback
+- [x] add ongoing titles button
+- [ ] Add status for buttons (simple callback)
+- [ ]  
+
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes
-- [ ] Add status for buttons (simple callback)
-- [ ] 2025-03-19 11:58:03 | ERROR | core.save.remove_schedule_day | Error while removing schedules for title_ids [<core.tables.Title object at 0x000002446AA96AE0>] and day 0: Object <core.tables.Title object at 0x000002446AA96AE0> is not legal as a SQL literal value
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to fix watch status for title_id when set status first time

@@ -485,8 +485,7 @@ class APIAdapter:
 
     def _adapt_episode(self, episode):
         """Адаптирует эпизод v1 → старый формат."""
-        ordinal = episode.get('ordinal', 0)
-        episode_number = int(ordinal) if ordinal else 0
+        episode_number = int(episode.get('ordinal') or 0)
 
         name = episode.get('name', '') or episode.get('name_english', '')
         if not name:

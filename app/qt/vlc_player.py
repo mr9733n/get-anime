@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 import os
 import logging
 import logging.config
@@ -564,44 +565,88 @@ class VLCPlayer(QWidget):
 
     def perform_skip_credits(self):
         """
-        Выполняет пропуск титров по нажатию кнопки:
-          - Если определён диапазон открывающих титров и текущий таймкод меньше конца этого диапазона,
-            перематывает до его конца.
-          - Если текущий таймкод находится в области закрывающих титров, прекращает воспроизведение и
-            переходит к следующей серии.
+        По кнопке пропуска:
+          - если находимся в диапазоне открывающих титров -> перематываем к его концу;
+          - если находимся в диапазоне закрывающих титров -> перематываем к его концу (НЕ next),
+            чтобы не пропустить возможную сцену после титров;
+          - авто-next только если мы уже у самого конца файла (tail_guard).
         """
-        episode_number = self.get_playing_episode_number()
-        if episode_number is None:
-            self.logger.warning("Unable to determine episode number for skipping credits.")
-            return
 
-        # Обновляем данные о пропуске для текущей серии
-        self.get_episode_skips(episode_number)
-        current_time = self.media_player.get_time() / 1000  # в секундах
-        total_length = self.media_player.get_length() / 1000
+        TAIL_GUARD = 2.0  # сек: считаем, что <2с до конца — можно авто-next (если нужно)
+        EPS = 0.25  # сек: небольшая погрешность на сравнения
 
-        # Пропуск открывающих титров
-        if self.skip_opening:
-            opening_start, opening_end = self.skip_opening
-            # Если мы ещё не прошли конец открывающих титров, перематываем
-            if current_time < opening_end:
-                self.logger.info(f"Skipping opening credits: jumping from {current_time:.2f}s to {opening_end:.2f}s")
-                new_position = opening_end / total_length
-                self.media_player.set_position(new_position)
+        def _as_pair_or_none(val):
+            """
+            Превращает вход в (start, end) с float секундами или None.
+            Поддерживает: None, [], [None,None], ["146","230"], [146,230], tuple.
+            Гарантирует start < end.
+            """
+            if not val:
+                return None
+            if isinstance(val, (list, tuple)) and len(val) == 2:
+                a, b = val
+            else:
+                return None
+            try:
+                if a is None or b is None:
+                    return None
+                a = float(a)
+                b = float(b)
+            except (TypeError, ValueError):
+                return None
+            if not (math.isfinite(a) and math.isfinite(b)):
+                return None
+            if b <= a:
+                return None
+            return a, b
+
+        try:
+            episode_number = self.get_playing_episode_number()
+            if episode_number is None:
+                self.logger.warning("Unable to determine episode number for skipping credits.")
                 return
 
-        # Пропуск закрывающих титров
-        if self.skip_ending:
-            # Здесь используем условие, аналогичное оригинальному: если текущее время
-            # больше или равно (общая длительность - значение начала титров), то переходим к следующей серии.
-            ending_threshold = total_length - self.skip_ending[0]
-            if current_time >= ending_threshold:
-                self.logger.info("Skipping ending credits: moving to next media.")
+            self.get_episode_skips(episode_number)
+            current_time = (self.media_player.get_time() or 0) / 1000.0  # ms -> s
+            total_length = max(((self.media_player.get_length() or 0) / 1000.0), 0.0)
+
+            opening = _as_pair_or_none(getattr(self, "skip_opening", None))
+            ending = _as_pair_or_none(getattr(self, "skip_ending", None))
+
+            if opening:
+                start_o, end_o = opening
+                if current_time + EPS < end_o:
+                    new_pos = min(end_o / total_length, 0.9999) if total_length > 0 else None
+                    self.logger.info(
+                        f"Skip opening [{start_o/60:.2f}-{end_o/60:.2f}]m: {current_time/60:.2f}m -> {end_o/60:.2f}m"
+                    )
+                    if new_pos is not None:
+                        self.media_player.set_position(new_pos)
+                        return
+
+            if ending:
+                start_e, end_e = ending
+                if end_e > current_time + EPS >= start_e:
+                    jump_to = min(end_e,
+                                  max(total_length - TAIL_GUARD, 0.0))
+                    new_pos = min(jump_to / total_length, 0.9999) if total_length > 0 else None
+                    self.logger.info(
+                        f"Skip ending [{start_e/60:.2f}-{end_e/60:.2f}]m: {current_time/60:.2f}m -> {jump_to/60:.2f}m"
+                    )
+                    if new_pos is not None:
+                        self.media_player.set_position(new_pos)
+                        return
+
+            if total_length > 0 and (total_length - current_time) <= TAIL_GUARD:
+                self.logger.info("Near file end — moving to next media.")
                 self.media_player.stop()
                 self.next_media()
                 return
 
-        self.logger.info("No applicable credits skip region found at the current time.")
+            self.logger.info("No applicable credits skip region found at the current time.")
+
+        except Exception as e:
+            self.logger.exception(f"perform_skip_credits failed: {e}")
 
     def get_episode_skips(self, episode_number):
         """

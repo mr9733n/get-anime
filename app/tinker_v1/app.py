@@ -4,9 +4,12 @@ import time
 import json
 import atexit
 import logging
+import urllib
 import warnings
 import datetime
 import platform
+import webbrowser
+
 import requests
 import subprocess
 import configparser
@@ -15,7 +18,7 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 from tkinter.ttk import Combobox
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 from logging.handlers import TimedRotatingFileHandler
 
 # Suppress urllib3 NotOpenSSLWarning
@@ -23,6 +26,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
 
 # Suppress Tkinter deprecation warning
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
+
+APP_MINOR_VERSION = '0.3.8'
+APP_MAJOR_VERSION = '0.3'
 
 
 class ConfigManager:
@@ -70,7 +76,7 @@ class AnimePlayerAppVer1:
         log_level = self.config_manager.get_setting('Logging', 'log_level', 'INFO')
         self.log_filename = "debug_log"
         self.window = window
-        self.window.title("Anime Player v1")
+        self.window.title("Anime Player Lite")
         self.window.geometry("1110x760")
         self.init_ui()
         self.init_logger(log_level)
@@ -102,30 +108,20 @@ class AnimePlayerAppVer1:
         return video_player_path, torrent_client_path
 
     def init_ui(self):
-        self.days_of_week = [
-            "Понедельник",
-            "Вторник",
-            "Среда",
-            "Четверг",
-            "Пятница",
-            "Суббота",
-            "Воскресенье"
-        ]
-        self.day_buttons = []
-        for i, day in enumerate(self.days_of_week):
-            button = ttk.Button(self.window, text=day, command=lambda i=i: self.get_schedule(i + 1))
-            button.grid(row=1, column=3 + i, sticky="ew")
-            self.day_buttons.append(button)
+        self.btn_now = ttk.Button(self.window, text="Now", command=self.get_schedule_now)
+        self.btn_now.grid(row=0, column=8, sticky="ew")
+        self.btn_week = ttk.Button(self.window, text="Week", command=self.get_schedule_week)
+        self.btn_week.grid(row=0, column=9, sticky="ew")
         # Create a label and entry for title search
         self.title_search_label = ttk.Label(self.window, text="Поиск по названию:")
-        self.title_search_label.grid(row=0, column=0, columnspan=3)
+        self.title_search_label.grid(row=0, column=0)
         self.title_search_entry = ttk.Entry(self.window)
-        self.title_search_entry.grid(row=0, column=3, columnspan=7, sticky="ew")
+        self.title_search_entry.grid(row=0, column=1, columnspan=5, sticky="ew")
         # Create a button for displaying information1
         self.display_button = ttk.Button(self.window, text="Отобразить информацию", command=self.search_by_title)
-        self.display_button.grid(row=1, column=0, sticky="ew")
+        self.display_button.grid(row=0, column=6, sticky="ew")
         self.display_button = ttk.Button(self.window, text="Random", command=self.random_title)
-        self.display_button.grid(row=1, column=1, sticky="ew")
+        self.display_button.grid(row=0, column=7, sticky="ew")
         # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.save_button = ttk.Button(self.window, text="Сохранить плейлист", command=self.save_playlist)
         self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
@@ -177,21 +173,19 @@ class AnimePlayerAppVer1:
     def read_json_data(self):
         try:
             utils_folder = 'temp'
-            if not os.path.exists(utils_folder):
-                os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils' folder.")
+            os.makedirs(utils_folder, exist_ok=True)
             utils_json = os.path.join(utils_folder, 'response.json')
             self.log_message(f"Attempting to read {utils_json}.")
             with open(utils_json, 'r', encoding='utf-8') as file:
-                data = json.load(file)
+                raw = json.load(file)
             self.log_message(f"Successfully read data from {utils_json}.")
-            return data
+            # Адаптируем под единый вид
+            return self._adapt_payload_for_display_list(raw)
         except FileNotFoundError:
             self.log_message(f"File {utils_json} not found.")
             return None
         except json.JSONDecodeError as e:
-            error_message = f"Error decoding JSON data from {utils_json}: {str(e)}"
-            self.log_message(error_message)
+            self.log_message(f"Error decoding JSON data from {utils_json}: {str(e)}")
             return None
 
     def delete_response_json(self):
@@ -211,40 +205,82 @@ class AnimePlayerAppVer1:
     def save_playlist(self):
         self.log_message("Starting to save playlist.")
         data = self.read_json_data()
-        if data is not None:
-            if "list" in data and isinstance(data["list"], list) and len(data["list"]) > 0:
-                playlists_folder = 'playlists'
-                if not os.path.exists(playlists_folder):
-                    os.makedirs(playlists_folder)
-                    self.log_message(f"Created 'playlists' folder.")
-                self.playlist_name = os.path.join(playlists_folder, f"{data['list'][0]['code']}.m3u")
-                self.log_message(f"Saving playlist to {self.playlist_name}.")
-                try:
-                    if self.playlist_name is not None:
-                        with open(self.playlist_name, 'w') as file:
-                            for url in self.discovered_links:
-                                full_url = "https://" + self.stream_video_url + url
-                                file.write(f"#EXTINF:-1,{url}\n{full_url}\n")
-                        self.log_message(f"Playlist {self.playlist_name} saved successfully.")
+        if not (data and "list" in data and isinstance(data["list"], list) and data["list"]):
+            msg = "No valid data available. Please fetch data first."
+            self.log_message(msg)
+            print(msg)
+            return
+
+        # если ссылок ещё нет – попробуем собрать их из видимых тайтлов
+        if not self.discovered_links:
+            q = self.quality_var.get()
+            for title in data["list"]:
+                # 1) берём уже префетченные эпизоды из now, если есть
+                episodes = (title.get("_prefetched_episodes") or [])
+                # 2) если их нет — дотягиваем один раз релиз и берём episodes
+                if not episodes:
+                    rid = self._release_identity(title)
+                    if rid:
+                        url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/{urllib.parse.quote(rid)}"
+                        rel = self._get_json(url) or {}
+                        episodes = rel.get("episodes") or rel.get("data", {}).get("episodes") or []
+
+                # 3) для каждого эпизода дотягиваем hls и кладём в discovered_links
+                for ep in episodes:
+                    eid = ep.get("id") or ep.get("releaseEpisodeId") or ep.get("episodeId")
+                    if not eid:
+                        continue
+                    detail = self._get_json(
+                        f"https://{self.base_url}/api/{self.api_version}/anime/releases/episodes/{eid}")
+                    if not detail:
+                        continue
+                    hls = self._flatten_hls(detail)
+                    # имя качества в ответе может быть fhd/hd/sd или hls_1080/hls_720/hls_480
+                    m3u8 = (
+                        hls.get(q) or
+                        hls.get("hls_1080") if q == "fhd" else (hls.get("hls_720") if q == "hd" else hls.get("hls_480"))
+                    )
+                    if not m3u8:
+                        # fallback – любой найденный поток
+                        m3u8 = hls.get("hls_1080") or hls.get("hls_720") or hls.get("hls_480") or hls.get(
+                            "fhd") or hls.get("hd") or hls.get("sd")
+                    if not m3u8:
+                        continue
+                    if not (m3u8.startswith("http://") or m3u8.startswith("https://")):
+                        m3u8 = "https://" + self.stream_video_url + m3u8
+                    m3u8 = self._normalize_stream_url(m3u8)
+                    if m3u8 not in self.discovered_links:
+                        self.discovered_links.append(m3u8)
+
+        # дальше — как было, только с фиксом абсолютных URL
+        playlists_folder = 'playlists'
+        os.makedirs(playlists_folder, exist_ok=True)
+        name_part = data['list'][0].get('code') or data['list'][0].get('id') or "playlist"
+        self.playlist_name = os.path.join(playlists_folder, f"{name_part}.m3u")
+
+        self.log_message(f"Saving playlist to {self.playlist_name}.")
+
+        if not self.discovered_links:
+            msg = "Nothing to save: no episode streams found."
+            self.log_message(msg)
+            print(msg)
+            return
+
+        try:
+            with open(self.playlist_name, 'w', encoding='utf-8') as file:
+                for url in self.discovered_links:
+                    if url.startswith("http://") or url.startswith("https://") or url.startswith("magnet:?"):
+                        full_url = url
                     else:
-                        error_message = "Playlist name is not set."
-                        self.log_message(error_message)
-                        print(error_message)
-                        return None
-                    return self.playlist_name
-                except Exception as e:
-                    error_message = f"An error occurred while saving the playlist: {str(e)}"
-                    self.log_message(error_message)
-                    print(error_message)
-                    return None
-            else:
-                error_message = "No valid data available. Please fetch data first."
-                self.log_message(error_message)
-                print(error_message)
-        else:
-            error_message = "No data available. Please fetch data first."
-            self.log_message(error_message)
-            print(error_message)
+                        full_url = "https://" + self.stream_video_url + url
+                    file.write(f"#EXTINF:-1,{os.path.basename(full_url)}\n{full_url}\n")
+            self.log_message(f"Playlist {self.playlist_name} saved successfully.")
+            return self.playlist_name
+        except Exception as e:
+            msg = f"An error occurred while saving the playlist: {str(e)}"
+            self.log_message(msg)
+            print(msg)
+            return
 
     def all_links_play(self):
         self.log_message("Attempting to play all links.")
@@ -277,24 +313,29 @@ class AnimePlayerAppVer1:
     # Обновленная функция для обработки кликов по ссылкам
     def on_link_click(self, event):
         try:
-            # Получаем индекс ссылки, которая была кликнута
             link_index = int(event.widget.tag_names(tk.CURRENT)[1])
             link = self.discovered_links[link_index]
 
-            # Проверяем тип ссылки и выполняем соответствующие действия
-            if link.endswith('.m3u8'):
-                # Если это видео-ссылка, воспроизводим через VLC
-                vlc_path = self.video_player_path
-                open_link = "https://" + self.stream_video_url + link
-                media_player_command = [vlc_path, open_link]
-                subprocess.Popen(media_player_command)
-                self.log_message(f"Playing video link: {open_link}")
-            elif '/torrent/download.php' in link:
-                # Обработка торрент-ссылок
-                self.handle_torrent_link(link)
-            else:
-                self.log_message(f"Unknown link type: {link}")
+            # 1) magnet-ссылки — сразу в торрент-клиент
+            if link.startswith('magnet:?'):
+                torrent_client_path = self.torrent_client_path
+                subprocess.Popen([torrent_client_path, link])
+                self.log_message(f"Opened magnet in client: {link}")
+                return
 
+            # 2) прямой API-URL на .torrent: /api/v1/anime/torrents/{hashOrId}/file
+            if '/api/' in link and '/anime/torrents/' in link and link.endswith('/file'):
+                torrent_save_path = 'torrents'
+                os.makedirs(torrent_save_path, exist_ok=True)
+                torrent_path = self.download_torrent(link, torrent_save_path)
+                if torrent_path:
+                    subprocess.Popen([self.torrent_client_path, torrent_path])
+                    self.log_message(f"Torrent saved and opened: {torrent_path}")
+                else:
+                    self.log_message("Failed to download or open torrent.")
+                return
+
+            self.log_message(f"Unknown link type: {link}")
         except Exception as e:
             error_message = f"An error occurred while processing the link: {str(e)}"
             self.log_message(error_message)
@@ -312,7 +353,7 @@ class AnimePlayerAppVer1:
 
             # Исправляем URL для скачивания
             if not link.startswith("https://"):
-                link = "https://anilibria.tv" + link
+                link = "https://anilibria.top" + link
 
             torrent_path = self.download_torrent(link, torrent_save_path)
             if torrent_path:
@@ -375,20 +416,30 @@ class AnimePlayerAppVer1:
         try:
             self.clear_poster()
 
-            poster_url = "https://" + self.base_url + title_data["posters"]["small"]["url"]
-            self.write_poster_links([poster_url])
-            title_name = {title_data['names']['en']}
-            self.show_poster(poster_url)
-            self.logger.debug(f"Successfully GET poster for title '{title_name}'. URL: '{poster_url}' ")
+            poster_url = None
+            # новый v1
+            if "posters" in title_data and "small" in title_data["posters"]:
+                poster_url = title_data["posters"]["small"].get("url")
+            # если адаптер не заполнил (или пришло старое) — попробуем прямое поле
+            if not poster_url and "poster" in title_data:
+                p = title_data["poster"] or {}
+                poster_url = p.get("optimized", {}).get("preview") or p.get("preview") or p.get("src")
 
-        except requests.exceptions.RequestException as e:
-            error_message = f"An error occurred while GET downloading the poster: {str(e)}"
-            self.log_message(error_message)
-            print(error_message)
+            if poster_url and not poster_url.startswith("http"):
+                poster_url = "https://" + self.base_url + poster_url
+
+            if poster_url:
+                self.write_poster_links([poster_url])
+                # названия — через безопасные ключи
+                name_ru = (title_data.get("names") or {}).get("ru") or ""
+                self.show_poster(poster_url)
+                self.logger.debug(f"Successfully GET poster for title '{name_ru}'. URL: '{poster_url}' ")
+            else:
+                self.logger.debug("No poster url found for title")
+
         except Exception as e:
-            error_message = f"An error occurred while GET processing the poster: {str(e)}"
-            self.log_message(error_message)
-            print(error_message)
+            self.log_message(f"An error occurred while GET processing the poster: {str(e)}")
+            print(f"An error occurred while GET processing the poster: {str(e)}")
 
     def show_poster(self, poster_url):
         try:
@@ -502,214 +553,514 @@ class AnimePlayerAppVer1:
             self.log_message(error_message)
             print(error_message)
 
-    def get_schedule(self, day):
-        day -= 1
-        api_url = f"https://api.{self.base_url}/{self.api_version}/title/schedule?days={day}"
+    # === ADAPTERS FOR NEW V1 API ===
+
+    def _adapt_release(self, r: dict) -> dict:
+        """Приводим релиз v1 к 'почти-старому' виду, чтобы display_* не падали."""
+        if not isinstance(r, dict):
+            return {}
+
+        title_id = r.get("id")
+        # name(s)
+        name = r.get("name", {}) or {}
+        names = {
+            "ru": name.get("main") or "",
+            "en": name.get("english") or "",
+            "alternative": name.get("alternative") or ""
+        }
+
+        # type
+        t = r.get("type", {}) or {}
+        type_full = t.get("description") or t.get("value") or ""
+        _type = {"full_string": type_full}
+
+        # status (в v1 статуса-строки нет — соберём сами)
+        is_ongoing = bool(r.get("is_ongoing"))
+        status_string = "Онгоинг" if is_ongoing else "Завершён"
+        status = {"string": status_string}
+
+        # genres (в v1 это массив объектов c name)
+        genres_raw = r.get("genres") or []
+        genres = [g.get("name") for g in genres_raw if isinstance(g, dict) and g.get("name")]
+
+        # year / season совместим под старое поле "season.year"
+        season = {"year": r.get("year")}
+
+        # poster (в v1 поле poster.*)
+        poster = r.get("poster") or {}
+        poster_url = poster.get("optimized", {}).get("preview") or poster.get("preview") or poster.get("src")
+        if poster_url and not poster_url.startswith("http"):
+            poster_url = "https://" + self.base_url + poster_url
+
+        posters = {"small": {"url": poster_url}} if poster_url else {}
+
+        # торренты (v1): есть magnet, filename и самое главное — hash/id -> /anime/torrents/{hashOrId}/file
+        torrents_list = []
+        for t in r.get("torrents") or []:
+            q = t.get("quality")
+            quality_string = (
+                q if isinstance(q, str)
+                else (q.get("label") if isinstance(q, dict) else None)
+            )
+
+            hash_or_id = t.get("hash") or t.get("id")
+            file_url = (
+                f"https://{self.base_url}/api/{self.api_version}/anime/torrents/{hash_or_id}/file"
+                if hash_or_id else None
+            )
+
+            torrents_list.append({
+                # теперь всегда правильная ссылка на .torrent файл через API
+                "url": file_url,
+                "magnet": t.get("magnet"),
+                "quality": {"string": quality_string or "—"},
+                # полезно сохранить исходные поля на всякий случай
+                "_filename": t.get("filename"),
+                "_hash": t.get("hash"),
+                "_id": t.get("id"),
+            })
+        torrents = {"list": torrents_list} if torrents_list else {}
+
+        # ссылка на страницу релиза (для клика в тексте)
+        alias = r.get("alias")
+        page_url = f"https://{self.base_url}/release/{alias}" if alias else None
+
+        return {
+            "id": title_id,
+            "names": names,
+            "type": _type,
+            "status": status,
+            "description": r.get("description") or "",
+            "genres": genres,
+            "season": season,
+            "posters": posters,
+            "torrents": torrents,
+            "code": alias,
+            "_page_url": page_url,  # вспомогательное для клика
+            # player / episodes намеренно не мапплю: в v1 прямых hls-ссылок нет
+        }
+
+    def _adapt_payload_for_display_list(self, payload):
+        """
+        Приводим разные ответы к единому формату {"list":[releases...]} где releases уже адаптированы.
+        Поддерживаем:
+          - /anime/releases/random -> array[release]
+          - /anime/releases/{id} -> object release
+          - /anime/release/list -> {"data":[release,...]}
+          - /anime/schedule/now -> {"today":[{release:...}, ...], "tomorrow":[...], "yesterday":[...]}
+          - /anime/schedule/week -> {"data":[{release:...}, ...]}
+        """
+        if payload is None:
+            return {"list": []}
+
+        # если это уже старый формат
+        if isinstance(payload, dict) and "list" in payload and isinstance(payload["list"], list):
+            # предполагаем, что элементы уже приведены
+            return payload
+
+        # schedule.now
+        if isinstance(payload, dict) and any(k in payload for k in ("today", "tomorrow", "yesterday")):
+            items = []
+            for key in ("today", "tomorrow", "yesterday"):
+                for it in payload.get(key, []) or []:
+                    rel = (it or {}).get("release") or {}
+                    adapted = self._adapt_release(rel)
+                    # пронесём эпизоды, если API их вложил рядом
+                    pref_eps = (it or {}).get("episodes") or []
+                    if pref_eps:
+                        adapted["_prefetched_episodes"] = pref_eps
+                    items.append(adapted)
+            return {"list": items}
+
+        # schedule.week
+        # /anime/releases/list -> {"data":[...]} (общий случай уже покрыт выше)
+        # /anime/releases/random -> array
+        if isinstance(payload, list):
+            items = []
+            for it in payload:
+                rel = (it or {}).get("release") or it  # вдруг пришло просто release
+                items.append(self._adapt_release(rel))
+            return {"list": items}
+
+        # /anime/releases/{id} -> object
+        if isinstance(payload, dict):
+            # это одиночный релиз
+            return {"list": [self._adapt_release(payload)]}
+
+        return {"list": []}
+
+    # === EPISODES (v1) ===
+
+    def _release_identity(self, title: dict) -> str:
+        """Возвращает то, чем можно запросить релиз: alias (code) или id."""
+        return (title.get("code") or title.get("id") or "").strip()
+
+    def _ensure_temp(self):
+        utils_folder = 'temp'
+        os.makedirs(utils_folder, exist_ok=True)
+        return os.path.join(utils_folder, 'response.json')
+
+    def _fetch_to_temp_and_render(self, url: str, render_fn):
+        start = time.time()
+        try:
+            r = requests.get(url, timeout=15)
+            text = r.text or ""
+            if r.status_code == 200:
+                utils_json = self._ensure_temp()
+                with open(utils_json, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                render_fn()
+                self.logger.debug(
+                    f"GET OK: {url}, time={time.time() - start:.2f}s, size={len(text)}"
+                )
+            else:
+                msg = f"Error {r.status_code}: Unable to fetch data from the API."
+                try:
+                    err = r.json()
+                    if isinstance(err, dict) and "error" in err:
+                        msg += f" Error message: {err['error'].get('message', '')}"
+                except Exception:
+                    pass
+                self.log_message(msg)
+                print(msg)
+        except Exception as e:
+            self.log_message(f"Request failed {url}: {e}")
+            print(f"Request failed {url}: {e}")
+
+    def _get_json(self, url: str):
+        try:
+            r = requests.get(url, timeout=15)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            self.log_message(f"GET {url} failed: {e}")
+            return None
+
+    def _flatten_hls(self, obj):
+        """
+        Ищем словарь с ключами (fhd/hd/sd) где угодно в ответе.
+        Возвращаем {'fhd': '/hls/...m3u8', ...} или {}.
+        """
+        if isinstance(obj, dict):
+            keys = set(obj.keys())
+            if {'hls_1080', 'hls_720', 'hls_480'} & keys:
+                return {
+                    k: v for k, v in obj.items()
+                    if k in ('hls_1080', 'hls_720', 'hls_480') and isinstance(v, str)
+                }
+            for v in obj.values():
+                found = self._flatten_hls(v)
+                if found:
+                    return found
+        elif isinstance(obj, list):
+            for v in obj:
+                found = self._flatten_hls(v)
+                if found:
+                    return found
+        return {}
+
+    def _render_episodes_list(self, release_identity: str, title: dict = None):
+        """
+        Тянем /anime/releases/{id_or_alias} и показываем список серий.
+        """
+        if not release_identity:
+            self.text.insert(tk.END, "\nЭпизоды: неизвестен идентификатор релиза\n")
+            return
+
+        if title and isinstance(title.get("_prefetched_episodes"), list) and title["_prefetched_episodes"]:
+            episodes = title["_prefetched_episodes"]
+            self.text.insert(tk.END, "\nЭпизоды:\n")
+            for ep in episodes:
+                eid = ep.get("id") or ep.get("releaseEpisodeId") or ep.get("episodeId")
+                num = int(ep.get("ordinal") or 0)
+                nm = ep.get("name") or ep.get("title") or ""
+                line = f"• Серия {num}"
+                if nm:
+                    line += f": {nm}"
+                line += " — "
+                tag = f"hyperlink_play_ep_{eid or num}"
+                self.text.insert(tk.END, line)
+                self.text.insert(tk.END, "Смотреть", (tag,))
+                self.text.insert(tk.END, "\n")
+                if eid:
+                    self.text.tag_bind(tag, "<Button-1>", lambda e, _eid=eid: self.play_episode_by_id(_eid))
+                    self.text.tag_config(tag, foreground="blue")
+                else:
+                    self.text.tag_config(tag, foreground="gray")
+            return
+
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/{urllib.parse.quote(release_identity)}"
+        data = self._get_json(url)
+        if not data:
+            self.text.insert(tk.END, "\nЭпизоды: не удалось получить данные\n")
+            return
+
+        # ожидаем массив эпизодов в одном из полей
+        episodes = data.get("episodes") or data.get("data", {}).get("episodes") or []
+        if not isinstance(episodes, list) or not episodes:
+            # fallback на старое поле player.list (если вдруг отдадут старую схему)
+            player_list = (data.get("player") or {}).get("list") or {}
+            if isinstance(player_list, dict):
+                episodes = []
+                for ep in player_list.values():
+                    # создадим «псевдоэпизод» без id, но с номером
+                    episodes.append({
+                        "id": ep.get("id") or ep.get("episodeId"),
+                        "number": int(ep.get("ordinal") or 0),
+                        "name": ep.get("name") or ""
+                    })
+
+        if not episodes:
+            self.text.insert(tk.END, "\nЭпизоды: не найдены\n")
+            return
+
+        self.text.insert(tk.END, "\nЭпизоды:\n")
+        for ep in episodes:
+            eid = ep.get("id") or ep.get("episodeId") or ep.get("releaseEpisodeId")
+            num = int(ep.get("ordinal") or 0)
+            nm = ep.get("name") or ep.get("title") or ""
+            line = f"• Серия {num}"
+            if nm:
+                line += f": {nm}"
+            line += " — "
+
+            # добавляем кликабельный «Смотреть»
+            tag = f"hyperlink_play_ep_{eid or num}"
+            start = self.text.index(tk.END)
+            self.text.insert(tk.END, line)
+            self.text.insert(tk.END, "Смотреть", (tag,))
+            self.text.insert(tk.END, "\n")
+            if eid:
+                # биндим прямой вызов play_episode_by_id, без discovered_links
+                self.text.tag_bind(tag, "<Button-1>", lambda e, _eid=eid: self.play_episode_by_id(_eid))
+                self.text.tag_config(tag, foreground="blue")
+            else:
+                # нет episodeId — нечего дергать
+                self.text.tag_config(tag, foreground="gray")
+
+    def _fetch_and_render_torrents(self, release_identity: str):
+        """Догружаем /anime/releases/{id|alias}, рисуем торрент-ссылки под текущим курсором."""
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/{urllib.parse.quote(release_identity)}"
+        data = self._get_json(url)
+        if not data:
+            self.text.insert(tk.END, " (ошибка загрузки)\n")
+            return
+        a = self._adapt_release(data)
+        torrents = (a.get("torrents") or {}).get("list") or []
+        if not torrents:
+            self.text.insert(tk.END, " (торрентов нет)\n")
+            return
+        self.text.insert(tk.END, "\n")
+        for torrent in torrents:
+            url = torrent.get("url") or torrent.get("magnet")
+            quality = (torrent.get("quality") or {}).get("string") or "Качество не указано"
+            if url:
+                start = self.text.index(tk.END)
+                self.text.insert(tk.END, f"Скачать ({quality})", ("hyperlink_torrents", len(self.discovered_links)))
+                end = self.text.index(tk.END)
+                self.text.insert(end, "\n")
+                self.text.tag_bind("hyperlink_torrents", "<Button-1>", self.on_link_click)
+                self.discovered_links.append(url)
+                self.text.tag_add("hyperlink_torrents", start, end)
+                self.text.tag_config("hyperlink_torrents", foreground="blue")
+
+    def _normalize_stream_url(self, url: str) -> str:
+        """
+        Режем параметры у http(s)-ссылок: убираем ?query и #fragment.
+        magnet и локальные пути не трогаем.
+        """
+        if not url or url.startswith("magnet:?"):
+            return url
+        if url.startswith("http://") or url.startswith("https://"):
+            s = urlsplit(url)
+            return urlunsplit((s.scheme, s.netloc, s.path, "", ""))  # без query и fragment
+        return url
+
+    def play_episode_by_id(self, episode_id: str):
+        """
+        Тянем /anime/releases/episodes/{id}, выбираем hls по качеству и сразу запускаем плеер.
+        """
+        try:
+            url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/episodes/{episode_id}"
+            payload = self._get_json(url)
+            if not payload:
+                self.log_message(f"Episode {episode_id}: empty payload")
+                return
+
+            hls = self._flatten_hls(payload)
+            if not hls:
+                self.log_message(f"Episode {episode_id}: HLS not found")
+                print("HLS не найдено в ответе эпизода")
+                return
+
+            q = self.quality_var.get()
+            m3u8 = hls.get(q) or hls.get("hls_1080") or hls.get("hls_720") or hls.get("hls_480")
+            if not m3u8:
+                print("Для эпизода не нашлось подходящего качества")
+                return
+
+            if not (m3u8.startswith("http://") or m3u8.startswith("https://")):
+                m3u8 = "https://" + self.stream_video_url + m3u8
+
+            m3u8 = self._normalize_stream_url(m3u8)
+
+            try:
+                if m3u8 not in self.discovered_links:
+                    self.discovered_links.append(m3u8)
+            except Exception:
+                pass
+
+            vlc_path = self.video_player_path
+            subprocess.Popen([vlc_path, m3u8])
+            self.log_message(f"Play episode {episode_id} -> {m3u8}")
+        except Exception as e:
+            self.log_message(f"play_episode_by_id error: {e}")
+            print(f"Ошибка воспроизведения эпизода: {e}")
+
+    def get_schedule_now(self):
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/schedule/now"
+        self._fetch_to_temp_and_render(url, self.display_schedule_now)
+
+    def get_schedule_week(self):
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/schedule/week"
+        self._fetch_to_temp_and_render(url, self.display_schedule_week)
+
+    def _fetch_and_show_schedule(self, api_url: str, mode: str):
         start_time = time.time()
         response = requests.get(api_url)
         end_time = time.time()
         utils_folder = 'temp'
-        if not os.path.exists(utils_folder):
-            os.makedirs(utils_folder)
-            self.log_message(f"Created '{utils_folder}' folder.")
+        os.makedirs(utils_folder, exist_ok=True)
         utils_json = os.path.join(utils_folder, 'response.json')
+
         if response.status_code == 200:
             with open(utils_json, 'w', encoding='utf-8') as file:
                 file.write(response.text)
-            self.display_schedule()
-            num_items = len(response.text) if response.text else 0
-            self.logger.debug(f"Successfully fetched schedule for day {day}. URL: {api_url}, "
-                              f"Time taken: {end_time - start_time:.2f} seconds.")
+            # разный рендер в зависимости от структуры
+            if mode == "now":
+                self.display_schedule_now()
+            else:
+                self.display_schedule_week()
+            self.logger.debug(f"Fetched schedule ({mode}). URL: {api_url}, "
+                              f"Time: {end_time - start_time:.2f}s, Size: {len(response.text)}")
         else:
-            error_message = f"Error {response.status_code}: Unable to fetch schedule data from the API."
-            if response.text:
-                try:
-                    error_data = json.loads(response.text)
-                    if "error" in error_data:
-                        error_message += f" Error message: {error_data['error']['message']}"
-                except json.JSONDecodeError:
-                    pass
+            error_message = f"Error {response.status_code}: Unable to fetch schedule"
             self.log_message(error_message)
             print(error_message)
 
     def search_by_title(self):
         search_text = self.title_search_entry.get()
-        if search_text:
-            api_url = f"https://api.{self.base_url}/{self.api_version}/title/search?search={search_text}"
-            start_time = time.time()
-            response = requests.get(api_url)
-            end_time = time.time()
-            utils_folder = 'temp'
-            if not os.path.exists(utils_folder):
-                os.makedirs(utils_folder)
-                self.log_message(f"Created 'utils_folder' folder.")
-            utils_json = os.path.join(utils_folder, 'response.json')
-            if response.status_code == 200:
-                with open(utils_json, 'w', encoding='utf-8') as file:
-                    file.write(response.text)
-                self.display_info()
-                num_items = len(response.text) if response.text else 0
-                self.logger.debug(f"Successfully fetched search results for '{search_text}'. URL: {api_url}, "
-                                  f"Time taken: {end_time - start_time:.2f} seconds, "
-                                  f"Response size: {num_items} bytes.")
-            else:
-                error_message = f"Error {response.status_code}: Unable to fetch data from the API."
-                if response.text:
-                    try:
-                        error_data = json.loads(response.text)
-                        if "error" in error_data:
-                            error_message += f" Error message: {error_data['error']['message']}"
-                    except json.JSONDecodeError:
-                        pass
-                self.log_message(error_message)
-                print(error_message)
-        else:
+        if not search_text:
             print("Search text is empty.")
+            return
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/{urllib.parse.quote(search_text)}"
+        self._fetch_to_temp_and_render(url, self.display_info)
 
     def random_title(self):
-        api_url = f"https://api.{self.base_url}/{self.api_version}/title/random"
-        start_time = time.time()
-        response = requests.get(api_url)
-        end_time = time.time()
-        utils_folder = 'temp'
-        if not os.path.exists(utils_folder):
-            os.makedirs(utils_folder)
-            self.log_message(f"Created 'uutils_folder' folder.")
-        utils_json = os.path.join(utils_folder, 'response.json')
-        if response.status_code == 200:
-            with open(utils_json, 'w', encoding='utf-8') as file:
-                file.write(response.text)
-            with open(utils_json, 'r', encoding='utf-8') as file:
-                existing_data = json.load(file)
-            new_data = {
-                "list": [
-                    existing_data
-                ],
-                "pagination": {
-                    "pages": 6,
-                    "current_page": 1,
-                    "items_per_page": 5,
-                    "total_items": 26
-                }
-            }
-            with open(utils_json, 'w', encoding='utf-8') as file:
-                json.dump(new_data, file, ensure_ascii=False, indent=4)
-            self.display_info()
-            num_items = len(response.text) if response.text else 0
-            self.logger.debug(f"Successfully fetched random title. URL: {api_url}, "
-                              f"Time taken: {end_time - start_time:.2f} seconds, "
-                              f"Response size: {num_items} bytes.")
-        else:
-            error_message = f"Error {response.status_code}: Unable to fetch data from the API."
-            if response.text:
-                try:
-                    error_data = json.loads(response.text)
-                    if "error" in error_data:
-                        error_message += f" Error message: {error_data['error']['message']}"
-                except json.JSONDecodeError:
-                    pass
-            self.log_message(error_message)
-            print(error_message)
+        url = f"https://{self.base_url}/api/{self.api_version}/anime/releases/random?limit=1"
+        self._fetch_to_temp_and_render(url, self.display_info)
 
     def display_title_info(self, title, index, show_description=True):
-        """
-        Вспомогательная функция для отображения информации о тайтле.
-        """
         self.text.insert(tk.END, "---\n\n")
-        ru_name = title["names"].get("ru", "Название отсутствует")
-        en_name = title["names"].get("en", "Название отсутствует")
-        announce = str(title.get("announce", "Состояние отсутствует"))
-        type_full_string = str(title["type"].get("full_string", {}))
-        status = title["status"].get("string", "Статус отсутствует")
-        description = title.get("description", "Описание отсутствует")
-        genres = ", ".join(title.get("genres", ["Жанры отсутствуют"]))
-        season_info = title.get("season", {})
-        year_str = str(season_info.get("year", "Год отсутствует"))
 
-        self.text.insert(tk.END, "Название: " + ru_name + "\n")
-        self.text.insert(tk.END, "Название: " + en_name + "\n\n")
-        self.text.insert(tk.END, "Анонс: " + announce + "\n")
-        self.text.insert(tk.END, type_full_string + "\n")
-        self.text.insert(tk.END, "Статус: " + (status if status else "Статус отсутствует") + "\n")
+        # имена (старое и новое)
+        names = title.get("names") or {}
+        ru_name = names.get("ru") or "Название отсутствует"
+        en_name = names.get("en") or names.get("alternative") or ""
+
+        type_full_string = (title.get("type") or {}).get("full_string") or ""
+        status = (title.get("status") or {}).get("string") or "Статус отсутствует"
+        description = title.get("description") or ""
+        genres = ", ".join(title.get("genres") or []) or "Жанры отсутствуют"
+        year_str = str((title.get("season") or {}).get("year") or "" or "Год отсутствует")
+        title_id = title.get("title_id") or ""
+        code = title.get("code") or ""
+
+        self.text.insert(tk.END, f"Название: {ru_name}\n")
+        if en_name:
+            self.text.insert(tk.END, f"Название: {en_name}\n\n")
+        else:
+            self.text.insert(tk.END, "\n")
+        if type_full_string:
+            self.text.insert(tk.END, type_full_string + "\n")
+        self.text.insert(tk.END, f"Статус: {status}\n")
         if show_description and description:
-            self.text.insert(tk.END, "Описание: " + description + "\n")
-        self.text.insert(tk.END, "Жанры: " + (genres if genres else "Жанры отсутствуют") + "\n")
-        self.text.insert(tk.END, "Год: " + (year_str if year_str else "Год отсутствует") + "\n")
+            self.text.insert(tk.END, f"Описание: {description}\n")
+        self.text.insert(tk.END, f"Жанры: {genres}\n")
+        if year_str:
+            self.text.insert(tk.END, f"Год: {year_str}\n")
         self.text.insert(tk.END, "---\n\n")
 
-        link_id = f"title_link_{index}"
-        self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", en_name))
-        self.text.insert(tk.END, "\n\n")
-        self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
-                           lambda event, en=en_name: self.on_title_click(event, en))
+        # кликабельная ссылка на страницу релиза (если адаптер её вложил)
+        page_url = title.get("_page_url")
+        if page_url:
+            link_id = f"title_link_{index}"
+            self.text.insert(tk.END, "Открыть страницу тайтла", (f"hyperlink_title_{link_id}", page_url))
+            self.text.insert(tk.END, "\n\n")
+            self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
+                               lambda event, en=code: self.on_title_click(event, en))
 
         self.get_poster(title)
 
-        # Обработка серий
-        episodes_found = False
-        selected_quality = self.quality_var.get()
-        for episode in title["player"]["list"].values():
-            if "hls" in episode:
-                hls = episode["hls"]
-                if selected_quality in hls:
-                    url = hls[selected_quality]
-                    if url is not None:
-                        self.text.insert(tk.END, f"Серия {episode['episode']}: ")
-                        hyperlink_start = self.text.index(tk.END)
-                        self.text.insert(hyperlink_start, "Смотреть",
-                                         ("hyperlink_episodes", len(self.discovered_links)))
-                        hyperlink_end = self.text.index(tk.END)
-                        self.text.insert(hyperlink_end, "\n")
-                        self.text.tag_bind("hyperlink_episodes", "<Button-1>", self.on_link_click)
-                        self.discovered_links.append(url)
-                        self.text.tag_add("hyperlink_episodes", hyperlink_start, hyperlink_end)
-                        self.text.tag_config("hyperlink_episodes", foreground="blue")
-                        episodes_found = True
-        if not episodes_found:
-            self.text.insert(tk.END, "\nСерии не найдены! Выберите другое качество или исправьте запрос поиска.\n")
+        # Серии: в v1 прямых hls нет — не валимся, просто ничего не рисуем, если старого поля нет
+        release_identity = self._release_identity(title)
+        self._render_episodes_list(release_identity, title=title)
+
         self.text.insert(tk.END, "\n")
 
-        # Обработка торрентов
+        # Ленивая подгрузка: для now/week/random где торрентов нет в ответе
         torrents_found = False
-        if "torrents" in title and "list" in title["torrents"]:
-            for torrent in title["torrents"]["list"]:
-                url = torrent.get("url")
-                quality = torrent["quality"].get("string", "Качество не указано")
-                if url:
-                    hyperlink_start = self.text.index(tk.END)
-                    self.text.insert(tk.END, f"Скачать ({quality})", ("hyperlink_torrents", len(self.discovered_links)))
-                    hyperlink_end = self.text.index(tk.END)
-                    self.text.insert(hyperlink_end, "\n")
-                    self.text.tag_bind("hyperlink_torrents", "<Button-1>", self.on_link_click)
-                    self.discovered_links.append(url)
-                    self.text.tag_add("hyperlink_torrents", hyperlink_start, hyperlink_end)
-                    self.text.tag_config("hyperlink_torrents", foreground="blue")
-                    torrents_found = True
-
         if not torrents_found:
-            self.text.insert(tk.END, "\nТорренты не найдены\n")
+            release_identity = self._release_identity(title)  # alias или id
+            if release_identity:
+                tag = f"hyperlink_fetch_torrents_{release_identity}"
+                self.text.insert(tk.END, "\nТорренты не найдены. ")
+                self.text.insert(tk.END, "Загрузить торренты", (tag,))
+                self.text.insert(tk.END, "\n\n")
+
+                def _cb(ev, rid=release_identity):
+                    self._fetch_and_render_torrents(rid)
+
+                self.text.tag_bind(tag, "<Button-1>", _cb)
+                self.text.tag_config(tag, foreground="blue")
+            else:
+                self.text.insert(tk.END, "\nТорренты не найдены\n")
         self.text.insert(tk.END, "\n")
 
-    def display_schedule(self):
+    def display_schedule_now(self):
         try:
             self.clear_cache_file()
-            data = self.read_json_data()
+            data = self.read_json_data()  # уже {"list":[...]} благодаря адаптеру
             self.text.delete("1.0", tk.END)
             self.clear_poster()
-            if data is not None:
-                for day_info in data:
-                    day = day_info.get("day")
-                    title_list = day_info.get("list")
-                    day_word = self.days_of_week[day]
-                    self.text.insert(tk.END, f"День недели: {day_word}\n\n")
-                    for i, title in enumerate(title_list):
-                        self.display_title_info(title, i, show_description=False)
+            items = (data or {}).get("list") or []
+            self.text.insert(tk.END, "Расписание на сегодня/завтра/вчера:\n\n")
+            for i, title in enumerate(items):
+                self.display_title_info(title, i, show_description=False)
         except Exception as e:
-            error_message = f"An error occurred while displaying the schedule: {str(e)}"
-            self.log_message(error_message)
-            print(error_message)
+            msg = f"An error occurred while displaying NOW schedule: {e}"
+            self.log_message(msg)
             self.text.delete("1.0", tk.END)
-            self.text.insert(tk.END, error_message)
+            self.text.insert(tk.END, msg)
+
+    def display_schedule_week(self):
+        try:
+            self.clear_cache_file()
+            data = self.read_json_data()  # уже {"list":[...]}
+            self.text.delete("1.0", tk.END)
+            self.clear_poster()
+            items = (data or {}).get("list") or []
+            if not items:
+                self.text.insert(tk.END, "Пусто")
+                return
+            self.text.insert(tk.END, "Расписание на неделю:\n\n")
+            for i, title in enumerate(items):
+                self.display_title_info(title, i, show_description=False)
+        except Exception as e:
+            msg = f"An error occurred while displaying WEEK schedule: {e}"
+            self.log_message(msg)
+            self.text.delete("1.0", tk.END)
+            self.text.insert(tk.END, msg)
 
     def display_info(self):
         try:

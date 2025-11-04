@@ -358,9 +358,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 
 ### 8.32. simple callback
 - [x] add ongoing titles button
-- [+] Add status for buttons (simple callback)
-- [ ] fix skip credits when null, null
-- [ ] fix app version 0.1.x 
+- [x] Add status for buttons (simple callback) - show in pagination 
+- [x] fix skip credits
+- [x] fix saving episode no. 0
+- [x] fix app lite version for api v1 
 
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes

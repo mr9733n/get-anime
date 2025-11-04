@@ -88,7 +88,6 @@ class AnimePlayerAppVer1:
     def load_config(self):
         # Get configuration values
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.video_player_path, self.torrent_client_path = self.setup_paths()

@@ -528,10 +528,7 @@ class SaveManager:
         dict:       upsert одной записи + ОБЯЗАТЕЛЬНОЕ удаление покрытых диапазонов,
                     чтобы 1–4 сразу чистил 1–3 даже "в производстве"
         """
-        import json, re
-        from datetime import datetime, timezone
-        from sqlalchemy import select, delete, func, case, and_, exists
-        from sqlalchemy.orm import aliased
+
         T = Torrent
 
         # ---------- utils ----------

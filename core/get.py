@@ -540,7 +540,7 @@ class GetManager:
                 return []
 
     def get_titles_by_status(self, status_code):
-        """Получает список title_id по году выпуска."""
+        """Получает список title_id по status_code."""
         with self.Session as session:
             try:
                 query = session.query(Title).filter(Title.status_code == status_code)
@@ -553,10 +553,10 @@ class GetManager:
                 return []
 
     def get_ongoing_titles(self, batch_size=None, offset=0):
-        """Получает список title_id по году выпуска."""
+        """Получает список ongoing titles."""
         with self.Session as session:
             try:
-                query = session.query(Title).filter(or_(Title.status_code == 1, Title.status_code == 3))
+                query = session.query(Title).filter(Title.status_code.in_([1, 3]))
                 if batch_size:
                     query = query.offset(offset).limit(batch_size)
                 titles = query.all()

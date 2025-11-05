@@ -1,10 +1,10 @@
 Note: This application is for personal use only and should not be used to infringe copyright or other laws.
 
-[Rus lang](https://github.com/mr9733n/get-anime/tree/main/static/rus)
+[Rus lang](https://github.com/mr9733n/get-anime/tree/main/static/rus/README.md)
 
 # AnimePlayerApp
 
-[Screenshots](https://github.com/mr9733n/get-anime/tree/main/static)
+[Screenshots](https://github.com/mr9733n/get-anime/tree/main/static/Readme.md)
 
 AnimePlayerApp is a Qt-based application for viewing and managing anime content. It creates a local database for storing links and posters, allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using the built-in player or VLC Media Player.
     

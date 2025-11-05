@@ -362,6 +362,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix skip credits
 - [x] fix saving episode no. 0
 - [x] fix app lite version for api v1 
+- [x] optimizations for app lite
 
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes

@@ -91,7 +91,7 @@ class UIGenerator:
             # TODO: remove unused logic
             # if image not symbol
             # reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 16}'
-            reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 6}'
+            reload_link = f'<a href="reload_info/{title_id}" title="Reload title">{image_html}</a>{blank_spase * 4}'
             return reload_link
         except Exception as e:
             error_message = f"Error in generate_reload_button_html: {str(e)}"

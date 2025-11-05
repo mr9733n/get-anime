@@ -1,4 +1,6 @@
-    AnimePlayer 0.3
+    AnimePlayerApp 0.3
+    AnimePlayerAppLite 0.1
+    AnimePlayerVlc 0.3
     Copyright (C) 2023-2025  mr9733n, Bunshi666
 
     This program is free software and not production version; 

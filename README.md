@@ -93,4 +93,11 @@ Create complex playlists from multiple titles using the corresponding buttons.
 When the application closes, the current state is saved and restored the next time it is launched.
 
 ## Logging:
+
 The application maintains a log of its operation, saving the logs in the logs folder.
+
+## Other:
+
+[Sql commands](https://github.com/mr9733n/get-anime/blob/main/sql_commands.md)
+
+[Todo](https://github.com/mr9733n/get-anime/blob/main/anime_player_app_roadmap.md)

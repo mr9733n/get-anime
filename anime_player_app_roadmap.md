@@ -316,7 +316,6 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixed saving date in torrents tables
 - [x] Fixed updating torrents in torrents tables
 - [x] Fixed cleaning torrent duplicates in enhanced_db_manager
-- [ ] Remove unused logic
 
 ### 8.25. Some fixes
 - [x] save torrent fix for api v3
@@ -363,6 +362,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix saving episode no. 0
 - [x] fix app lite version for api v1 
 - [x] optimizations for app lite
+- [ ] Remove unused logic
 
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes

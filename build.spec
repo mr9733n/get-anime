@@ -17,6 +17,44 @@ from datetime import datetime
 from pathlib import Path
 from PyInstaller.building.api import PYZ, COLLECT, EXE
 from PyInstaller.building.build_main import Analysis
+from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
+
+
+# Compatibility shim: PyInstaller 5.x removed 'Version'. Build VSVersionInfo from simple kwargs.
+def Version(*, file_version, product_version, company_name, file_description, internal_name, legal_copyright, original_filename, product_name):
+    def _tuple4(v):
+        parts = [int(p) for p in str(v).split('.') if p.isdigit()]
+        parts = (parts + [0,0,0,0])[:4]
+        return tuple(parts)
+    filevers = _tuple4(file_version)
+    prodvers = _tuple4(product_version)
+    return VSVersionInfo(
+        ffi=FixedFileInfo(
+            filevers=filevers,
+            prodvers=prodvers,
+            mask=0x3f,
+            flags=0x0,
+            OS=0x4,
+            fileType=0x1,
+            subtype=0x0,
+            date=(0, 0),
+        ),
+        kids=[
+            StringFileInfo([
+                StringTable('040904B0', [
+                    StringStruct('CompanyName', company_name),
+                    StringStruct('FileDescription', file_description),
+                    StringStruct('FileVersion', str(file_version)),
+                    StringStruct('InternalName', internal_name),
+                    StringStruct('LegalCopyright', legal_copyright),
+                    StringStruct('OriginalFilename', original_filename),
+                    StringStruct('ProductName', product_name),
+                    StringStruct('ProductVersion', str(product_version)),
+                ])
+            ]),
+            VarFileInfo([VarStruct('Translation', [0x0409, 1200])]),
+        ]
+    )
 
 # ---
 # main.spec
@@ -183,6 +221,28 @@ v = Analysis(
 
 pyz_vlc = PYZ(v.pure, v.zipped_data, cipher=block_cipher)
 
+block = {
+    "FileVersion": "0.3.8.32",
+    "ProductVersion": "0.3.8",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayerVlc",
+    "InternalName": "AnimePlayerVlc",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "AnimePlayerVlc.exe",
+    "ProductName": "AnimePlayerVlc",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
+
 exe_vlc = EXE(
     pyz_vlc,
     v.scripts,
@@ -197,6 +257,7 @@ exe_vlc = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
+    version=version_resource,
     onefile=False,
 )
 
@@ -256,6 +317,27 @@ try:
 except Exception as e:
     print(f"❌ Error updating app.py with VLC player hash: {e}")
 
+block = {
+    "FileVersion": "0.3.8.32",
+    "ProductVersion": "0.3.8",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayer",
+    "InternalName": "AnimePlayer",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "AnimePlayer.exe",
+    "ProductName": "AnimePlayer",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
 
 a = Analysis(
     ['main.py'],
@@ -331,6 +413,7 @@ exe = EXE(
 	upx_exclude=[],
 	runtime_tmpdir=None,
 	console=False,
+    version=version_resource,
 	onefile=False,  # Important for imports to set to False to keep everything in the same folder
 	)
 
@@ -351,6 +434,28 @@ coll = COLLECT(
 
 block_cipher = None
 project_dir = os.getcwd()
+
+block = {
+    "FileVersion": "0.1.10.0",
+    "ProductVersion": "0.1.10",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayerLite",
+    "InternalName": "AnimePlayerLite",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "AnimePlayerLite.exe",
+    "ProductName": "AnimePlayerLite",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
 
 a = Analysis(
     ['app/tinker_v1/app.py'],
@@ -382,6 +487,7 @@ exe = EXE(
 	upx_exclude=[],
 	runtime_tmpdir=None,
 	console=True,
+    version=version_resource,
 	onefile=False,  # Important for imports to set to False to keep everything in the same folder
 )
 
@@ -428,6 +534,28 @@ with open('merge_utility.py', 'w', encoding='utf-8') as f:
 
 print(f"✅ File {merge_utility_path} updated successfully.")
 
+block = {
+    "FileVersion": "0.0.0.2",
+    "ProductVersion": "0.0.0.2",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayerMergeUtilityApp",
+    "InternalName": "AnimePlayerMergeUtilityApp",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "merge_utility.exe",
+    "ProductName": "AnimePlayerMergeUtilityApp",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
+
 a = Analysis(['merge_utility.py'],
              pathex=[
                  project_dir,
@@ -459,6 +587,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
+          version=version_resource,
           console=True)
 
 coll = COLLECT(exe,
@@ -516,6 +645,28 @@ if not os.path.exists(pyzbar_lib_path1):
 if not os.path.exists(pyzbar_lib_path2):
     print(f"⚠️ File not found: {pyzbar_lib_path2}")
 
+block = {
+    "FileVersion": "0.0.0.2",
+    "ProductVersion": "0.0.0.2",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayerSyncApp",
+    "InternalName": "AnimePlayerSyncApp",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "sync.exe",
+    "ProductName": "AnimePlayerSyncApp",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
+
 a = Analysis(
     ['sync.py'],
 	pathex=[
@@ -551,6 +702,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
+          version=version_resource,
           console=True)
 
 coll = COLLECT(exe,

@@ -21,10 +21,7 @@ from tkinter.ttk import Combobox
 from urllib.parse import urlparse, urlsplit, urlunsplit
 from logging.handlers import TimedRotatingFileHandler
 
-# Suppress urllib3 NotOpenSSLWarning
 warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
-
-# Suppress Tkinter deprecation warning
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
 
 APP_MINOR_VERSION = '0.1.10'
@@ -42,7 +39,7 @@ class ConfigManager:
     def get_torrent_client_path(self, platform_name):
         if platform_name == "Windows":
             return self.get_setting('Settings', 'win_torrent_client_path')
-        elif platform_name == "Darwin":  # macOS
+        elif platform_name == "Darwin":
             return self.get_setting('Settings', 'mac_torrent_client_path')
         else:
             return None
@@ -50,10 +47,10 @@ class ConfigManager:
     def get_video_player_path(self, platform_name):
         if platform_name == "Windows":
             return self.get_setting('Settings', 'win_video_player_path')
-        elif platform_name == "Darwin":  # macOS
+        elif platform_name == "Darwin":
             return self.get_setting('Settings', 'mac_video_player_path')
         else:
-            return None  # Handle other platforms if needed
+            return None
 
 
 class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
@@ -78,9 +75,7 @@ class AnimePlayerAppVer1:
         self.window = window
         self.window.title("Anime Player Lite")
         self.http = requests.Session()
-        self.http.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.660 YaBrowser/23.9.5.660 Yowser/2.5 Safari/537.36'})
-
+        self.http.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.660 YaBrowser/23.9.5.660 Yowser/2.5 Safari/537.36'})
         self.window.geometry("1110x760")
         self.init_ui()
         self.init_logger(log_level)
@@ -92,14 +87,13 @@ class AnimePlayerAppVer1:
         self.poster_data = []
         self.current_poster_index = 0
         self.clear_cache_file()
-        self.executor = ThreadPoolExecutor(max_workers=6)  # ограниченный пул
+        self.executor = ThreadPoolExecutor(max_workers=6)
         self._is_saving = False
         self._load_posters = True
 
         atexit.register(self.delete_response_json)
 
     def load_config(self):
-        # Get configuration values
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
@@ -110,8 +104,6 @@ class AnimePlayerAppVer1:
         current_platform = platform.system()
         video_player_path = self.config_manager.get_video_player_path(current_platform)
         torrent_client_path = self.config_manager.get_torrent_client_path(current_platform)
-
-        # Return paths to be used in the class
         return video_player_path, torrent_client_path
 
     def init_ui(self):
@@ -119,23 +111,18 @@ class AnimePlayerAppVer1:
         self.btn_now.grid(row=0, column=8, sticky="ew")
         self.btn_week = ttk.Button(self.window, text="Week", command=self.get_schedule_week)
         self.btn_week.grid(row=0, column=9, sticky="ew")
-        # Create a label and entry for title search
         self.title_search_label = ttk.Label(self.window, text="Поиск по названию:")
         self.title_search_label.grid(row=0, column=0)
         self.title_search_entry = ttk.Entry(self.window)
         self.title_search_entry.grid(row=0, column=1, columnspan=5, sticky="ew")
-        # Create a button for displaying information1
         self.display_button = ttk.Button(self.window, text="Отобразить информацию", command=self.search_by_title)
         self.display_button.grid(row=0, column=6, sticky="ew")
         self.display_button = ttk.Button(self.window, text="Random", command=self.random_title)
         self.display_button.grid(row=0, column=7, sticky="ew")
-        # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.save_button = ttk.Button(self.window, text="Сохранить плейлист", command=self.save_playlist)
         self.save_button.grid(row=4, column=0, columnspan=3, sticky="ew")
-        # Create a "Сохранить плейлист" button and bind it to the save_playlist function
         self.play_button = ttk.Button(self.window, text="Воспроизвести плейлист", command=self.all_links_play)
         self.play_button.grid(row=5, column=0, columnspan=3, sticky="ew")
-        # Create a dropdown menu for selecting quality using Combobox
         self.quality_label = ttk.Label(self.window, text="Качество:")
         self.quality_label.grid(row=3, column=8)
         self.quality_var = tk.StringVar()
@@ -147,11 +134,10 @@ class AnimePlayerAppVer1:
         self.refresh_button = ttk.Button(self.window, text="Обновить", command=self.update_quality_and_refresh)
         self.refresh_button.grid(row=4, column=9, sticky="ew")
         self.window.grid_columnconfigure(1, weight=3)
-        # Create a text field for displaying information
         self.text = tk.Text(self.window, wrap=tk.WORD, cursor="hand2")
         self.text.grid(row=2, column=3, columnspan=7, sticky="nsew")
         self.text.tag_configure("hyperlink", foreground="blue")
-        self.poster_label = tk.Label(self.window)  # Создайте атрибут poster_label
+        self.poster_label = tk.Label(self.window)
         self.poster_label.grid(row=2, column=0, columnspan=3)
         self.next_poster_button = ttk.Button(self.window, text="Следующий постер", command=self.change_poster)
         self.next_poster_button.grid(row=3, column=0, columnspan=3, sticky="ew")
@@ -160,13 +146,11 @@ class AnimePlayerAppVer1:
         self.logger.debug(message)
 
     def init_logger(self, log_level):
-        # Create logger
-        self.logger = logging.getLogger("AnimePlayerAppVer1")
+        self.logger = logging.getLogger("AnimePlayerLiteAppVer0.1")
         self.logger.setLevel(log_level)
         log_folder = 'logs'
         if not os.path.exists(log_folder):
             os.makedirs(log_folder)
-        # Define log file path with current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         log_file = os.path.join(log_folder, f"{self.log_filename}.txt")
         print(f"Log file path: {log_file}")
@@ -186,7 +170,6 @@ class AnimePlayerAppVer1:
             with open(utils_json, 'r', encoding='utf-8') as file:
                 raw = json.load(file)
             self.log_message(f"Successfully read data from {utils_json}.")
-            # Адаптируем под единый вид
             return self._adapt_payload_for_display_list(raw)
         except FileNotFoundError:
             self.log_message(f"File {utils_json} not found.")
@@ -246,21 +229,18 @@ class AnimePlayerAppVer1:
             self.log_message(error_message)
             print(error_message)
 
-    # Обновленная функция для обработки кликов по ссылкам
     def on_link_click(self, event):
         try:
             tags = event.widget.tag_names(tk.CURRENT)
             idx = next(int(t.split("_")[-1]) for t in tags if t.startswith("hyperlink_torrent_"))
             link = self.discovered_links[idx]
 
-            # 1) magnet-ссылки — сразу в торрент-клиент
             if link.startswith('magnet:?'):
                 torrent_client_path = self.torrent_client_path
                 subprocess.Popen([torrent_client_path, link])
                 self.log_message(f"Opened magnet in client: {link}")
                 return
 
-            # 2) прямой API-URL на .torrent: /api/v1/anime/torrents/{hashOrId}/file
             if '/api/' in link and '/anime/torrents/' in link and link.endswith('/file'):
                 torrent_save_path = 'torrents'
                 os.makedirs(torrent_save_path, exist_ok=True)
@@ -278,15 +258,14 @@ class AnimePlayerAppVer1:
             self.log_message(error_message)
             print(error_message)
 
-    # Функция для скачивания торрента
     def download_torrent(self, url, save_path):
         try:
             parsed_url = urlparse(url)
             filename = os.path.basename(parsed_url.path)
             response = self.http.get(url, timeout=30)
-            response.raise_for_status()  # Проверка на ошибки при скачивании
+            response.raise_for_status()
             if not filename:
-                filename = "torrent"  # Если путь пустой, зададим имя по умолчанию
+                filename = "torrent"
             torrent_path = os.path.join(save_path, filename)
             with open(torrent_path, 'wb') as file:
                 file.write(response.content)
@@ -301,12 +280,11 @@ class AnimePlayerAppVer1:
     def get_poster(self, title_data):
         try:
             self.clear_poster()
-
             poster_url = None
-            # новый v1
+
             if "posters" in title_data and "small" in title_data["posters"]:
                 poster_url = title_data["posters"]["small"].get("url")
-            # если адаптер не заполнил (или пришло старое) — попробуем прямое поле
+
             if not poster_url and "poster" in title_data:
                 p = title_data["poster"] or {}
                 poster_url = p.get("optimized", {}).get("preview") or p.get("preview") or p.get("src")
@@ -316,7 +294,6 @@ class AnimePlayerAppVer1:
 
             if poster_url:
                 self.write_poster_links([poster_url])
-                # названия — через безопасные ключи
                 name_ru = (title_data.get("names") or {}).get("ru") or ""
                 self.show_poster(poster_url)
                 self.logger.debug(f"Successfully GET poster for title '{name_ru}'. URL: '{poster_url}' ")
@@ -409,14 +386,10 @@ class AnimePlayerAppVer1:
     def change_poster(self):
         try:
             poster_links = self.read_poster_links()
-            # print(f"{[poster_links]}")
             if poster_links:
                 self.clear_poster()
                 self.current_poster_index = (self.current_poster_index + 1) % len(poster_links)
-                # print(self.current_poster_index)
                 current_poster_url = poster_links[self.current_poster_index]
-                # print(current_poster_url)
-                # print(current_poster_filename)
                 self.show_poster(current_poster_url)
                 self.logger.debug(f"Successfully CHANGE poster. URL: '{current_poster_url}' ")
         except requests.exceptions.RequestException as e:
@@ -445,9 +418,7 @@ class AnimePlayerAppVer1:
                 return
 
             q = self.quality_var.get()
-            discovered = []  # локальный список, потом сольём в self.discovered_links
-
-            # 1) Сначала соберём список episode_id для всех тайтлов
+            discovered = []
             episode_ids = []
             for title in data["list"]:
                 episodes = (title.get("_prefetched_episodes") or [])
@@ -468,7 +439,6 @@ class AnimePlayerAppVer1:
             total = len(episode_ids)
             done = 0
 
-            # 2) Тянем детали эпизодов параллельно с ограничением по пулу
             def fetch_hls(eid):
                 detail = self._get_json(self._api(f"anime/releases/episodes/{eid}")) or {}
                 hls = self._flatten_hls(detail)
@@ -496,14 +466,12 @@ class AnimePlayerAppVer1:
                     done += 1
                     if done % 10 == 0 or done == total:
                         self.window.after(0, lambda d=done, t=total: self._set_status(f"Собрано {d}/{t} потоков..."))
-
-            discovered = list(dict.fromkeys(discovered))  # уберём дубли, сохраняя порядок
+            discovered = list(dict.fromkeys(discovered))
 
             if not discovered:
                 self.window.after(0, lambda: self._set_status("Не найдено пригодных HLS-потоков."))
                 return
 
-            # 3) Запишем m3u (имя как и раньше)
             playlists_folder = 'playlists'
             os.makedirs(playlists_folder, exist_ok=True)
             name_part = data['list'][0].get('code') or data['list'][0].get('id') or "playlist"
@@ -513,7 +481,6 @@ class AnimePlayerAppVer1:
                 for url in discovered:
                     f.write(f"#EXTINF:-1,{os.path.basename(url)}\n{url}\n")
 
-            # 4) Атомарно обновим self.discovered_links и сообщим пользователю
             def _finish_ok():
                 self.discovered_links = discovered
                 self.playlist_name = playlist_path
@@ -528,7 +495,6 @@ class AnimePlayerAppVer1:
 
     def _set_status(self, text):
         try:
-            # выводим в текстовую область внизу
             self.text.insert(tk.END, f"{text}\n")
             self.text.see(tk.END)
         except Exception:
@@ -561,48 +527,32 @@ class AnimePlayerAppVer1:
             return path
         return f"{self._host()}{path if path.startswith('/') else f'/{path}'}"
 
-    # === ADAPTERS FOR NEW V1 API ===
-
     def _adapt_release(self, r: dict) -> dict:
         """Приводим релиз v1 к 'почти-старому' виду, чтобы display_* не падали."""
         if not isinstance(r, dict):
             return {}
 
         title_id = r.get("id")
-        # name(s)
         name = r.get("name", {}) or {}
         names = {
             "ru": name.get("main") or "",
             "en": name.get("english") or "",
             "alternative": name.get("alternative") or ""
         }
-
-        # type
         t = r.get("type", {}) or {}
         type_full = t.get("description") or t.get("value") or ""
         _type = {"full_string": type_full}
-
-        # status (в v1 статуса-строки нет — соберём сами)
         is_ongoing = bool(r.get("is_ongoing"))
         status_string = "Онгоинг" if is_ongoing else "Завершён"
         status = {"string": status_string}
-
-        # genres (в v1 это массив объектов c name)
         genres_raw = r.get("genres") or []
         genres = [g.get("name") for g in genres_raw if isinstance(g, dict) and g.get("name")]
-
-        # year / season совместим под старое поле "season.year"
         season = {"year": r.get("year")}
-
-        # poster (в v1 поле poster.*)
         poster = r.get("poster") or {}
         poster_url = poster.get("optimized", {}).get("preview") or poster.get("preview") or poster.get("src")
         if poster_url and not poster_url.startswith("http"):
             poster_url = self._abs(poster_url)
-
         posters = {"small": {"url": poster_url}} if poster_url else {}
-
-        # торренты (v1): есть magnet, filename и самое главное — hash/id -> /anime/torrents/{hashOrId}/file
         torrents_list = []
         for t in r.get("torrents") or []:
             q = t.get("quality")
@@ -610,10 +560,8 @@ class AnimePlayerAppVer1:
                 q if isinstance(q, str)
                 else (q.get("label") if isinstance(q, dict) else None)
             )
-
             hash_or_id = t.get("hash") or t.get("id")
             file_url = self._api(f"anime/torrents/{hash_or_id}/file") if hash_or_id else None
-
             torrents_list.append({
                 "url": file_url,
                 "magnet": t.get("magnet"),
@@ -623,9 +571,7 @@ class AnimePlayerAppVer1:
                 "_id": t.get("id"),
             })
         torrents = {"list": torrents_list} if torrents_list else {}
-
         alias = r.get("alias")
-
         page_url = self._abs(f"/release/{alias}") if alias else None
 
         return {
@@ -655,7 +601,6 @@ class AnimePlayerAppVer1:
         if payload is None:
             return {"list": []}
 
-        # если это уже старый формат
         if isinstance(payload, dict) and "list" in payload and isinstance(payload["list"], list):
             return payload
 
@@ -666,7 +611,6 @@ class AnimePlayerAppVer1:
                 for it in payload.get(key, []) or []:
                     rel = (it or {}).get("release") or {}
                     adapted = self._adapt_release(rel)
-                    # пронесём эпизоды, если API их вложил рядом
                     pref_eps = (it or {}).get("episodes") or []
                     if pref_eps:
                         adapted["_prefetched_episodes"] = pref_eps
@@ -677,12 +621,11 @@ class AnimePlayerAppVer1:
         if isinstance(payload, dict) and isinstance(payload.get("data"), list):
             items = []
             for it in payload["data"]:
-                # элемент может быть { "release": {...}, "day": N, ... } или просто release
                 rel = (it or {}).get("release") or it
                 items.append(self._adapt_release(rel))
             return {"list": items}
 
-        # /anime/releases/list -> {"data":[...]} (общий случай уже покрыт выше)
+        # /anime/releases/list -> {"data":[...]}
         # /anime/releases/random -> array
         if isinstance(payload, list):
             items = []
@@ -696,8 +639,6 @@ class AnimePlayerAppVer1:
             return {"list": [self._adapt_release(payload)]}
 
         return {"list": []}
-
-    # === EPISODES (v1) ===
 
     def _release_identity(self, title: dict) -> str:
         """Возвращает то, чем можно запросить релиз: alias (code) или id."""
@@ -803,15 +744,13 @@ class AnimePlayerAppVer1:
             self.text.insert(tk.END, "\nЭпизоды: не удалось получить данные\n")
             return
 
-        # ожидаем массив эпизодов в одном из полей
         episodes = data.get("episodes") or data.get("data", {}).get("episodes") or []
         if not isinstance(episodes, list) or not episodes:
-            # fallback на старое поле player.list (если вдруг отдадут старую схему)
+
             player_list = (data.get("player") or {}).get("list") or {}
             if isinstance(player_list, dict):
                 episodes = []
                 for ep in player_list.values():
-                    # создадим «псевдоэпизод» без id, но с номером
                     episodes.append({
                         "id": ep.get("id") or ep.get("episodeId"),
                         "number": int(ep.get("ordinal") or 0),
@@ -831,19 +770,15 @@ class AnimePlayerAppVer1:
             if nm:
                 line += f": {nm}"
             line += " — "
-
-            # добавляем кликабельный «Смотреть»
             tag = f"hyperlink_play_ep_{eid or num}"
             start = self.text.index(tk.END)
             self.text.insert(tk.END, line)
             self.text.insert(tk.END, "Смотреть", (tag,))
             self.text.insert(tk.END, "\n")
             if eid:
-                # биндим прямой вызов play_episode_by_id, без discovered_links
                 self.text.tag_bind(tag, "<Button-1>", lambda e, _eid=eid: self.play_episode_by_id(_eid))
                 self.text.tag_config(tag, foreground="blue")
             else:
-                # нет episodeId — нечего дергать
                 self.text.tag_config(tag, foreground="gray")
 
     def _fetch_and_render_torrents(self, release_identity: str):
@@ -883,7 +818,7 @@ class AnimePlayerAppVer1:
             return url
         if url.startswith("http://") or url.startswith("https://"):
             s = urlsplit(url)
-            return urlunsplit((s.scheme, s.netloc, s.path, "", ""))  # без query и fragment
+            return urlunsplit((s.scheme, s.netloc, s.path, "", ""))
         return url
 
     def play_episode_by_id(self, episode_id: str):
@@ -913,7 +848,6 @@ class AnimePlayerAppVer1:
                 m3u8 = "https://" + self.stream_video_url + m3u8
 
             m3u8 = self._normalize_stream_url(m3u8)
-
             try:
                 if m3u8 not in self.discovered_links:
                     self.discovered_links.append(m3u8)
@@ -949,12 +883,9 @@ class AnimePlayerAppVer1:
 
     def display_title_info(self, title, index, show_description=True, load_poster=True):
         self.text.insert(tk.END, "---\n\n")
-
-        # имена (старое и новое)
         names = title.get("names") or {}
         ru_name = names.get("ru") or "Название отсутствует"
         en_name = names.get("en") or names.get("alternative") or ""
-
         type_full_string = (title.get("type") or {}).get("full_string") or ""
         status = (title.get("status") or {}).get("string") or "Статус отсутствует"
         description = title.get("description") or ""
@@ -962,7 +893,6 @@ class AnimePlayerAppVer1:
         year_str = str((title.get("season") or {}).get("year") or "" or "Год отсутствует")
         title_id = title.get("title_id") or ""
         code = title.get("code") or ""
-
         self.text.insert(tk.END, f"Название: {ru_name}\n")
         if en_name:
             self.text.insert(tk.END, f"Название: {en_name}\n\n")
@@ -978,7 +908,6 @@ class AnimePlayerAppVer1:
             self.text.insert(tk.END, f"Год: {year_str}\n")
         self.text.insert(tk.END, "---\n\n")
 
-        # кликабельная ссылка на страницу релиза (если адаптер её вложил)
         page_url = title.get("_page_url")
         if page_url:
             link_id = f"title_link_{index}"
@@ -986,20 +915,14 @@ class AnimePlayerAppVer1:
             self.text.insert(tk.END, "\n\n")
             self.text.tag_bind(f"hyperlink_title_{link_id}", "<Button-1>",
                                lambda event, en=code: self.on_title_click(event, en))
-
         if load_poster:
             self.get_poster(title)
 
-        # Серии: в v1 прямых hls нет — не валимся, просто ничего не рисуем, если старого поля нет
         release_identity = self._release_identity(title)
         self._render_episodes_list(release_identity, title=title)
-
         self.text.insert(tk.END, "\n")
-
-        # Ленивая подгрузка: для now/week/random где торрентов нет в ответе
         tlist = (title.get("torrents") or {}).get("list") or []
         if tlist:
-            # торренты уже есть в payload — рисуем кликабельные ссылки
             for torrent in tlist:
                 url = torrent.get("url") or torrent.get("magnet")
                 quality = (torrent.get("quality") or {}).get("string") or "Качество не указано"
@@ -1013,7 +936,6 @@ class AnimePlayerAppVer1:
                 self.text.tag_config(tag, foreground="blue")
                 self.discovered_links.append(url)
         else:
-            # Ленивая подгрузка: для now/week/random где торрентов нет в ответе
             release_identity = self._release_identity(title)
             if release_identity:
                 tag = f"hyperlink_fetch_torrents_{release_identity}"
@@ -1025,13 +947,12 @@ class AnimePlayerAppVer1:
                 self.text.tag_config(tag, foreground="blue")
             else:
                 self.text.insert(tk.END, "\nТорренты не найдены\n")
-
         self.text.insert(tk.END, "\n")
 
     def display_schedule_now(self):
         try:
             self.clear_cache_file()
-            data = self.read_json_data()  # уже {"list":[...]} благодаря адаптеру
+            data = self.read_json_data()
             self.text.delete("1.0", tk.END)
             self.clear_poster()
             items = (data or {}).get("list") or []
@@ -1048,7 +969,7 @@ class AnimePlayerAppVer1:
     def display_schedule_week(self):
         try:
             self.clear_cache_file()
-            data = self.read_json_data()  # уже {"list":[...]}
+            data = self.read_json_data()
             self.text.delete("1.0", tk.END)
             self.clear_poster()
             items = (data or {}).get("list") or []
@@ -1106,7 +1027,6 @@ class AnimePlayerAppVer1:
             error_message = f"An error occurred while clicking on title: {str(e)}"
             self.log_message(error_message)
             print(error_message)
-
 
 if __name__ == "__main__":
     window = tk.Tk()

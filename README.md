@@ -1,13 +1,14 @@
 Note: This application is for personal use only and should not be used to infringe copyright or other laws.
 
-Rus lang: /static/rus/README.md
+Rus lang: https://github.com/mr9733n/get-anime/tree/main/static/rus
 
 # AnimePlayerApp
 AnimePlayerApp is a Qt-based application for viewing and managing anime content. It creates a local database for storing links and posters, allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using the built-in player or VLC Media Player.
     - api v3 obsolete and deprecated
     - tested with api v1
 AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime content. It allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using VLC Media Player.
-    - not supported with API v1 yet
+    - supported api v1
+    - tested with api v1
 
 ## Features
 - View the anime schedule for different days of the week.

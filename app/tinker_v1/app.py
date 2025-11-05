@@ -1028,6 +1028,7 @@ class AnimePlayerAppVer1:
             self.log_message(error_message)
             print(error_message)
 
+
 if __name__ == "__main__":
     window = tk.Tk()
     app = AnimePlayerAppVer1(window)

@@ -33,9 +33,11 @@ AnimePlayerAppLite - это приложение на основе Tkinter, пр
 ```bash
 pip install -r requirements.txt
 ```
+
 ## Конфигурация:
 
 Настройте файл config.ini с соответствующими параметрами, включая URL API, путь к VLC Media Player и другие настройки.
+
 
 ## Запуск приложения:
 

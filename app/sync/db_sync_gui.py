@@ -37,6 +37,7 @@ class App(tk.Tk):
         self.asyncio_thread = AsyncioThread()
         self.receiver: Optional[DBReceiver] = None
         self.receiver_running = False
+        self._pending = []
 
         # UI элементы
         frm = ttk.Frame(self); frm.pack(fill="x", pady=(0, 10))
@@ -74,19 +75,47 @@ class App(tk.Tk):
         def inner(sas_code: str, fp: str) -> bool:
             result = {"ok": False}
             ev = threading.Event()
-            def prompt():
-                msg = (
-                    f"Роль: {role}\n"
-                    f"SAS-код: {sas_code}\n"
-                    f"Отпечаток пира: {fp}\n\n"
-                    "Коды совпадают на обоих устройствах?"
-                )
-                result["ok"] = messagebox.askyesno("Подтвердите пару", msg, parent=self)
-                ev.set()
-            # показать диалог в главном (UI) потоке
-            self.after(0, prompt)
-            ev.wait()
+
+            def open_modeless():
+                win = tk.Toplevel(self)
+                win.title("Подтвердите пару")
+                win.geometry("380x220")
+                win.transient(self)
+                win.attributes("-topmost", True)  # чтобы не потерять окно
+                # win.grab_set_global()  # опционально: «полумодальность», но не блокирует mainloop
+
+                ttk.Label(win, text=f"Роль: {role}").pack(pady=(10, 4))
+                ttk.Label(win, text=f"SAS-код: {sas_code}", font=("TkDefaultFont", 12, "bold")).pack(pady=4)
+                ttk.Label(win, text=f"Отпечаток пира (FP): {fp}").pack(pady=(0, 10))
+
+                btns = ttk.Frame(win);
+                btns.pack(pady=10)
+
+                def accept():
+                    result["ok"] = True
+                    try:
+                        win.destroy()
+                    finally:
+                        ev.set()
+
+                def reject():
+                    result["ok"] = False
+                    try:
+                        win.destroy()
+                    finally:
+                        ev.set()
+
+                ttk.Button(btns, text="Принять", command=accept).pack(side="left", padx=6)
+                ttk.Button(btns, text="Отмена", command=reject).pack(side="left", padx=6)
+
+                # закрытие крестиком = Отмена
+                win.protocol("WM_DELETE_WINDOW", reject)
+
+            # показать окошко в главном потоке, но НЕ блокировать mainloop
+            self.after(0, open_modeless)
+            ev.wait()  # ждём выбора пользователя, не блокируя UI
             return result["ok"]
+
         return inner
 
     # прогресс-колбэк
@@ -110,7 +139,7 @@ class App(tk.Tk):
                 port=port,
                 chunk_dir="./incoming",
                 on_progress=self._on_progress_recv,
-                sas_confirm=self._sas_confirm("Receiver"),
+                sas_confirm=self._sas_confirm("Receiver"),  # поп-ап ТОЛЬКО тут
             )
             self._log(f"Запуск приёмника на порту {port} …")
             self.receiver_running = True
@@ -136,21 +165,22 @@ class App(tk.Tk):
         if not path:
             return
         self._log(f"Отправка файла: {path} → {host}:{port}")
+
         def sas_info_cb(sas: str, fp: str):
-            # важно вызывать из UI-потока
             self.after(0, lambda: self._log(f"SAS (sender): {sas}  |  FP: {fp}"))
 
-        sender = DBSender(
-            on_progress=self._on_progress_send,
-            # отправителю подтверждение не нужно:
-            # sas_confirm=self._sas_confirm("Sender"),
-            sas_info=sas_info_cb
-        )
+        sender = DBSender(on_progress=self._on_progress_send, sas_info=sas_info_cb)
+
         # запустить в фоне
         fut = self.asyncio_thread.call(sender.connect_and_send(host, port, path))
+        self._pending.append(fut)
         # добавить колбэк завершения (для логов)
         def done_cb(_):
             err = fut.exception()
+            try:
+                self._pending.remove(fut)
+            except ValueError:
+                pass
             if err:
                 self._log(f"Ошибка отправки: {err}")
                 messagebox.showerror("Ошибка", str(err), parent=self)
@@ -162,6 +192,12 @@ class App(tk.Tk):
         try:
             if self.receiver_running and self.receiver:
                 self.asyncio_thread.call(self.receiver.stop())
+
+            for fut in list(self._pending):
+                try:
+                    fut.result(timeout=2)
+                except Exception:
+                    pass
         finally:
             self.asyncio_thread.stop()
             self.destroy()

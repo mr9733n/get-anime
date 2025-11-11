@@ -297,7 +297,17 @@ class DBSender:
         # 1) make snapshot
         sqlite_make_snapshot(src_db_path, snapshot_path)
         size = os.path.getsize(snapshot_path)
-        reader, writer = await asyncio.open_connection(host, port)
+        reader = writer = None
+        last_err = None
+        for _ in range(20):  # ~10 сек при интервале 0.5s
+            try:
+                reader, writer = await asyncio.open_connection(host, port)
+                break
+            except Exception as e:
+                last_err = e
+                await asyncio.sleep(0.5)
+        if not reader:
+            raise last_err or ConnectionError("Unable to connect")
         hello = {"role":"sender","schema_version":schema_version,"file_size":size,"chunk_size":self.chunk_size}
         writer.write((json.dumps(hello) + "\n").encode()); await writer.drain()
 
@@ -315,26 +325,11 @@ class DBSender:
 
         if self.sas_info:
             try:
-                self.sas_info(sas, recv_fp)
+                self.sas_info(sas, recv_fp)  # <-- ВЫЗОВ СРАЗУ ЗДЕСЬ
             except Exception:
                 pass
         else:
             print(f"[sender] SAS: {sas}, peer FP: {recv_fp}")
-
-        # TOFU: if receiver pub matches stored trust, skip manual confirm
-        tofu = load_tofu()
-        if recv_fp in tofu:
-            print("[sender] found trusted receiver fingerprint (TOFU)")
-            confirmed = True
-        else:
-            if self.sas_confirm:
-                confirmed = bool(self.sas_confirm(sas, recv_fp))
-            else:
-                input("Press Enter after user confirmed SAS on receiver (or Ctrl+C to cancel)...")
-                confirmed = True
-        if not confirmed:
-            print("[sender] SAS declined by user")
-            return
 
         salt = make_salt(pub, receiver_pub)
         is_a_local = pub < receiver_pub  # True, если МЫ — "A"

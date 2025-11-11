@@ -6,15 +6,23 @@ import struct
 import hashlib
 import hmac
 import sqlite3
+import socket
+import aiofiles
+
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any
-
-import aiofiles
 from nacl.public import PrivateKey, PublicKey
 from nacl.secret import SecretBox
 from nacl import bindings as nacl_bindings
 
+try:
+    from zeroconf import Zeroconf, ServiceInfo
+except Exception:
+    Zeroconf = None
+    ServiceInfo = None
+
 # --- Конфиги по умолчанию ---
+MDNS_SERVICE_TYPE = "_playersync._tcp.local."
 DEFAULT_PORT = 8765
 DEFAULT_CHUNK = 2 * 1024 * 1024  # 2 MiB
 TOFU_FILE: Path = Path.home() / ".player_db_trust.json"
@@ -128,6 +136,8 @@ class DBReceiver:
                  chunk_dir: str = "./incoming",
                  tmp_name: str = "incoming.db.tmp",
                  final_name: str = "player.db",
+                 mdns_advertise: bool = True,
+                 mdns_name: str = None,
                  on_progress: Optional[Callable[[int, int], None]] = None,
                  sas_confirm: Optional[Callable[[str, str], bool]] = None):
         self.host = host
@@ -140,12 +150,41 @@ class DBReceiver:
         self.sas_confirm = sas_confirm
         self._server = None
         self._running = False
+        self.mdns_advertise = mdns_advertise
+        self.mdns_name = mdns_name or f"PlayerSync-{socket.gethostname()}"
+        self._zc = None
+        self._mdns_info = None
 
     async def start_listen(self):
         self._server = await asyncio.start_server(self._handle_client, host=self.host, port=self.port)
-        self._running = True
         addr = self._server.sockets[0].getsockname()
         print(f"[receiver] listening on {addr}")
+        # mDNS advertise
+        if self.mdns_advertise and Zeroconf and ServiceInfo:
+            try:
+                # попытка взять «реальный» IP, не 127.0.0.1
+                ip = None
+                for s in self._server.sockets:
+                    ip = s.getsockname()[0]
+                    if ip and ip != "0.0.0.0":
+                        break
+                if not ip or ip == "0.0.0.0":
+                    ip = socket.gethostbyname(socket.gethostname())  # best-effort
+
+                self._zc = Zeroconf()
+                props = {"name": self.mdns_name}
+                self._mdns_info = ServiceInfo(
+                    MDNS_SERVICE_TYPE,
+                    f"{self.mdns_name}.{MDNS_SERVICE_TYPE}",
+                    addresses=[socket.inet_aton(ip)],
+                    port=self.port,
+                    properties=props,
+                )
+                self._zc.register_service(self._mdns_info)
+                print(f"[receiver] mDNS advertised: {self.mdns_name} @ {ip}:{self.port}")
+            except Exception as e:
+                print("[receiver] mDNS advertise failed:", e)
+        self._running = True
         async with self._server:
             await self._server.serve_forever()
 
@@ -154,6 +193,16 @@ class DBReceiver:
             self._server.close()
             await self._server.wait_closed()
             self._running = False
+        # mDNS unreg
+        try:
+            if self._zc and self._mdns_info:
+                self._zc.unregister_service(self._mdns_info)
+                self._zc.close()
+        except Exception:
+            pass
+        finally:
+            self._zc = None
+            self._mdns_info = None
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peer = writer.get_extra_info("peername")
@@ -325,7 +374,7 @@ class DBSender:
 
         if self.sas_info:
             try:
-                self.sas_info(sas, recv_fp)  # <-- ВЫЗОВ СРАЗУ ЗДЕСЬ
+                self.sas_info(sas, recv_fp)  # мгновенно отправляем в UI
             except Exception:
                 pass
         else:

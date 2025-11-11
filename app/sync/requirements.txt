@@ -1,0 +1,3 @@
+PyNaCl
+aiofiles
+zeroconf

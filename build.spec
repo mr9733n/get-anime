@@ -16,6 +16,7 @@ import compileall
 from datetime import datetime
 from pathlib import Path
 from PyInstaller.building.api import PYZ, COLLECT, EXE
+from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, collect_data_files
 from PyInstaller.building.build_main import Analysis
 from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
 
@@ -104,33 +105,25 @@ try:
 except Exception as e:
     print(f"❌ Error copying DB: {e}")
 
-
-env_path = Path(project_dir) / '.env'
-temp_env_dir = Path(tempfile.mkdtemp(prefix="build_env_"))
-build_env_path = temp_env_dir / '.env'
-
-your_postmark_api_key = "your_postmark_api_key_value"
-your_email = "your_email@example.com"
+# Config.ini
+config_path = os.path.join(project_dir, "config", "config.ini")
+temp_config_dir = Path(tempfile.mkdtemp(prefix="build_config_"))
+build_config_path = temp_config_dir / 'config.ini'
 
 replacements = {
-    "POSTMARK_API_KEY": your_postmark_api_key,
-    "FROM_EMAIL": your_email,
-    "TO_EMAIL": your_email,
+    "USE_GIT_VERSION": "0",
 }
 
-if env_path.exists():
-    shutil.copy(env_path, build_env_path)
-    with open(build_env_path, 'r', encoding='utf-8') as f:
+if config_path:
+    shutil.copy(config_path, build_config_path)
+    with open(build_config_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    with open(build_env_path, 'w', encoding='utf-8') as f:
+    with open(build_config_path, 'w', encoding='utf-8') as f:
         for line in lines:
-            if line.startswith("USE_GIT_VERSION="):
-                continue
-
             replaced = False
             for key, new_value in replacements.items():
                 if line.startswith(key + "="):
-                    f.write(f"{key}={new_value}\n")
+                    f.write(f"{key}={new_value}")
                     replaced = True
                     break
             if not replaced:
@@ -139,7 +132,7 @@ if env_path.exists():
         prod_key = str(uuid.uuid4())
         f.write(f"PROD_KEY={prod_key}\n")
         os.environ["PROD_KEY"] = prod_key
-    print(f"✅ Temporary .env file created and modified: {build_env_path}")
+    print(f"✅ Temporary config.ini file created and modified: {build_config_path}")
 
 # Compile the files in the 'app' directory
 compileall.compile_dir('app', force=True)
@@ -153,14 +146,10 @@ compileall.compile_dir('utils', force=True)
 # Compile the files in the 'templates' directory
 compileall.compile_dir('templates', force=True)
 
-from PyInstaller.utils.hooks import collect_data_files
-
-block_cipher = None
-
 datas = [
     (os.path.join(project_dir, 'static/*'), 'static'),
     (os.path.join(project_dir, 'templates/'), 'templates'),
-    (os.path.join(project_dir, 'config/*'), 'config'),
+    (os.path.join(project_dir, 'config/logging.conf'), 'config'),
     (os.path.join(project_dir, 'db/*'), 'db'),
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),
     (os.path.join(project_dir, 'core/'), 'core'),
@@ -174,7 +163,7 @@ datas = [
 	(os.path.join(project_dir, 'LICENSE.md'), '.'),
 	(os.path.join(project_dir, 'README.md'), '.'),
 	(os.path.join(project_dir, 'sql_commands.md'), '.'),
-	(str(build_env_path), '.')
+	(str(build_config_path), 'config/.')
 ]
 
 # ---
@@ -349,6 +338,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=[
         'pkg_resources',
+        'vlc',
         'pkg_resources.extern',
 		'multiprocessing',
 		'requests.compat', # ???
@@ -515,217 +505,9 @@ else:
     print(f"❌ Error: VLC player executable not found at {vlc_binary_source}")
 
 # ---
-# merge_utility.spec
-
-merge_utility_path = os.path.join(os.getcwd(), "merge_utility.py")
-
-with open('merge_utility.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-new_content = re.sub(
-    r'^DB_FOLDER\s*=.*$',
-    'DB_FOLDER = "db"',
-    content,
-    flags=re.MULTILINE
-)
-
-with open('merge_utility.py', 'w', encoding='utf-8') as f:
-    f.write(new_content)
-
-print(f"✅ File {merge_utility_path} updated successfully.")
-
-block = {
-    "FileVersion": "0.0.0.2",
-    "ProductVersion": "0.0.0.2",
-    "CompanyName": "666s.dev",
-    "FileDescription": "AnimePlayerMergeUtilityApp",
-    "InternalName": "AnimePlayerMergeUtilityApp",
-    "LegalCopyright": "© 2025 666s.dev",
-    "OriginalFilename": "merge_utility.exe",
-    "ProductName": "AnimePlayerMergeUtilityApp",
-}
-
-version_resource = Version(
-    file_version=block["FileVersion"],
-    product_version=block["ProductVersion"],
-    company_name=block["CompanyName"],
-    file_description=block["FileDescription"],
-    internal_name=block["InternalName"],
-    legal_copyright=block["LegalCopyright"],
-    original_filename=block["OriginalFilename"],
-    product_name=block["ProductName"],
-)
-
-a = Analysis(['merge_utility.py'],
-             pathex=[
-                 project_dir,
-                 PACKAGES_FOLDER,
-             ],
-             binaries=[
-             ],
-		 	 datas=[(os.path.join(project_dir, 'core/'), 'core'), (os.path.join(project_dir, '.env'), '.')],
-             hiddenimports=[
-                 'dotenv', 'sqlalchemy', 'pyzbar.pyzbar', 'PIL.Image', 'importlib.util', 'sqlite3', 'base64', 'qrcode', 'pyzipper'
-             ],
-             hookspath=[],
-             runtime_hooks=[],
-             excludes=[],
-             win_no_prefer_redirects=False,
-             win_private_assemblies=False,
-             cipher=block_cipher,
-             noarchive=False)
-
-pyz = PYZ(a.pure, a.zipped_data,
-          cipher=block_cipher)
-
-exe = EXE(pyz,
-          a.scripts,
-          [],
-          exclude_binaries=True,
-          name='merge_utility',
-          debug=False,
-          bootloader_ignore_signals=False,
-          strip=False,
-          upx=True,
-          version=version_resource,
-          console=True)
-
-coll = COLLECT(exe,
-               a.binaries,
-               a.zipfiles,
-               a.datas,
-               strip=False,
-               upx=True,
-               upx_exclude=[],
-               name='merge_utility')
-
 dist_dir = os.path.join(project_dir, 'dist')
 compiled_dir1 = os.path.join(dist_dir, 'AnimePlayer')
-compiled_dir2 = os.path.join(dist_dir, 'merge_utility')
-
-binary_file = os.path.join(compiled_dir2, 'merge_utility.exe')
-binary_file_path = os.path.join(compiled_dir1, 'merge_utility.exe')
-sync_script = os.path.join(project_dir, 'sync.py')
-shutil.copyfile(binary_file, binary_file_path)
-
-def write_to_file(checksum, file_path):
-    try:
-        with open(file_path, "r+", encoding="utf-8") as f:
-            content = f.read()
-            updated_content = re.sub(
-                r'expected_hash\s*=\s*".*?"',
-                f'expected_hash = "{checksum}"',
-                content
-            )
-            f.seek(0)
-            f.write(updated_content)
-            f.truncate()
-        return True
-    except OSError as e:
-        raise IOError(f"Cannot update file: {file_path}: {e}")
-
-if os.path.exists(binary_file_path):
-    checksum = calculate_sha256(binary_file_path)
-    status = write_to_file(checksum, sync_script)
-    if status:
-        print(f"✅ {checksum} INJECT {status}")
-else:
-    print(f"❌ Error: Target binary {binary_file_path} does not exist.")
-
-
-# ---
-# sync.spec
-
-pyzbar_libs_path = os.path.join(PACKAGES_FOLDER, 'pyzbar')
-pyzbar_lib_path1 = os.path.join(pyzbar_libs_path, 'libiconv.dll')
-pyzbar_lib_path2 = os.path.join(pyzbar_libs_path, 'libzbar-64.dll')
-
-if not os.path.exists(pyzbar_lib_path1):
-    print(f"⚠️ File not found: {pyzbar_lib_path1}")
-if not os.path.exists(pyzbar_lib_path2):
-    print(f"⚠️ File not found: {pyzbar_lib_path2}")
-
-block = {
-    "FileVersion": "0.0.0.2",
-    "ProductVersion": "0.0.0.2",
-    "CompanyName": "666s.dev",
-    "FileDescription": "AnimePlayerSyncApp",
-    "InternalName": "AnimePlayerSyncApp",
-    "LegalCopyright": "© 2025 666s.dev",
-    "OriginalFilename": "sync.exe",
-    "ProductName": "AnimePlayerSyncApp",
-}
-
-version_resource = Version(
-    file_version=block["FileVersion"],
-    product_version=block["ProductVersion"],
-    company_name=block["CompanyName"],
-    file_description=block["FileDescription"],
-    internal_name=block["InternalName"],
-    legal_copyright=block["LegalCopyright"],
-    original_filename=block["OriginalFilename"],
-    product_name=block["ProductName"],
-)
-
-a = Analysis(
-    ['sync.py'],
-	pathex=[
-	 project_dir,
-	PACKAGES_FOLDER
-	],
-	binaries=[
-        (pyzbar_lib_path1, '.'),
-        (pyzbar_lib_path2, '.')
-	],
-    datas=[],
- 	hiddenimports=[
-                 'dotenv', 'pyzipper',
-             ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-pyz = PYZ(a.pure, a.zipped_data,
-          cipher=block_cipher)
-
-exe = EXE(pyz,
-          a.scripts,
-          [],
-          exclude_binaries=True,
-          name='sync.exe',
-          debug=False,
-          bootloader_ignore_signals=False,
-          strip=False,
-          upx=True,
-          version=version_resource,
-          console=True)
-
-coll = COLLECT(exe,
-               a.binaries,
-               a.zipfiles,
-               a.datas,
-               strip=False,
-               upx=True,
-               upx_exclude=[],
-               name='sync')
-
-compiled_dir2 = os.path.join(dist_dir, 'sync')
 compiled_dir3 = os.path.join(dist_dir, 'AnimePlayerLite')
-binary_file1 = os.path.join(compiled_dir2, 'sync.exe')
-binary_file_path1 = os.path.join(compiled_dir1, 'sync.exe')
-binary_file2 = os.path.join(compiled_dir2, 'libiconv.dll')
-binary_file_path2 = os.path.join(compiled_dir1, 'libiconv.dll')
-binary_file3 = os.path.join(compiled_dir2, 'libzbar-64.dll')
-binary_file_path3 = os.path.join(compiled_dir1, 'libzbar-64.dll')
-
-shutil.copyfile(binary_file1, binary_file_path1)
-shutil.copyfile(binary_file2, binary_file_path2)
-shutil.copyfile(binary_file3, binary_file_path3)
 
 def delete_folders(target_dir, folder_patterns):
     for pattern in folder_patterns:

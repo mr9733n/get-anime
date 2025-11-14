@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import sqlite3
 import socket
+import time
+
 import aiofiles
 
 from pathlib import Path
@@ -137,9 +139,12 @@ class DBReceiver:
                  tmp_name: str = "incoming.db.tmp",
                  final_name: str = "player.db",
                  mdns_advertise: bool = True,
-                 mdns_name: str = None,
+                 mdns_name: str | None = None,
                  on_progress: Optional[Callable[[int, int], None]] = None,
-                 sas_confirm: Optional[Callable[[str, str], bool]] = None):
+                 sas_confirm: Optional[Callable[[str, str], bool]] = None,
+                 on_done: Optional[Callable[[str], None]] = None,
+                 allow_resume: bool = True,
+                 verify_chunks: bool = False):
         self.host = host
         self.port = port
         self.chunk_dir = Path(chunk_dir)
@@ -148,6 +153,7 @@ class DBReceiver:
         self.final_name = final_name
         self.on_progress = on_progress
         self.sas_confirm = sas_confirm
+        self.on_done = on_done
         self._server = None
         self._running = False
         self.mdns_advertise = mdns_advertise
@@ -197,7 +203,10 @@ class DBReceiver:
         try:
             if self._zc and self._mdns_info:
                 self._zc.unregister_service(self._mdns_info)
-                self._zc.close()
+        except Exception as e:
+            print(f"[receiver] mDNS unregister failed: {type(e).__name__}: {e}")
+        try:
+            self._zc.close()
         except Exception:
             pass
         finally:
@@ -209,12 +218,28 @@ class DBReceiver:
         print(f"[receiver] connection from {peer}")
         # 1. read hello
         line = await reader.readline()
-        hello = json.loads(line.decode())
+        if not line:
+            print("[receiver] empty hello (client disconnected early)")
+            writer.close(); await writer.wait_closed()
+            return
+        try:
+            hello = json.loads(line.decode())
+        except json.JSONDecodeError:
+            print("[receiver] bad hello, not JSON:", line[:64])
+            writer.close(); await writer.wait_closed()
+            return
+
         file_size = int(hello.get("file_size", 0))
         chunk_size = int(hello.get("chunk_size", DEFAULT_CHUNK))
 
         # 2. receive sender pubkey (32 bytes)
-        sender_pub = await reader.readexactly(32)
+        try:
+            sender_pub = await reader.readexactly(32)
+        except asyncio.IncompleteReadError:
+            print("[receiver] disconnected before pubkey")
+            writer.close();
+            await writer.wait_closed()
+            return
         # generate ephemeral keypair
         priv = PrivateKey.generate()
         pub = bytes(priv.public_key)
@@ -235,7 +260,11 @@ class DBReceiver:
             confirmed = True
         else:
             if self.sas_confirm:
-                confirmed = bool(self.sas_confirm(sas, sender_fp))
+                print("[receiver] SAS: waiting for user confirmation…")
+                loop = asyncio.get_running_loop()
+                # Важное изменение: выносим подтверждение в thread executor
+                confirmed = await loop.run_in_executor(None, lambda: bool(self.sas_confirm(sas, sender_fp)))
+                print(f"[receiver] SAS: {'accepted' if confirmed else 'rejected'} by user")
             else:
                 print("[receiver] please confirm SAS shown on sender device")
                 input("Press Enter when user confirmed SAS (or Ctrl+C to cancel)...")
@@ -300,7 +329,7 @@ class DBReceiver:
                     print("[receiver] unknown header:", typ)
                     break
         except asyncio.IncompleteReadError:
-            print("[receiver] connection closed unexpectedly")
+            print("[receiver] connection closed unexpectedly during transfer")
         finally:
             await f.close()
             writer.close()
@@ -320,6 +349,15 @@ class DBReceiver:
             final = self.chunk_dir / self.final_name
             os.replace(tmp_path, final)
             print("[receiver] saved DB to", final)
+
+            if self.on_progress:
+                self.on_progress(file_size, file_size)
+            # уведомляем GUI о пути сохранения
+            if self.on_done:
+                try:
+                    self.on_done(str(final))
+                except Exception:
+                    pass
             # persist TOFU if not existed
             fp = sha256_hex(sender_pub)[:16]
             tofu = load_tofu()
@@ -334,15 +372,18 @@ class DBReceiver:
 class DBSender:
     def __init__(self, *,
                  chunk_size: int = DEFAULT_CHUNK,
+                 throttle_kbps: Optional[int] = None,
                  on_progress: Optional[Callable[[int, int], None]] = None,
                  sas_confirm: Optional[Callable[[str, str], bool]] = None,
                  sas_info: Optional[Callable[[str, str], None]] = None):
         self.chunk_size = chunk_size
+        self.throttle_kbps = throttle_kbps  # None/0 -> no limit
         self.on_progress = on_progress
         self.sas_confirm = sas_confirm
         self.sas_info = sas_info
 
-    async def connect_and_send(self, host: str, port: int, src_db_path: str, snapshot_path: str = "db_snapshot.sqlite", schema_version: str = "1"):
+    async def connect_and_send(self, host: str, port: int, src_db_path: str,
+                               snapshot_path: str = "db_snapshot.sqlite", schema_version: str = "1"):
         # 1) make snapshot
         sqlite_make_snapshot(src_db_path, snapshot_path)
         size = os.path.getsize(snapshot_path)
@@ -399,36 +440,70 @@ class DBSender:
 
         sha = hashlib.sha256()
         seq = 0
-        with open(snapshot_path, "rb") as f:
-            while True:
-                chunk = f.read(self.chunk_size)
-                if not chunk:
-                    break
-                sha.update(chunk)
-                enc = box_send.encrypt(chunk)  # nonce + ciphertext
-                writer.write(b"CHNK")
-                writer.write(struct.pack("!Q", seq))
-                writer.write(struct.pack("!Q", len(enc)))
-                writer.write(enc)
-                await writer.drain()
+        start_window = time.monotonic()
+        sent_in_window = 0
+        window_sec = 1.0
+        kbps = max(int(self.throttle_kbps or 0), 0)
+        byte_budget = kbps * 1024 if kbps > 0 else None
 
-                # wait ack
-                line = await reader.readline()
-                ack = json.loads(line.decode())
-                if ack.get("ack") != seq:
-                    print("[sender] bad ack, abort", ack)
-                    writer.close(); await writer.wait_closed()
-                    return
-                seq += 1
-                if self.on_progress:
-                    self.on_progress(seq * self.chunk_size, size)
+        try:
+            with open(snapshot_path, "rb") as f:
+                while True:
+                    chunk = f.read(self.chunk_size)
+                    if not chunk:
+                        break
+                    sha.update(chunk)
+                    enc = box_send.encrypt(chunk)  # nonce + ciphertext
+                    writer.write(b"CHNK")
+                    writer.write(struct.pack("!Q", seq))
+                    writer.write(struct.pack("!Q", len(enc)))
+                    writer.write(enc)
+                    await writer.drain()
 
-        # send done + sha
-        writer.write(b"DONE")
-        writer.write((sha.hexdigest() + "\n").encode())
-        await writer.drain()
-        writer.close(); await writer.wait_closed()
-        print("[sender] finished send, seqs:", seq)
+                    # простой лимитер по «окну» 1 сек
+                    if byte_budget:
+                        sent_in_window += len(chunk)
+                        now = time.monotonic()
+                        elapsed = now - start_window
+                        if elapsed < window_sec and sent_in_window >= byte_budget:
+                            await asyncio.sleep(window_sec - elapsed)
+                            start_window = time.monotonic()
+                            sent_in_window = 0
+                        elif elapsed >= window_sec:
+                            start_window = now
+                            sent_in_window = 0
+
+                    # wait ack на КАЖДЫЙ чанк
+                    line = await reader.readline()
+                    ack = json.loads(line.decode())
+                    if ack.get("ack") != seq:
+                        print("[sender] bad ack, abort", ack)
+                        writer.close()
+                        await writer.wait_closed()
+                        return
+                    seq += 1
+                    if self.on_progress:
+                        # показываем реальное количество принятых байт
+                        self.on_progress(min(seq * self.chunk_size, size), size)
+
+            # send done + sha
+            writer.write(b"DONE")
+            writer.write((sha.hexdigest() + "\n").encode())
+            await writer.drain()
+            writer.close(); await writer.wait_closed()
+            print("[sender] finished send, seqs:", seq)
+            if self.on_progress:
+                try:
+                    self.on_progress(size, size)
+                except Exception:
+                    pass
+
+        finally:
+            # аккуратно чистим снапшот (может не удалиться — игнорируем)
+            try:
+                os.remove(snapshot_path)
+            except Exception:
+                pass
 
 # --- Простые CLI-примеры ---
 if __name__ == "__main__":

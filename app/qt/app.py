@@ -27,7 +27,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "4d815da673c6a6740eb5c4814e6701c2cb3767f440c661c5509abad756f3ab75"
+VLC_PLAYER_HASH = "e08339c1d372474c9b0cd60bd6fd09fb51b8f4c0b439006e7eb1ee56b4812ec1"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100

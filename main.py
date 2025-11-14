@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
 from utils.runtime_manager import test_exception
+from utils.config_manager import ConfigManager
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
@@ -28,10 +29,14 @@ log_dir = os.path.join(base_dir, 'logs')
 db_dir = os.path.join(base_dir, 'db')
 icon_dir = os.path.join(base_dir, 'static')
 lib_dir = os.path.join(base_dir, 'libs')
+config_path = os.path.join(base_dir, 'config', 'config.ini')
 
-load_dotenv()
-prod_key = os.getenv("PROD_KEY")
-fetch_ver = os.getenv('USE_GIT_VERSION')
+# load_dotenv()
+config_manager = ConfigManager(config_path)
+prod_key = config_manager.get_setting('System', 'PROD_KEY')
+fetch_ver = config_manager.get_setting('System', 'USE_GIT_VERSION')
+# prod_key = os.getenv("PROD_KEY")
+# fetch_ver = os.getenv('USE_GIT_VERSION')
 
 UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 if prod_key and re.match(UUID_REGEX, prod_key):

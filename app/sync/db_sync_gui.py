@@ -5,12 +5,18 @@ import asyncio
 import socket
 import threading
 import tkinter as tk
+
+from datetime import datetime
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from typing import Optional
-from db_transfer import DBReceiver, DBSender
+
+os.environ.setdefault("ZC_DISABLE_CYTHON", "1")
+
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 
+from merge import run_merge
+from db_transfer import DBReceiver, DBSender, TOFU_FILE, save_tofu
 
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
 CFG_PATH = Path.home() / ".player_db_gui.json"
@@ -21,7 +27,7 @@ def load_gui_cfg():
             return json.loads(CFG_PATH.read_text(encoding="utf-8"))
     except Exception:
         pass
-    return {"recent": [], "last_port": "8765"}
+    return {"recent": [], "last_port": "8765", "chunk_size": str(2 * 1024 * 1024), "speed_kbps": ""}
 
 def save_gui_cfg(cfg: dict):
     try:
@@ -32,8 +38,6 @@ def save_gui_cfg(cfg: dict):
     except Exception:
         pass
 
-
-# --- простой фоновый asyncio-цикл ---
 class AsyncioThread:
     def __init__(self):
         self.loop = asyncio.new_event_loop()
@@ -51,71 +55,69 @@ class AsyncioThread:
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join()
 
-
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Player DB Sync (LAN)")
-        self.geometry("780x520")
+        self.geometry("780x400")
         self['padx'] = 8
         self['pady'] = 8
-
         self._zc = None
         self._mdns_browser = None
-        self._mdns_hosts = set()  # строки "ip:port" или просто ip
-
+        self._mdns_hosts = set()
         self.asyncio_thread = AsyncioThread()
         self.receiver: Optional[DBReceiver] = None
         self.receiver_running = False
-        self._pending = []   # активные задачи отправки
-        self._sas_event = None  # для инлайн-подтверждения
-
-        # конфиг GUI
+        self._pending = []
+        self._sas_event = None
         self.cfg = load_gui_cfg()
-
-        # Notebook с вкладками
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True)
-
         self._build_tab_send()
         self._build_tab_receive()
         self._build_tab_merge()
         self._build_tab_logs()
-
         self._log("Готово. Используйте вкладки Send/Receive. История адресов сохраняется в ~/.player_db_gui.json.")
 
-    # ---------- ВКЛАДКИ ----------
+    # ---------- Tabs ----------
 
     def _build_tab_send(self):
         self.tab_send = ttk.Frame(self.nb)
         self.nb.add(self.tab_send, text="Send")
-
-        top = ttk.Frame(self.tab_send);
+        top = ttk.Frame(self.tab_send)
         top.pack(fill="x", pady=(10, 8))
-
         ttk.Label(top, text="Receiver:").pack(side="left")
         self.cmb_host = ttk.Combobox(top, width=28, values=self.cfg.get("recent", []))
         self.cmb_host.pack(side="left", padx=(6, 10))
         self.cmb_host.set(self.cfg["recent"][0] if self.cfg.get("recent") else "192.168.0.50")
-
         ttk.Label(top, text="Port:").pack(side="left")
         self.entry_port_send = ttk.Entry(top, width=7)
         self.entry_port_send.pack(side="left", padx=(6, 10))
         self.entry_port_send.insert(0, self.cfg.get("last_port", "8765"))
-
-        btns = ttk.Frame(self.tab_send);
+        btns = ttk.Frame(self.tab_send)
         btns.pack(fill="x", pady=(0, 8))
-        ttk.Button(btns, text="Отправить БД…", command=self._on_send).pack(side="right", padx=6)
-        ttk.Button(btns, text="Проверить соединение", command=self._on_check_conn).pack(side="right")
-
-        # mDNS поиск
-        md = ttk.Frame(self.tab_send);
+        ttk.Button(btns, text="Send DB…", command=self._on_send).pack(side="right", padx=6)
+        ttk.Button(btns, text="Check connection", command=self._on_check_conn).pack(side="right")
+        md = ttk.Frame(self.tab_send)
         md.pack(fill="x", pady=(0, 6))
-        ttk.Button(md, text="Поиск в сети (mDNS)", command=self._start_mdns_browse).pack(side="left")
+        ttk.Button(md, text="Find active on LAN (mDNS)", command=self._start_mdns_browse).pack(side="left")
+        ttk.Button(md, text="Clear list", command=self._clear_mdns).pack(side="left", padx=(6, 0))
         self.mdns_status = tk.StringVar(value="mDNS: idle")
         ttk.Label(md, textvariable=self.mdns_status).pack(side="left", padx=10)
 
-        # SAS (sender) — крупно
+        # Settings
+        setgrp = ttk.LabelFrame(self.tab_send, text="Settings")
+        setgrp.pack(fill="x", pady=(6, 6))
+        srow = ttk.Frame(setgrp); srow.pack(fill="x", pady=(6, 2))
+        ttk.Label(srow, text="Chunk size (bytes):").pack(side="left")
+        self.entry_chunk = ttk.Entry(srow, width=12)
+        self.entry_chunk.pack(side="left", padx=(6, 16))
+        self.entry_chunk.insert(0, self.cfg.get("chunk_size", str(2*1024*1024)))
+        ttk.Label(srow, text="Speed limit (KB/s):").pack(side="left")
+        self.entry_speed = ttk.Entry(srow, width=10)
+        self.entry_speed.pack(side="left", padx=(6, 0))
+        self.entry_speed.insert(0, self.cfg.get("speed_kbps", ""))
+
         sasgrp = ttk.LabelFrame(self.tab_send, text="SAS (sender)")
         sasgrp.pack(fill="x", pady=(6, 6))
         row1 = ttk.Frame(sasgrp);
@@ -123,65 +125,54 @@ class App(tk.Tk):
         ttk.Label(row1, text="SAS:").pack(side="left")
         self.send_sas_code = tk.StringVar(value="—")
         ttk.Label(row1, textvariable=self.send_sas_code, font=("TkDefaultFont", 12, "bold")).pack(side="left", padx=6)
-
-        row2 = ttk.Frame(sasgrp);
+        row2 = ttk.Frame(sasgrp)
         row2.pack(fill="x", pady=(2, 8))
         ttk.Label(row2, text="FP:").pack(side="left")
         self.send_sas_fp = tk.StringVar(value="—")
         ttk.Label(row2, textvariable=self.send_sas_fp).pack(side="left", padx=6)
-
-        # прогресс отправки
         self.prog_send = ttk.Progressbar(self.tab_send, length=400, mode="determinate")
         self.prog_send.pack(fill="x", pady=(10, 10))
 
     def _build_tab_receive(self):
         self.tab_recv = ttk.Frame(self.nb)
         self.nb.add(self.tab_recv, text="Receive")
-
         row = ttk.Frame(self.tab_recv);
         row.pack(fill="x", pady=(10, 6))
-
-        # индикатор (красный по умолчанию)
         self.recv_led = tk.Canvas(row, width=14, height=14, highlightthickness=0)
         self.recv_led.pack(side="left", padx=(0, 6))
         self._recv_led_id = self.recv_led.create_oval(2, 2, 12, 12, fill="#d9534f", outline="#a94442")  # red
-
         self.recv_status = tk.StringVar(value="Server: Stopped")
         ttk.Label(row, textvariable=self.recv_status).pack(side="left")
-
-        # порт для приёмника
         port_row = ttk.Frame(self.tab_recv); port_row.pack(fill="x", pady=(6, 6))
         ttk.Label(port_row, text="Listen port:").pack(side="left")
         self.entry_port_recv = ttk.Entry(port_row, width=7)
         self.entry_port_recv.pack(side="left", padx=(6, 10))
         self.entry_port_recv.insert(0, self.cfg.get("last_port", "8765"))
-
         btn_recv = ttk.Button(self.tab_recv, text="Start / Stop", command=self._on_toggle_receive)
         btn_recv.pack(anchor="w", pady=(0, 8))
-
-        # Инлайн-панель SAS подтверждения
-        sasfrm = ttk.LabelFrame(self.tab_recv, text="SAS подтверждение")
+        sasfrm = ttk.LabelFrame(self.tab_recv, text="SAS confirmation")
         sasfrm.pack(fill="x", pady=(6, 6))
         row1 = ttk.Frame(sasfrm); row1.pack(fill="x", pady=(6, 2))
         ttk.Label(row1, text="SAS:").pack(side="left")
         self.recv_sas_code = tk.StringVar(value="—")
         ttk.Label(row1, textvariable=self.recv_sas_code, font=("TkDefaultFont", 12, "bold")).pack(side="left", padx=6)
-
         row2 = ttk.Frame(sasfrm); row2.pack(fill="x", pady=(2, 10))
         ttk.Label(row2, text="FP:").pack(side="left")
         self.recv_sas_fp = tk.StringVar(value="—")
         ttk.Label(row2, textvariable=self.recv_sas_fp).pack(side="left", padx=6)
-
         btns = ttk.Frame(sasfrm); btns.pack(pady=(0, 8))
-        ttk.Button(btns, text="Принять", command=self._sas_accept).pack(side="left", padx=6)
-        ttk.Button(btns, text="Отмена",  command=self._sas_reject).pack(side="left", padx=6)
+        ttk.Button(btns, text="Accept", command=self._sas_accept).pack(side="left", padx=6)
+        ttk.Button(btns, text="Cancel",  command=self._sas_reject).pack(side="left", padx=6)
 
-        # прогресс приёма (тот же индикатор можно использовать, если хочешь)
+        # TOFU reset
+        tofu_row = ttk.Frame(self.tab_recv); tofu_row.pack(fill="x", pady=(6, 0))
+        ttk.Button(tofu_row, text="Reset TOFU (forget all)", command=self._reset_tofu).pack(side="left")
+
         self.prog_recv = ttk.Progressbar(self.tab_recv, length=400, mode="determinate")
         self.prog_recv.pack(fill="x", pady=(8, 10))
 
     def _set_recv_led(self, running: bool):
-        # цвета: зелёный (#5cb85c) / красный (#d9534f)
+        # green (#5cb85c) / red (#d9534f)
         if not hasattr(self, "recv_led"):
             return
         fill = "#5cb85c" if running else "#d9534f"
@@ -194,25 +185,90 @@ class App(tk.Tk):
     def _build_tab_merge(self):
         self.tab_merge = ttk.Frame(self.nb)
         self.nb.add(self.tab_merge, text="Merge")
-        ttk.Label(self.tab_merge, text="Здесь появится интерфейс слияния БД (merge).").pack(anchor="w", padx=4, pady=8)
+        row1 = ttk.Frame(self.tab_merge)
+        row1.pack(fill="x", pady=(10, 4))
+        ttk.Label(row1, text="Source DB:").pack(side="left")
+        self.entry_merge_src = ttk.Entry(row1, width=60);
+        self.entry_merge_src.pack(side="left", padx=6)
+        ttk.Button(row1, text="Browse…", command=self._pick_merge_src).pack(side="left")
+        row2 = ttk.Frame(self.tab_merge);
+        row2.pack(fill="x", pady=(4, 8))
+        ttk.Label(row2, text="Destination DB:").pack(side="left")
+        self.entry_merge_dst = ttk.Entry(row2, width=60);
+        self.entry_merge_dst.pack(side="left", padx=6)
+        ttk.Button(row2, text="Browse…", command=self._pick_merge_dst).pack(side="left")
+        opts = ttk.Frame(self.tab_merge)
+        opts.pack(fill="x", pady=(2, 6))
+        self.merge_dry = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Dry-run (read only)", variable=self.merge_dry).pack(side="left")
+        self.merge_verbose_log = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Verbose logs", variable=self.merge_verbose_log).pack(side="left")
+        ttk.Button(self.tab_merge, text="Merge", command=self._run_merge).pack(anchor="w", pady=(4, 8))
+        self.prog_merge = ttk.Progressbar(self.tab_merge, length=400, mode="indeterminate")
+        self.prog_merge.pack(fill="x", pady=(0, 8))
 
     def _build_tab_logs(self):
         self.tab_logs = ttk.Frame(self.nb)
         self.nb.add(self.tab_logs, text="Logs")
-        self.txt = tk.Text(self.tab_logs, height=14)
-        self.txt.pack(fill="both", expand=True)
+        wrap = ttk.Frame(self.tab_logs)
+        wrap.pack(fill="both", expand=True)
+        self.txt = tk.Text(wrap, height=14, wrap="word")
+        yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.txt.yview)
+        self.txt.configure(yscrollcommand=yscroll.set)
+        topbar = ttk.Frame(self.tab_logs); topbar.pack(fill="x", pady=(6,4))
+        ttk.Button(topbar, text="Save log…", command=self._save_log).pack(side="left")
+        ttk.Button(topbar, text="Clear log", command=self._clear_log).pack(side="left", padx=(6,0))
+        self.txt.pack(side="left", fill="both", expand=True)
+        yscroll.pack(side="right", fill="y")
 
-    # ---------- ЛОГИ/ПРОГРЕСС ----------
+    # ---------- Logs ----------
 
     def _log(self, s: str):
-        self.txt.insert("end", s + "\n")
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.txt.insert("end", f"[{ts}] {s}\n")
         self.txt.see("end")
 
+    def _save_log(self):
+        p = filedialog.asksaveasfilename(title="Save log", defaultextension=".txt",
+                                         filetypes=[("Text files","*.txt"),("All files","*.*")])
+        if not p:
+            return
+        try:
+            data = self.txt.get("1.0", "end-1c")
+            Path(p).write_text(data, encoding="utf-8")
+            messagebox.showinfo("Logs", "Сохранено.", parent=self)
+        except Exception as e:
+            messagebox.showerror("Logs", f"Ошибка сохранения: {e}", parent=self)
+
+    def _clear_log(self):
+        try:
+            self.txt.delete("1.0", "end")
+        except Exception:
+            pass
+
     def _on_progress_send(self, done: int, total: int):
-        self.after(0, lambda: self._set_progress(self.prog_send, done, total))
+        def upd():
+            self._set_progress(self.prog_send, done, total)
+            if total and done >= total:
+                # маленькая «анимационная» пауза и очистка
+                self.after(400, lambda: self._set_progress(self.prog_send, 0, total))
+                # чистим SAS на отправителе
+                self.send_sas_code.set("—")
+                self.send_sas_fp.set("—")
+
+        self.after(0, upd)
 
     def _on_progress_recv(self, done: int, total: int):
-        self.after(0, lambda: self._set_progress(self.prog_recv, done, total))
+        def upd():
+            self._set_progress(self.prog_recv, done, total)
+            if total and done >= total:
+                # после завершения — чуть подержим 100% и обнулим
+                self.after(800, lambda: self._set_progress(self.prog_recv, 0, total))
+                # чистим SAS на приёмнике
+                self.recv_sas_code.set("—")
+                self.recv_sas_fp.set("—")
+
+        self.after(0, upd)
 
     @staticmethod
     def _set_progress(widget: ttk.Progressbar, done: int, total: int):
@@ -220,10 +276,76 @@ class App(tk.Tk):
             widget['maximum'] = total
             widget['value'] = min(done, total)
 
-    # --- Utils
+    # ---- Merge ----
+
+    def _pick_merge_src(self):
+        p = filedialog.askopenfilename(title="Select Source DB",
+                                       filetypes=[("SQLite DB", "*.db *.sqlite *.sqlite3"), ("All files", "*.*")])
+        if p: self.entry_merge_src.delete(0, "end"); self.entry_merge_src.insert(0, p)
+
+    def _pick_merge_dst(self):
+        p = filedialog.askopenfilename(title="Select Destination DB",
+                                       filetypes=[("SQLite DB", "*.db *.sqlite *.sqlite3"), ("All files", "*.*")])
+        if p: self.entry_merge_dst.delete(0, "end"); self.entry_merge_dst.insert(0, p)
+
+    def _run_merge(self):
+        src = self.entry_merge_src.get().strip()
+        dst = self.entry_merge_dst.get().strip()
+        dry = self.merge_dry.get()
+        verbose = self.merge_verbose_log.get()
+
+        if not src or not dst:
+            messagebox.showerror("Merge", "Укажи обе БД: Source и Destination.", parent=self)
+            return
+        if src == dst:
+            messagebox.showerror("Merge", "Source и Destination не должны совпадать.", parent=self)
+            return
+
+        self._log(f"Merge: {src} → {dst}  (dry_run={dry}) (verbose={verbose})")
+        self.nb.select(self.tab_merge)
+        self.prog_merge.start(60)
+        self.merge_events = {"cnt": 0}
+
+        def on_event(table, op):
+            self.after(0, lambda: self._log(f"[merge] {table}: {op}"))
+
+        def worker():
+            try:
+                if dry: self._log("NOTE: dry-run — изменения не записаны.")
+                if verbose: self._log("NOTE: verbose logs enabled.")
+                stats, viol = run_merge(src, dst, dry_run=dry, on_event=on_event, verbose=verbose)
+
+                def done():
+                    self.prog_merge.stop()
+                    messagebox.showinfo("Merge", "Merge process: Done.", parent=self)
+
+                    if viol:
+                        self._log("\n=== VIOLATION SUMMARY (source → dest) ===")
+                        head = [tuple(v) for v in viol[:10]]
+                        self._log(f"{len(viol)} violations, first 10:\n{head}")
+                    else:
+                        self._log("\n=== VIOLATION SUMMARY (source → dest) ===")
+                        self._log("0 violations")
+
+                    self._log("=== MERGE SUMMARY (source → dest) ===")
+                    for t, s in stats.items():
+                        self._log(
+                            f"{t:22s}  inserted:{s['insert']:6d}  updated:{s['update']:6d}  skipped:{s['skip']:6d}")
+
+                self.after(0, done)
+            except Exception as e:
+                msg = str(e)
+                self.after(0, lambda m=msg: (
+                    self.prog_merge.stop(),
+                    self._log(f"Merge error: {m}"),
+                    messagebox.showerror("Merge", m, parent=self)
+                ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ---- Utils ----
 
     def _start_mdns_browse(self):
-        # один браузер на приложение
         if self._zc:
             try:
                 self._zc.close()
@@ -235,8 +357,7 @@ class App(tk.Tk):
             self._zc = Zeroconf()
             self._mdns_browser = ServiceBrowser(self._zc, MDNS_SERVICE_TYPE, handlers=[self._on_mdns_service])
             self.mdns_status.set("mDNS: scanning…")
-            self._log("mDNS: поиск приёмников…")
-            # через 3 сек зафиксируем список
+            self._log("mDNS: searching receiver…")
             self.after(3000, self._finish_mdns_scan)
         except Exception as e:
             self.mdns_status.set("mDNS: error")
@@ -248,7 +369,6 @@ class App(tk.Tk):
             info = zeroconf.get_service_info(service_type, name)
             if not info:
                 return
-            # извлечём адреса
             try:
                 for addr in info.addresses:
                     ip = socket.inet_ntoa(addr)
@@ -261,10 +381,7 @@ class App(tk.Tk):
         items = list(self._mdns_hosts)
         items.sort()
         if items:
-            # подставим в combobox (только ip:port)
             self.cmb_host["values"] = items + list(self.cfg.get("recent", []))
-            # оставим в поле только ip (без :port), порт в отдельном поле
-            # если хочешь с портом сразу — распарь ниже
             first = items[0]
             if ":" in first:
                 ip, p = first.split(":")
@@ -272,20 +389,25 @@ class App(tk.Tk):
                 self.entry_port_send.delete(0, "end")
                 self.entry_port_send.insert(0, p)
             self.mdns_status.set(f"mDNS: found {len(items)}")
-            self._log(f"mDNS: найдено {len(items)} приёмников")
+            self._log(f"mDNS: find {len(items)} receivers")
         else:
             self.mdns_status.set("mDNS: none")
-            self._log("mDNS: приёмники не найдены")
+            self._log("mDNS: receiver was not found")
+
+    def _clear_mdns(self):
+        self._mdns_hosts.clear()
+        self.cmb_host["values"] = self.cfg.get("recent", [])
+        self.mdns_status.set("mDNS: cleared")
 
     def _on_check_conn(self):
         host = self.cmb_host.get().strip()
         try:
             port = int(self.entry_port_send.get().strip() or "8765")
         except ValueError:
-            messagebox.showerror("Ошибка", "Некорректный порт", parent=self)
+            messagebox.showerror("Error", "Incorrect port", parent=self)
             return
 
-        self._log(f"Проверка соединения: {host}:{port} …")
+        self._log(f"Check connection: {host}:{port} …")
 
         async def probe():
             try:
@@ -344,11 +466,29 @@ class App(tk.Tk):
 
             self.after(0, upd)
 
+        # read settings
+        try:
+            chunk_size = int(self.entry_chunk.get().strip() or "0")
+            if chunk_size <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Ошибка", "Chunk size должен быть положительным числом (bytes).", parent=self)
+            return
+        try:
+            speed_kbps = self.entry_speed.get().strip()
+            speed_kbps = int(speed_kbps) if speed_kbps else None
+            if speed_kbps is not None and speed_kbps <= 0:
+                speed_kbps = None
+        except ValueError:
+            messagebox.showerror("Ошибка", "Speed limit должен быть целым числом (KB/s) или пусто.", parent=self)
+            return
+
         sender = DBSender(
+            chunk_size=chunk_size,
+            throttle_kbps=speed_kbps,
             on_progress=self._on_progress_send,
             sas_info=sas_info_cb
         )
-
         fut = self.asyncio_thread.call(sender.connect_and_send(host, port, path))
         self._pending.append(fut)
 
@@ -368,6 +508,8 @@ class App(tk.Tk):
                 recent = [addr] + [x for x in self.cfg.get("recent", []) if x != addr]
                 self.cfg["recent"] = recent[:8]
                 self.cfg["last_port"] = str(port)
+                self.cfg["chunk_size"] = str(chunk_size)
+                self.cfg["speed_kbps"] = "" if speed_kbps is None else str(speed_kbps)
                 save_gui_cfg(self.cfg)
                 self.cmb_host["values"] = self.cfg["recent"]
 
@@ -388,7 +530,8 @@ class App(tk.Tk):
                 port=port,
                 chunk_dir="./incoming",
                 on_progress=self._on_progress_recv,
-                sas_confirm=self._sas_confirm_inline
+                sas_confirm=self._sas_confirm_inline,
+                on_done=self._on_receive_done
             )
             self._log(f"Запуск приёмника на порту {port} …")
             self.recv_status.set(f"Server: Running on 0.0.0.0:{port}")
@@ -403,7 +546,16 @@ class App(tk.Tk):
             if self.receiver:
                 self.asyncio_thread.call(self.receiver.stop())
 
-    # инлайн подтверждение SAS в вкладке Receive
+    def _reset_tofu(self):
+        try:
+            if TOFU_FILE.exists():
+                # полная очистка
+                save_tofu({})
+            messagebox.showinfo("TOFU", "Хранилище доверия очищено.", parent=self)
+            self._log("TOFU: cleared (~/.player_db_trust.json)")
+        except Exception as e:
+            messagebox.showerror("TOFU", f"Не удалось очистить: {e}", parent=self)
+
     def _sas_confirm_inline(self, sas_code: str, fp: str) -> bool:
         self.after(0, lambda: (
             self.recv_sas_code.set(sas_code),
@@ -419,13 +571,21 @@ class App(tk.Tk):
 
     def _sas_accept(self):
         if self._sas_event:
+            self._log("SAS: Accept clicked")
             self._sas_event["ok"] = True
             self._sas_event["ev"].set()
 
     def _sas_reject(self):
         if self._sas_event:
+            self._log("SAS: Cancel clicked")
             self._sas_event["ok"] = False
             self._sas_event["ev"].set()
+
+    def _on_receive_done(self, path: str):
+        self.after(0, lambda: (
+            self._log(f"Файл сохранён: {path}"),
+            messagebox.showinfo("Receive", f"Файл сохранён:\n{path}", parent=self)
+        ))
 
     # ---------- shutdown ----------
 
@@ -445,6 +605,10 @@ class App(tk.Tk):
                 pass
         finally:
             self.asyncio_thread.stop()
+            # TODO: Need to remove db_snapshot
+            # TODO: Need to delete incoming db if as merged
+            # NOTE: снапшот теперь удаляется по завершении отправки в DBSender
+
             self.destroy()
 
 

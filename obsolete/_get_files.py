@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urlparse, urlunparse, urljoin
 
-BASE_URL = 'https://amedia.online/2082-ja-byl-predan-tovarischami-v-glubine-podzemelja-no-blagodarja-svoemu-navyku-beskonechnaja-gacha-ja-obrel-sojuznikov-devjat-tysjach-devjatsot.html'
+BASE_URL = ''
 
 def get_file_from_script(page_url: str) -> str | None:
     """Запрашивает страницу и возвращает значение file из любого <script>."""

@@ -108,7 +108,7 @@ class AnimediaAdapter:
 
             await browser.close()
 
-            unique_files = self.uniq(all_files)          # уже строки
+            unique_files = self.uniq(all_files)
             final_files = [self.add_720(u) for u in unique_files]
             return final_files
 
@@ -117,10 +117,10 @@ if __name__ == "__main__":
 
     animedia_adapter = AnimediaAdapter()
     anime = "Sanda"
-    start = "https://amedia.online/"
+    start = ""
 
     files = asyncio.run(animedia_adapter.search_anime_and_collect(anime, start))
-    files = animedia_adapter.uniq(files)               # гарантируем уникальность
+    files = animedia_adapter.uniq(files)
     files = [animedia_adapter.add_720(u) for u in files]
     sorted_links = animedia_adapter.sort_by_episode(files)
 

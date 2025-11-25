@@ -1,7 +1,7 @@
 # utils.py
 import re
 from urllib.parse import urljoin, urlparse, urlunparse
-from typing import Iterable, Union, Optional, Literal
+from typing import Iterable, Union, Optional, Literal, List, Dict
 from bs4 import BeautifulSoup
 
 
@@ -54,3 +54,62 @@ def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
         if m:
             return urljoin(base_url, m.group(1))
     return None
+
+def _text_or_none(tag) -> Optional[str]:
+    return tag.get_text(strip=True) if tag else None
+
+
+def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
+    """Извлекает все требуемые поля из HTML страницы тайтла."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    # ── названия ──
+    header = soup.select_one("header.pmovie__header")
+    name_ru = _text_or_none(header.select_one("h1"))
+    name_en = _text_or_none(header.select_one("div.pmovie__main-info"))
+
+    # ── жанры ──
+    genres = [
+        a.get_text(strip=True)
+        for a in soup.select("div.animli a")
+    ]
+
+    # ── список <ul> с метаданными ──
+    meta = {  # ключ → CSS‑селектор внутри <li>
+        "season": "li:has(span:contains('Сезон года')) a",
+        "year": "li:has(span:contains('Год')) a",
+        "status": "li:has(span:contains('Статус')) a",
+        "type": "li:has(span:contains('Тип')) a",
+        "studio": "li:has(span:contains('Студия')) a",
+    }
+    extracted = {}
+    for field, selector in meta.items():
+        extracted[field] = _text_or_none(soup.select_one(selector))
+
+    # ── рейтинг ──
+    rating = _text_or_none(soup.select_one(
+        "div.item-slide__ext-rating.item-slide__ext-rating--imdb"
+    ))
+
+    # ── описание ──
+    description = _text_or_none(soup.select_one(
+        "div.pmovie__text.full-text.clearfix p"
+    ))
+
+    # ── постер ──
+    poster_tag = soup.select_one("div.pmovie__img img")
+    poster = urljoin(base_url, poster_tag["src"]) if poster_tag else None
+
+    return {
+        "name_ru": name_ru,
+        "name_en": name_en,
+        "genres": genres,
+        "season": extracted["season"],
+        "year": extracted["year"],
+        "status": extracted["status"],
+        "type": extracted["type"],
+        "studio": extracted["studio"],
+        "rating": rating,
+        "description": description,
+        "poster": poster,
+    }

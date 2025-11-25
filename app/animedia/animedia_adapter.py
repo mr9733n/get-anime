@@ -1,88 +1,122 @@
-# adapter.py
+# animedia_adapter.py
 import asyncio
 import logging
-from typing import Any, Literal, List
-import requests
-from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+import re
+from typing import Any, Dict, List
 
-from animedia_utils import (
-    safe_str,
-    uniq,
-    add_720,
-    extract_file_from_html,
-    urljoin, sort_by_episode,
-)
+from animedia_client import AnimediaClient
+from animedia_utils import parse_title_page
 
 
 class AnimediaAdapter:
+    """
+    Адаптер, который **расширяет** существующие записи новыми полями
+    (animedia_*), но не меняет уже сохранённые данные.
+    """
+
+    ID_OFFSET = 30_000          # диапазон новых ID
+    ORIGINAL_ID_FIELD = "animedia_original_id"
+
     def __init__(self, base_url: str):
+        self.client = AnimediaClient(base_url)
         self.logger = logging.getLogger(__name__)
-        self.base_url = base_url.rstrip("/")
 
-    async def _open_browser(self):
-        """Создаёт браузер Playwright, закрывается автоматически."""
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=False)
-        page = await browser.new_page()
-        return playwright, browser, page
-
-    async def _search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
-        """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
-        search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
-        await page.goto(search_url)
-        await page.wait_for_selector("div.content", timeout=5000)
-
-        html = await page.content()
-        soup = BeautifulSoup(html, "html.parser")
-        content_div = soup.find("div", class_="content")
-        if not content_div:
-            return []
-
-        links = []
-        for poster in content_div.select(".poster"):
-            a = poster.select_one("a.poster__link")
-            if a and poster.select_one("div.vysser"):
-                links.append(urljoin(self.base_url, a["href"]))
-        return links[:max_titles]
-
-    async def _collect_episode_files(self, page, title_url: str) -> List[str]:
-        """Собирает ссылки на файлы всех эпизодов конкретного тайтла."""
-        await page.goto(title_url)
-        html = await page.content()
-        soup = BeautifulSoup(html, "html.parser")
-
-        episode_links = [
-            urljoin(title_url, a["data-vlnk"])
-            for a in soup.find_all("a", attrs={"data-vlnk": True})
-        ]
-
-        files: List[str] = []
-        for ep_url in episode_links:
-            resp = requests.get(ep_url, timeout=15)
-            file_url = extract_file_from_html(resp.text, ep_url)
-            if file_url:
-                files.append(safe_str(file_url))
-        return files
-
-    async def search_anime_and_collect(
-        self,
-        anime_name: str,
-        max_titles: int = 5,
-    ) -> List[Literal[b""]]:
-        """Главный публичный метод – ищет аниме и возвращает уникальные ссылки 720p."""
-        playwright, browser, page = await self._open_browser()
+    # -----------------------------------------------------------------
+    # Внутренние утилиты
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _extract_id_from_url(url: str) -> int:
+        """
+        Возвращает числовой ID, который находится в конце URL.
+        Пример: https://site.com/anime/12345‑yano‑kun → 12345
+        """
         try:
-            title_urls = await self._search_titles(page, anime_name, max_titles)
+            last = url.rstrip("/").split("/")[-1]
+            num = "".join(ch for ch in last if ch.isdigit())
+            return int(num) if num else 0
+        except Exception:
+            return 0
 
-            all_files: List[str] = []
+    @staticmethod
+    def _make_new_id(original_id: int) -> int:
+        """Генерирует новый ID, добавляя фиксированный офсет."""
+        return AnimediaAdapter.ID_OFFSET + original_id
+
+    @staticmethod
+    def _episode_number(url: str) -> str:
+        """Извлекает номер эпизода из пути /<num>_/."""
+        m = re.search(r"/(\d+)_", url)
+        return m.group(1) if m else "0"
+
+    @staticmethod
+    def _split_quality(url: str) -> Dict[str, str | None]:
+        """
+        Делит URL‑файла на HD (720) и SD (480) варианты.
+        В оригинальном списке могут быть оба, один или ни одного.
+        """
+        # 720p уже гарантировано в `add_720`, 480p – ищем «480» в пути
+        hd = url
+        sd = None
+        if "/480_" in url:
+            sd = url.replace("/720_", "/480_")
+        return {"animedia_hls_hd": hd, "animedia_hls_sd": sd}
+
+    # -----------------------------------------------------------------
+    # Публичный метод
+    # -----------------------------------------------------------------
+    async def get_by_title(self, anime_name: str, max_titles: int = 5) -> List[Dict[str, Any]]:
+        """
+        Возвращает список словарей, готовых к сохранению.
+        Формат полностью совместим со старым процессором, но
+        добавлены новые поля с префиксом ``animedia_``.
+        """
+        page = await self.client._open_browser()
+        try:
+            title_urls = await self.client._search_titles(page, anime_name, max_titles)
+
+            results: List[Dict[str, Any]] = []
             for url in title_urls:
-                all_files.extend(await self._collect_episode_files(page, url))
+                # 1️⃣ HTML‑страница уже загружена в браузер
+                html = await page.content()
+                meta = parse_title_page(html, self.client.base_url)
 
-            unique_files = uniq(all_files)
-            sorted_links = sort_by_episode(unique_files)
-            return [add_720(u) for u in sorted_links]
+                # 2️⃣ Сбор файлов‑эпизодов
+                raw_files = await self.client._collect_episode_files(page, url)
+                unique_files = self.client.uniq(raw_files)
+                sorted_links = self.client.sort_by_episode(unique_files)
+                hd_links = [self.client.add_720(u) for u in sorted_links]
+
+                # 3️⃣ Формируем структуру эпизодов
+                episodes: Dict[str, Dict[str, Any]] = {}
+                for link in hd_links:
+                    ep_num = self._episode_number(link)
+                    episodes[ep_num] = self._split_quality(link)
+
+                # 4️⃣ Формируем итоговый словарь
+                original_id = self._extract_id_from_url(url)
+                new_id = self._make_new_id(original_id)
+
+                results.append(
+                    {
+                        "id": new_id,                                 # новый уникальный ID
+                        self.ORIGINAL_ID_FIELD: original_id,          # сохраняем оригинальный ID
+                        "names": {
+                            "ru": meta.get("name_ru") or "",
+                            "en": meta.get("name_en") or "",
+                        },
+                        "description": meta.get("description") or "",
+                        "year": meta.get("year") or "",
+                        "season": meta.get("season") or "",
+                        "status": meta.get("status") or "",
+                        "type": meta.get("type") or "",
+                        "studio": meta.get("studio") or "",
+                        "rating": meta.get("rating") or "",
+                        "genres": meta.get("genres") or [],
+                        "poster": meta.get("poster") or "",
+                        # эпизоды – словарь { "1": {"animedia_hls_hd": "...", "animedia_hls_sd": "..."} }
+                        "episode_links": episodes,
+                    }
+                )
+            return results
         finally:
-            await browser.close()
-            await playwright.stop()
-
+            await page.context.close()

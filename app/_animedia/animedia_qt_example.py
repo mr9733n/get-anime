@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
 )
 from qasync import QEventLoop, asyncSlot
-from app.animedia.animedia_adapter import AnimediaAdapter
+from app._animedia.animedia_client import AnimediaClient
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,7 +36,7 @@ class Main(QWidget):
 
     @asyncSlot()
     async def start_search(self):
-        adapter = AnimediaAdapter(
+        adapter = AnimediaClient(
             base_url="https://amedia.online/",
         )
         try:

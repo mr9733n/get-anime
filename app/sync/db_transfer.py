@@ -160,6 +160,7 @@ class DBReceiver:
         self.mdns_name = mdns_name or f"PlayerSync-{socket.gethostname()}"
         self._zc = None
         self._mdns_info = None
+        self.allow_resume = allow_resume
 
     async def start_listen(self):
         self._server = await asyncio.start_server(self._handle_client, host=self.host, port=self.port)
@@ -232,6 +233,8 @@ class DBReceiver:
         file_size = int(hello.get("file_size", 0))
         chunk_size = int(hello.get("chunk_size", DEFAULT_CHUNK))
 
+
+
         # 2. receive sender pubkey (32 bytes)
         try:
             sender_pub = await reader.readexactly(32)
@@ -291,9 +294,35 @@ class DBReceiver:
         # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
         print("[receiver] key tag:", key_recv[:4].hex())
 
+        # --- RESUME: check existing tmp ---
         tmp_path = self.chunk_dir / self.tmp_name
-        f = await aiofiles.open(tmp_path, "wb")
-        received = 0
+        resume_from = 0
+        if tmp_path.exists():
+            try:
+                sz = tmp_path.stat().st_size
+                # докачка только если размер кратен чанку и меньше полного файла
+                if 0 < sz < file_size and (sz % chunk_size == 0):
+                    resume_from = sz
+                    print(f"[receiver] resume possible from {resume_from} bytes")
+                else:
+                    print("[receiver] resume not possible, removing bad tmp")
+                    tmp_path.unlink(missing_ok=True)
+            except Exception as e:
+                print("[receiver] resume check failed:", e)
+                resume_from = 0
+
+        # --- send resume_from to sender ---
+        if not self.allow_resume:
+            resume_from = 0
+        writer.write((json.dumps({"resume_from": resume_from}) + "\n").encode())
+        await writer.drain()
+
+        tmp_path = self.chunk_dir / self.tmp_name
+        # если есть докачка — открываем в "append"
+        mode = "ab" if resume_from else "wb"
+        f = await aiofiles.open(tmp_path, mode)
+        received = resume_from
+        expected_seq = resume_from // chunk_size
 
         expected_sha = None
 
@@ -310,16 +339,22 @@ class DBReceiver:
                     # decrypt
                     try:
                         plain = box_recv.decrypt(enc)
+                        if seq != expected_seq:
+                            print("[receiver] out-of-order chunk, expected", expected_seq, "got", seq)
+                            break
+
+                        await f.write(plain)
+                        received += len(plain)
+                        writer.write((json.dumps({"ack": seq}) + "\n").encode());
+                        await writer.drain()
+                        if self.on_progress:
+                            self.on_progress(received, file_size)
+                        expected_seq += 1
                     except Exception as e:
                         print("[receiver] decrypt error:", e)
                         writer.write((json.dumps({"error":"decrypt"}) + "\n").encode()); await writer.drain()
                         break
-                    await f.write(plain)
-                    received += len(plain)
-                    # ack
-                    writer.write((json.dumps({"ack": seq}) + "\n").encode()); await writer.drain()
-                    if self.on_progress:
-                        self.on_progress(received, file_size)
+
                 elif typ == "DONE":
                     sha_line = await reader.readline()
                     expected_sha = sha_line.decode().strip()
@@ -333,7 +368,12 @@ class DBReceiver:
         finally:
             await f.close()
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError as e:
+                print(f"[receiver] connection reset while closing: {e}")
+            except OSError as e:
+                print(f"[receiver] socket error while closing: {e}")
 
         # verify sha
         sha = hashlib.sha256()
@@ -385,7 +425,8 @@ class DBSender:
     async def connect_and_send(self, host: str, port: int, src_db_path: str,
                                snapshot_path: str = "db_snapshot.sqlite", schema_version: str = "1"):
         # 1) make snapshot
-        sqlite_make_snapshot(src_db_path, snapshot_path)
+        if not os.path.exists(snapshot_path):
+            sqlite_make_snapshot(src_db_path, snapshot_path)
         size = os.path.getsize(snapshot_path)
         reader = writer = None
         last_err = None
@@ -438,8 +479,28 @@ class DBSender:
         # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
         print("[sender] key tag:", key_send[:4].hex())
 
+        # узнаём, с какого байта продолжать
+        line = await reader.readline()
+        resume_from = 0
+        try:
+            msg = json.loads(line.decode())
+            resume_from = int(msg.get("resume_from", 0))
+        except:
+            resume_from = 0
+
+        if resume_from:
+            print(f"[sender] receiver requests resume from {resume_from} bytes")
+
+        # ===== SHA256 по ВСЕМУ снапшоту =====
         sha = hashlib.sha256()
-        seq = 0
+        with open(snapshot_path, "rb") as ff:
+            for block in iter(lambda: ff.read(1024 * 1024), b""):
+                sha.update(block)
+        full_sha_hex = sha.hexdigest()
+
+        # ===== начинаем передачу =====
+        seq = resume_from // self.chunk_size
+
         start_window = time.monotonic()
         sent_in_window = 0
         window_sec = 1.0
@@ -448,11 +509,13 @@ class DBSender:
 
         try:
             with open(snapshot_path, "rb") as f:
+                if resume_from:
+                    f.seek(resume_from)
                 while True:
                     chunk = f.read(self.chunk_size)
                     if not chunk:
                         break
-                    sha.update(chunk)
+
                     enc = box_send.encrypt(chunk)  # nonce + ciphertext
                     writer.write(b"CHNK")
                     writer.write(struct.pack("!Q", seq))
@@ -482,13 +545,14 @@ class DBSender:
                         await writer.wait_closed()
                         return
                     seq += 1
+
                     if self.on_progress:
                         # показываем реальное количество принятых байт
                         self.on_progress(min(seq * self.chunk_size, size), size)
 
             # send done + sha
             writer.write(b"DONE")
-            writer.write((sha.hexdigest() + "\n").encode())
+            writer.write((full_sha_hex + "\n").encode())
             await writer.drain()
             writer.close(); await writer.wait_closed()
             print("[sender] finished send, seqs:", seq)

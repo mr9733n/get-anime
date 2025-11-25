@@ -315,7 +315,7 @@ def merge_torrents(src, dst, stats, on_event=None):
                                 on_event=on_event)
             stats["torrents"][op] += 1
 
-def merge_posters(src, dst, stats, on_event=None):
+def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
     """
     Политика:
       - Если у постера есть hash_value: ключом считаем (title_id, hash_value).
@@ -329,9 +329,14 @@ def merge_posters(src, dst, stats, on_event=None):
         for r in rows:
             data = dict(r)
             title_id = data.get("title_id")
+            hash_value = data.get("hash_value")
+
             if not title_id:
                 if on_event: on_event("posters", "skip:no-title_id")
                 continue
+
+            if not hash_value and skip_flag: continue
+
 
             # 1) гарантируем, что titles есть; если в src его нет — щадяще пропускаем
             try:
@@ -629,7 +634,14 @@ def merge_history(src, dst, stats, on_event=None):
                                 on_event=on_event)
             stats["history"][op] += 1
 
-def run_merge(src_path, dst_path, dry_run=False, on_event=None, verbose=False):
+def run_merge(
+        src_path, dst_path,
+        skip_posters_without_hash=False,
+        skip_orphans=False,
+        vacuum_optimize=False,
+        dry_run=False,
+        on_event=None,
+        verbose=False):
     with closing(open_db(src_path)) as src, closing(open_db(dst_path)) as dst:
         dst.execute("PRAGMA foreign_keys = ON;")
         # если твоя версия SQLite поддерживает — отложит проверку до COMMIT:
@@ -656,7 +668,7 @@ def run_merge(src_path, dst_path, dry_run=False, on_event=None, verbose=False):
         merge_schedule(src, dst, stats, on_event=evt)
         merge_episodes(src, dst, stats, on_event=evt)
         merge_torrents(src, dst, stats, on_event=evt)
-        merge_posters(src, dst, stats, on_event=evt)
+        merge_posters(src, dst, stats, on_event=evt, skip_flag=skip_posters_without_hash)
         merge_franchises(src, dst, stats, on_event=evt)
         merge_franchise_releases(src, dst, stats, on_event=evt)
         merge_title_genre_relations(src, dst, stats, on_event=evt)
@@ -665,6 +677,12 @@ def run_merge(src_path, dst_path, dry_run=False, on_event=None, verbose=False):
         merge_history(src, dst, stats, on_event=evt)
 
         violate = fetch_all(dst, "PRAGMA foreign_key_check")
+
+        if skip_orphans:
+            ...
+        if vacuum_optimize:
+            optimize = fetch_all(dst, "PRAGMA optimize;VACUUM;")
+
         if dry_run:
             dst.rollback()
         else:

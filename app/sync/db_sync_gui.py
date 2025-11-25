@@ -27,7 +27,7 @@ def load_gui_cfg():
             return json.loads(CFG_PATH.read_text(encoding="utf-8"))
     except Exception:
         pass
-    return {"recent": [], "last_port": "8765", "chunk_size": str(2 * 1024 * 1024), "speed_kbps": ""}
+    return {"recent": [], "last_port": "8765", "chunk_size": "2", "speed_kbps": ""}
 
 def save_gui_cfg(cfg: dict):
     try:
@@ -77,6 +77,7 @@ class App(tk.Tk):
         self._build_tab_receive()
         self._build_tab_merge()
         self._build_tab_logs()
+
         self._log("Готово. Используйте вкладки Send/Receive. История адресов сохраняется в ~/.player_db_gui.json.")
 
     # ---------- Tabs ----------
@@ -110,18 +111,64 @@ class App(tk.Tk):
         setgrp.pack(fill="x", pady=(6, 6))
         srow = ttk.Frame(setgrp); srow.pack(fill="x", pady=(6, 2))
         ttk.Label(srow, text="Chunk size (bytes):").pack(side="left")
-        self.entry_chunk = ttk.Entry(srow, width=12)
+        self.entry_chunk = ttk.Entry(srow, width=6)
         self.entry_chunk.pack(side="left", padx=(6, 16))
-        self.entry_chunk.insert(0, self.cfg.get("chunk_size", str(2*1024*1024)))
-        ttk.Label(srow, text="Speed limit (KB/s):").pack(side="left")
-        self.entry_speed = ttk.Entry(srow, width=10)
+        self.entry_chunk.insert(0, self.cfg.get("chunk_size", "2"))
+
+        self.chunk_human = tk.StringVar()
+        lbl_chunk_human = ttk.Label(srow, textvariable=self.chunk_human)
+        lbl_chunk_human.pack(side="left", padx=(6, 0))
+
+        srow2 = ttk.Frame(setgrp); srow2.pack(fill="x", pady=(6, 2))
+        ttk.Label(srow2, text="Speed limit (KB/s):").pack(side="left")
+        self.entry_speed = ttk.Entry(srow2, width=10)
         self.entry_speed.pack(side="left", padx=(6, 0))
         self.entry_speed.insert(0, self.cfg.get("speed_kbps", ""))
 
+        self.speed_human = tk.StringVar()
+        lbl_speed_human = ttk.Label(srow2, textvariable=self.speed_human)
+        lbl_speed_human.pack(side="left", padx=(6, 0))
+
+        def _update_human(entry: tk.Entry, var: tk.StringVar, kind: str):
+            txt = entry.get().strip()
+            if not txt:
+                var.set("")
+                return
+            try:
+                val = float(txt.replace(",", "."))
+            except ValueError:
+                var.set("")
+                return
+
+            if kind == "chunk":
+                # MiB -> bytes
+                mib = val
+                bytes_ = int(mib * 1024 * 1024)
+                var.set(f"≈ {mib:.2f} MiB ({bytes_:,} bytes)")
+            elif kind == "speed":
+                # KB/s -> MiB/s
+                mbps = val / 1024.0
+                var.set(f"≈ {mbps:.2f} MiB/s")
+
+        self.entry_chunk.bind(
+            "<KeyRelease>",
+            lambda e: _update_human(self.entry_chunk, self.chunk_human, "chunk")
+        )
+        self.entry_speed.bind(
+            "<KeyRelease>",
+            lambda e: _update_human(self.entry_speed, self.speed_human, "speed")
+        )
+
+        self.after(100, lambda: _update_human(self.entry_chunk, self.chunk_human, "chunk"))
+        self.after(100, lambda: _update_human(self.entry_speed, self.speed_human, "speed"))
+
+        # ---- Snapshot management ----
+        srow3 = ttk.Frame(setgrp); srow3.pack(fill="x", pady=(8, 2))
+        ttk.Button(srow3, text="Delete snapshot", command=self._delete_snapshot).pack(side="left")
+
         sasgrp = ttk.LabelFrame(self.tab_send, text="SAS (sender)")
         sasgrp.pack(fill="x", pady=(6, 6))
-        row1 = ttk.Frame(sasgrp);
-        row1.pack(fill="x", pady=(6, 2))
+        row1 = ttk.Frame(sasgrp); row1.pack(fill="x", pady=(6, 2))
         ttk.Label(row1, text="SAS:").pack(side="left")
         self.send_sas_code = tk.StringVar(value="—")
         ttk.Label(row1, textvariable=self.send_sas_code, font=("TkDefaultFont", 12, "bold")).pack(side="left", padx=6)
@@ -199,8 +246,18 @@ class App(tk.Tk):
         ttk.Button(row2, text="Browse…", command=self._pick_merge_dst).pack(side="left")
         opts = ttk.Frame(self.tab_merge)
         opts.pack(fill="x", pady=(2, 6))
+
         self.merge_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Dry-run (read only)", variable=self.merge_dry).pack(side="left")
+        self.merge_skip_posters_without_hash = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Skip posters without hash", variable=self.merge_skip_posters_without_hash).pack(
+            side="left", padx=(0, 10))
+        self.merge_skip_orphans = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Skip orphans", variable=self.merge_skip_orphans).pack(side="left", padx=(0, 10))
+        self.merge_vacuum_optimize = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="VACUUM/optimize after merge", variable=self.merge_vacuum_optimize).pack(side="left",
+                                                                                                            padx=(0,
+                                                                                                                  10))
         self.merge_verbose_log = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Verbose logs", variable=self.merge_verbose_log).pack(side="left")
         ttk.Button(self.tab_merge, text="Merge", command=self._run_merge).pack(anchor="w", pady=(4, 8))
@@ -292,6 +349,9 @@ class App(tk.Tk):
         src = self.entry_merge_src.get().strip()
         dst = self.entry_merge_dst.get().strip()
         dry = self.merge_dry.get()
+        skip_posters_without_hash = self.merge_skip_posters_without_hash.get()
+        skip_orphans = self.merge_skip_orphans.get()
+        vacuum_optimize = self.merge_vacuum_optimize.get()
         verbose = self.merge_verbose_log.get()
 
         if not src or not dst:
@@ -311,9 +371,21 @@ class App(tk.Tk):
 
         def worker():
             try:
+                if skip_posters_without_hash: self._log(
+                    "NOTE: skip_posters_without_hash — пропускать постеры без hash.")
+                if skip_orphans: self._log("NOTE: skip_orphans — пропускать без родителя...")
+                if vacuum_optimize: self._log("NOTE: vacuum_optimize — оптимизировать после слияния...")
+
                 if dry: self._log("NOTE: dry-run — изменения не записаны.")
                 if verbose: self._log("NOTE: verbose logs enabled.")
-                stats, viol = run_merge(src, dst, dry_run=dry, on_event=on_event, verbose=verbose)
+                stats, viol = run_merge(
+                    src, dst,
+                    skip_posters_without_hash=skip_posters_without_hash,
+                    skip_orphans=skip_orphans,
+                    vacuum_optimize=vacuum_optimize,
+                    dry_run=dry,
+                    on_event=on_event,
+                    verbose=verbose)
 
                 def done():
                     self.prog_merge.stop()
@@ -344,6 +416,20 @@ class App(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     # ---- Utils ----
+    def _delete_snapshot(self):
+        from pathlib import Path
+        snap = Path("db_snapshot.sqlite")
+        if not snap.exists():
+            messagebox.showinfo("Snapshot", "Снапшот не найден (db_snapshot.sqlite).", parent=self)
+            self._log("Snapshot: db_snapshot.sqlite not found")
+            return
+        try:
+            snap.unlink()
+            messagebox.showinfo("Snapshot", "Снапшот удалён (db_snapshot.sqlite).", parent=self)
+            self._log("Snapshot: db_snapshot.sqlite deleted")
+        except Exception as e:
+            messagebox.showerror("Snapshot", f"Не удалось удалить снапшот: {e}", parent=self)
+            self._log(f"Snapshot: error deleting db_snapshot.sqlite: {e}")
 
     def _start_mdns_browse(self):
         if self._zc:
@@ -468,11 +554,12 @@ class App(tk.Tk):
 
         # read settings
         try:
-            chunk_size = int(self.entry_chunk.get().strip() or "0")
-            if chunk_size <= 0:
+            chunk_mib = float(self.entry_chunk.get().strip() or "0")
+            if chunk_mib <= 0:
                 raise ValueError
+            chunk_size = int(chunk_mib * 1024 * 1024)
         except ValueError:
-            messagebox.showerror("Ошибка", "Chunk size должен быть положительным числом (bytes).", parent=self)
+            messagebox.showerror("Ошибка", "Chunk size должен быть положительным числом (MiB).", parent=self)
             return
         try:
             speed_kbps = self.entry_speed.get().strip()
@@ -508,7 +595,7 @@ class App(tk.Tk):
                 recent = [addr] + [x for x in self.cfg.get("recent", []) if x != addr]
                 self.cfg["recent"] = recent[:8]
                 self.cfg["last_port"] = str(port)
-                self.cfg["chunk_size"] = str(chunk_size)
+                self.cfg["chunk_size"] = self.entry_chunk.get().strip()
                 self.cfg["speed_kbps"] = "" if speed_kbps is None else str(speed_kbps)
                 save_gui_cfg(self.cfg)
                 self.cmb_host["values"] = self.cfg["recent"]

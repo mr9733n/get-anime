@@ -144,7 +144,8 @@ class DBReceiver:
                  sas_confirm: Optional[Callable[[str, str], bool]] = None,
                  on_done: Optional[Callable[[str], None]] = None,
                  allow_resume: bool = True,
-                 verify_chunks: bool = False):
+                 verify_chunks: bool = False,
+                 log: Optional[Callable[[str], None]] = None):
         self.host = host
         self.port = port
         self.chunk_dir = Path(chunk_dir)
@@ -161,11 +162,19 @@ class DBReceiver:
         self._zc = None
         self._mdns_info = None
         self.allow_resume = allow_resume
+        self.verify_chunks = verify_chunks
+        self._log_cb = log
+
+    def _log(self, msg: str):
+        if self._log_cb:
+            self._log_cb(msg)
+        else:
+            print(msg)
 
     async def start_listen(self):
         self._server = await asyncio.start_server(self._handle_client, host=self.host, port=self.port)
         addr = self._server.sockets[0].getsockname()
-        print(f"[receiver] listening on {addr}")
+        self._log(f"[receiver] listening on {addr}")
         # mDNS advertise
         if self.mdns_advertise and Zeroconf and ServiceInfo:
             try:
@@ -188,9 +197,9 @@ class DBReceiver:
                     properties=props,
                 )
                 self._zc.register_service(self._mdns_info)
-                print(f"[receiver] mDNS advertised: {self.mdns_name} @ {ip}:{self.port}")
+                self._log(f"[receiver] mDNS advertised: {self.mdns_name} @ {ip}:{self.port}")
             except Exception as e:
-                print("[receiver] mDNS advertise failed:", e)
+                self._log(f"[receiver] mDNS advertise failed: {e}")
         self._running = True
         async with self._server:
             await self._server.serve_forever()
@@ -205,7 +214,7 @@ class DBReceiver:
             if self._zc and self._mdns_info:
                 self._zc.unregister_service(self._mdns_info)
         except Exception as e:
-            print(f"[receiver] mDNS unregister failed: {type(e).__name__}: {e}")
+            self._log(f"[receiver] mDNS unregister failed: {type(e).__name__}: {e}")
         try:
             self._zc.close()
         except Exception:
@@ -216,30 +225,28 @@ class DBReceiver:
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peer = writer.get_extra_info("peername")
-        print(f"[receiver] connection from {peer}")
+        self._log(f"[receiver] connection from {peer}")
         # 1. read hello
         line = await reader.readline()
         if not line:
-            print("[receiver] empty hello (client disconnected early)")
+            self._log("[receiver] empty hello (client disconnected early)")
             writer.close(); await writer.wait_closed()
             return
         try:
             hello = json.loads(line.decode())
         except json.JSONDecodeError:
-            print("[receiver] bad hello, not JSON:", line[:64])
+            self._log(f"[receiver] bad hello, not JSON: {line[:64]}")
             writer.close(); await writer.wait_closed()
             return
 
         file_size = int(hello.get("file_size", 0))
         chunk_size = int(hello.get("chunk_size", DEFAULT_CHUNK))
 
-
-
         # 2. receive sender pubkey (32 bytes)
         try:
             sender_pub = await reader.readexactly(32)
         except asyncio.IncompleteReadError:
-            print("[receiver] disconnected before pubkey")
+            self._log("[receiver] disconnected before pubkey")
             writer.close();
             await writer.wait_closed()
             return
@@ -252,28 +259,28 @@ class DBReceiver:
         # compute SAS and TOFU check
         sas = compute_sas(sender_pub, pub)
         sender_fp = sha256_hex(sender_pub)[:16]
-        print(f"[receiver] SAS: {sas} (verify with sender)")
+        self._log(f"[receiver] SAS: {sas} (verify with sender)")
 
         # TOFU check: if known and matches, we can skip manual confirm
         tofu = load_tofu()
         trusted = tofu.get(sender_fp)
 
         if trusted:
-            print(f"[receiver] trusted sender fingerprint {sender_fp} (TOFU)")
+            self._log(f"[receiver] trusted sender fingerprint {sender_fp} (TOFU)")
             confirmed = True
         else:
             if self.sas_confirm:
-                print("[receiver] SAS: waiting for user confirmation…")
+                self._log("[receiver] SAS: waiting for user confirmation…")
                 loop = asyncio.get_running_loop()
                 # Важное изменение: выносим подтверждение в thread executor
                 confirmed = await loop.run_in_executor(None, lambda: bool(self.sas_confirm(sas, sender_fp)))
-                print(f"[receiver] SAS: {'accepted' if confirmed else 'rejected'} by user")
+                self._log(f"[receiver] SAS: {'accepted' if confirmed else 'rejected'} by user")
             else:
                 print("[receiver] please confirm SAS shown on sender device")
                 input("Press Enter when user confirmed SAS (or Ctrl+C to cancel)...")
                 confirmed = True
         if not confirmed:
-            print("[receiver] SAS declined by user")
+            self._log("[receiver] SAS declined by user")
             writer.close(); await writer.wait_closed()
             return
 
@@ -292,8 +299,7 @@ class DBReceiver:
         box_recv = SecretBox(key_recv)
 
         # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
-        print("[receiver] key tag:", key_recv[:4].hex())
-
+        self._log(f"[receiver] key tag: {key_recv[:4].hex()}")
         # --- RESUME: check existing tmp ---
         tmp_path = self.chunk_dir / self.tmp_name
         resume_from = 0
@@ -303,12 +309,12 @@ class DBReceiver:
                 # докачка только если размер кратен чанку и меньше полного файла
                 if 0 < sz < file_size and (sz % chunk_size == 0):
                     resume_from = sz
-                    print(f"[receiver] resume possible from {resume_from} bytes")
+                    self._log(f"[receiver] resume possible from {resume_from} bytes")
                 else:
-                    print("[receiver] resume not possible, removing bad tmp")
+                    self._log("[receiver] resume not possible, removing bad tmp")
                     tmp_path.unlink(missing_ok=True)
             except Exception as e:
-                print("[receiver] resume check failed:", e)
+                self._log(f"[receiver] resume check failed: {e}")
                 resume_from = 0
 
         # --- send resume_from to sender ---
@@ -340,7 +346,7 @@ class DBReceiver:
                     try:
                         plain = box_recv.decrypt(enc)
                         if seq != expected_seq:
-                            print("[receiver] out-of-order chunk, expected", expected_seq, "got", seq)
+                            self._log(f"[receiver] out-of-order chunk, expected: {expected_seq} got: {seq}")
                             break
 
                         await f.write(plain)
@@ -351,29 +357,29 @@ class DBReceiver:
                             self.on_progress(received, file_size)
                         expected_seq += 1
                     except Exception as e:
-                        print("[receiver] decrypt error:", e)
+                        self._log(f"[receiver] decrypt error: {e}")
                         writer.write((json.dumps({"error":"decrypt"}) + "\n").encode()); await writer.drain()
                         break
 
                 elif typ == "DONE":
                     sha_line = await reader.readline()
                     expected_sha = sha_line.decode().strip()
-                    print("[receiver] DONE expected sha:", expected_sha)
+                    self._log(f"[receiver] DONE expected sha: {expected_sha}")
                     break
                 else:
-                    print("[receiver] unknown header:", typ)
+                    self._log(f"[receiver] unknown header: {typ}")
                     break
         except asyncio.IncompleteReadError:
-            print("[receiver] connection closed unexpectedly during transfer")
+            self._log(f"[receiver] connection closed unexpectedly during transfer")
         finally:
             await f.close()
             writer.close()
             try:
                 await writer.wait_closed()
             except ConnectionResetError as e:
-                print(f"[receiver] connection reset while closing: {e}")
+                self._log(f"[receiver] connection reset while closing: {e}")
             except OSError as e:
-                print(f"[receiver] socket error while closing: {e}")
+                self._log(f"[receiver] connection reset while closing: {e}")
 
         # verify sha
         sha = hashlib.sha256()
@@ -384,11 +390,11 @@ class DBReceiver:
                     break
                 sha.update(data)
         got = sha.hexdigest()
-        print("[receiver] calculated sha:", got)
+        self._log(f"[receiver] calculated sha: {got}")
         if expected_sha and got == expected_sha:
             final = self.chunk_dir / self.final_name
             os.replace(tmp_path, final)
-            print("[receiver] saved DB to", final)
+            self._log(f"[receiver] saved DB to {final}")
 
             if self.on_progress:
                 self.on_progress(file_size, file_size)
@@ -404,9 +410,9 @@ class DBReceiver:
             if fp not in tofu:
                 tofu[fp] = True
                 save_tofu(tofu)
-                print("[receiver] saved TOFU fingerprint")
+                self._log("[receiver] saved TOFU fingerprint")
         else:
-            print("[receiver] SHA mismatch or missing; tmp kept at", tmp_path)
+            self._log(f"[receiver] SHA mismatch or missing; tmp kept at {tmp_path}" )
 
 # --- Класс Sender ---
 class DBSender:
@@ -415,12 +421,20 @@ class DBSender:
                  throttle_kbps: Optional[int] = None,
                  on_progress: Optional[Callable[[int, int], None]] = None,
                  sas_confirm: Optional[Callable[[str, str], bool]] = None,
-                 sas_info: Optional[Callable[[str, str], None]] = None):
+                 sas_info: Optional[Callable[[str, str], None]] = None,
+                 log: Optional[Callable[[str], None]] = None):
         self.chunk_size = chunk_size
         self.throttle_kbps = throttle_kbps  # None/0 -> no limit
         self.on_progress = on_progress
         self.sas_confirm = sas_confirm
         self.sas_info = sas_info
+        self._log_cb = log
+
+    def _log(self, msg: str):
+        if self._log_cb:
+            self._log_cb(msg)
+        else:
+            print(msg)
 
     async def connect_and_send(self, host: str, port: int, src_db_path: str,
                                snapshot_path: str = "db_snapshot.sqlite", schema_version: str = "1"):
@@ -460,7 +474,7 @@ class DBSender:
             except Exception:
                 pass
         else:
-            print(f"[sender] SAS: {sas}, peer FP: {recv_fp}")
+            self._log(f"[sender] SAS: {sas}, peer FP: {recv_fp}")
 
         salt = make_salt(pub, receiver_pub)
         is_a_local = pub < receiver_pub  # True, если МЫ — "A"
@@ -477,7 +491,7 @@ class DBSender:
         box_send = SecretBox(key_send)
 
         # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
-        print("[sender] key tag:", key_send[:4].hex())
+        self._log(f"[sender] key tag: {key_send[:4].hex()}")
 
         # узнаём, с какого байта продолжать
         line = await reader.readline()
@@ -489,7 +503,7 @@ class DBSender:
             resume_from = 0
 
         if resume_from:
-            print(f"[sender] receiver requests resume from {resume_from} bytes")
+            self._log(f"[sender] receiver requests resume from {resume_from} bytes")
 
         # ===== SHA256 по ВСЕМУ снапшоту =====
         sha = hashlib.sha256()
@@ -540,7 +554,7 @@ class DBSender:
                     line = await reader.readline()
                     ack = json.loads(line.decode())
                     if ack.get("ack") != seq:
-                        print("[sender] bad ack, abort", ack)
+                        self._log(f"[sender] bad ack, abort {ack}")
                         writer.close()
                         await writer.wait_closed()
                         return
@@ -555,7 +569,7 @@ class DBSender:
             writer.write((full_sha_hex + "\n").encode())
             await writer.drain()
             writer.close(); await writer.wait_closed()
-            print("[sender] finished send, seqs:", seq)
+            self._log(f"[sender] finished send, seqs: {seq}")
             if self.on_progress:
                 try:
                     self.on_progress(size, size)

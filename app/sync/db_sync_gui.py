@@ -1,10 +1,12 @@
 # db_sync_gui.py
+import csv
 import os
 import json
 import asyncio
 import socket
 import threading
 import tkinter as tk
+import traceback
 
 from datetime import datetime
 from tkinter import ttk, filedialog, messagebox
@@ -68,6 +70,7 @@ class App(tk.Tk):
         self.asyncio_thread = AsyncioThread()
         self.receiver: Optional[DBReceiver] = None
         self.receiver_running = False
+        self.merge_running = False
         self._pending = []
         self._sas_event = None
         self.cfg = load_gui_cfg()
@@ -232,36 +235,67 @@ class App(tk.Tk):
     def _build_tab_merge(self):
         self.tab_merge = ttk.Frame(self.nb)
         self.nb.add(self.tab_merge, text="Merge")
+
+        # --- Source / Destination ---
         row1 = ttk.Frame(self.tab_merge)
         row1.pack(fill="x", pady=(10, 4))
         ttk.Label(row1, text="Source DB:").pack(side="left")
-        self.entry_merge_src = ttk.Entry(row1, width=60);
+        self.entry_merge_src = ttk.Entry(row1, width=60)
         self.entry_merge_src.pack(side="left", padx=6)
         ttk.Button(row1, text="Browse…", command=self._pick_merge_src).pack(side="left")
-        row2 = ttk.Frame(self.tab_merge);
+
+        row2 = ttk.Frame(self.tab_merge)
         row2.pack(fill="x", pady=(4, 8))
         ttk.Label(row2, text="Destination DB:").pack(side="left")
-        self.entry_merge_dst = ttk.Entry(row2, width=60);
+        self.entry_merge_dst = ttk.Entry(row2, width=60)
         self.entry_merge_dst.pack(side="left", padx=6)
         ttk.Button(row2, text="Browse…", command=self._pick_merge_dst).pack(side="left")
+
+        # --- Options ---
         opts = ttk.Frame(self.tab_merge)
         opts.pack(fill="x", pady=(2, 6))
 
         self.merge_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Dry-run (read only)", variable=self.merge_dry).pack(side="left")
+
         self.merge_skip_posters_without_hash = tk.BooleanVar(value=False)
-        ttk.Checkbutton(opts, text="Skip posters without hash", variable=self.merge_skip_posters_without_hash).pack(
-            side="left", padx=(0, 10))
+        ttk.Checkbutton(
+            opts,
+            text="Skip posters without hash",
+            variable=self.merge_skip_posters_without_hash,
+        ).pack(side="left", padx=(8, 0))
+
         self.merge_skip_orphans = tk.BooleanVar(value=False)
-        ttk.Checkbutton(opts, text="Skip orphans", variable=self.merge_skip_orphans).pack(side="left", padx=(0, 10))
+        ttk.Checkbutton(
+            opts,
+            text="Skip orphans",
+            variable=self.merge_skip_orphans,
+        ).pack(side="left", padx=(8, 0))
+
         self.merge_vacuum_optimize = tk.BooleanVar(value=False)
-        ttk.Checkbutton(opts, text="VACUUM/optimize after merge", variable=self.merge_vacuum_optimize).pack(side="left",
-                                                                                                            padx=(0,
-                                                                                                                  10))
+        ttk.Checkbutton(
+            opts,
+            text="VACUUM/optimize after merge",
+            variable=self.merge_vacuum_optimize,
+        ).pack(side="left", padx=(8, 0))
+
         self.merge_verbose_log = tk.BooleanVar(value=False)
-        ttk.Checkbutton(opts, text="Verbose logs", variable=self.merge_verbose_log).pack(side="left")
-        ttk.Button(self.tab_merge, text="Merge", command=self._run_merge).pack(anchor="w", pady=(4, 8))
-        self.prog_merge = ttk.Progressbar(self.tab_merge, length=400, mode="indeterminate")
+        ttk.Checkbutton(
+            opts,
+            text="Verbose logs",
+            variable=self.merge_verbose_log,
+        ).pack(side="left", padx=(8, 0))
+
+        # --- Кнопка запуска ---
+        self.btn_merge = ttk.Button(self.tab_merge, text="Merge", command=self._run_merge)
+        self.btn_merge.pack(anchor="w", pady=(4, 8))
+
+        # --- Прогрессбар ---
+        self.prog_merge = ttk.Progressbar(
+            self.tab_merge,
+            length=400,
+            mode="indeterminate",
+        )
         self.prog_merge.pack(fill="x", pady=(0, 8))
 
     def _build_tab_logs(self):
@@ -353,7 +387,9 @@ class App(tk.Tk):
         skip_orphans = self.merge_skip_orphans.get()
         vacuum_optimize = self.merge_vacuum_optimize.get()
         verbose = self.merge_verbose_log.get()
-
+        if self.merge_running:
+            messagebox.showwarning("Merge", "Merge уже выполняется, дождись завершения.", parent=self)
+            return
         if not src or not dst:
             messagebox.showerror("Merge", "Укажи обе БД: Source и Destination.", parent=self)
             return
@@ -365,6 +401,9 @@ class App(tk.Tk):
         self.nb.select(self.tab_merge)
         self.prog_merge.start(60)
         self.merge_events = {"cnt": 0}
+        self.merge_running = True
+        if hasattr(self, "btn_merge"):
+            self.btn_merge.config(state="disabled")
 
         def on_event(table, op):
             self.after(0, lambda: self._log(f"[merge] {table}: {op}"))
@@ -378,17 +417,22 @@ class App(tk.Tk):
 
                 if dry: self._log("NOTE: dry-run — изменения не записаны.")
                 if verbose: self._log("NOTE: verbose logs enabled.")
-                stats, viol = run_merge(
-                    src, dst,
+                stats, viol, orphans = run_merge(
+                    src,
+                    dst,
                     skip_posters_without_hash=skip_posters_without_hash,
                     skip_orphans=skip_orphans,
                     vacuum_optimize=vacuum_optimize,
                     dry_run=dry,
                     on_event=on_event,
-                    verbose=verbose)
+                    verbose=verbose,
+                )
 
                 def done():
                     self.prog_merge.stop()
+                    self.merge_running = False
+                    if hasattr(self, "btn_merge"):
+                        self.btn_merge.config(state="normal")
                     messagebox.showinfo("Merge", "Merge process: Done.", parent=self)
 
                     if viol:
@@ -404,14 +448,34 @@ class App(tk.Tk):
                         self._log(
                             f"{t:22s}  inserted:{s['insert']:6d}  updated:{s['update']:6d}  skipped:{s['skip']:6d}")
 
+                    if orphans:
+                        try:
+                            dst_dir = os.path.dirname(dst) or "."
+                            csv_path = os.path.join(dst_dir, "merge_orphans.csv")
+                            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                                w = csv.writer(f, delimiter=";")
+                                w.writerow(["table", "op", "key"])
+                                for o in orphans:
+                                    w.writerow([o.get("table"), o.get("op"), o.get("key")])
+                            self._log(f"Orphans CSV saved: {csv_path} ({len(orphans)} rows)")
+                        except Exception as e:
+                            self._log(f"Failed to save orphans CSV: {e}")
+
                 self.after(0, done)
             except Exception as e:
                 msg = str(e)
-                self.after(0, lambda m=msg: (
-                    self.prog_merge.stop(),
-                    self._log(f"Merge error: {m}"),
+                tb = traceback.format_exc()
+
+                def handler(m=msg, tb_text=tb):
+                    self.prog_merge.stop()
+                    self.merge_running = False
+                    if hasattr(self, "btn_merge"):
+                        self.btn_merge.config(state="normal")
+                    self._log("Merge error: " + m)
+                    self._log("Traceback:\n" + tb_text)
                     messagebox.showerror("Merge", m, parent=self)
-                ))
+
+                self.after(0, handler)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -574,7 +638,8 @@ class App(tk.Tk):
             chunk_size=chunk_size,
             throttle_kbps=speed_kbps,
             on_progress=self._on_progress_send,
-            sas_info=sas_info_cb
+            sas_info=sas_info_cb,
+            log=self._log,
         )
         fut = self.asyncio_thread.call(sender.connect_and_send(host, port, path))
         self._pending.append(fut)
@@ -618,7 +683,8 @@ class App(tk.Tk):
                 chunk_dir="./incoming",
                 on_progress=self._on_progress_recv,
                 sas_confirm=self._sas_confirm_inline,
-                on_done=self._on_receive_done
+                on_done=self._on_receive_done,
+                log=self._log,
             )
             self._log(f"Запуск приёмника на порту {port} …")
             self.recv_status.set(f"Server: Running on 0.0.0.0:{port}")

@@ -656,38 +656,56 @@ def run_merge(
                   "title_genre_relation","title_team_relation","ratings","history"]:
             ensure_table_stats(stats, t)
 
-        def _noop_event(*args, **kwargs): pass
-        evt = on_event if verbose and on_event else _noop_event
-        # порядки важны (FK!)
-        merge_days_of_week(src, dst, stats, on_event=evt)
-        merge_genres(src, dst, stats, on_event=evt)
-        merge_team_members(src, dst, stats, on_event=evt)
+        orphans = []  # сюда собираем сирот
 
-        merge_titles(src, dst, stats, on_event=evt)
-        merge_production_studio(src, dst, stats, on_event=evt)
-        merge_schedule(src, dst, stats, on_event=evt)
-        merge_episodes(src, dst, stats, on_event=evt)
-        merge_torrents(src, dst, stats, on_event=evt)
-        merge_posters(src, dst, stats, on_event=evt, skip_flag=skip_posters_without_hash)
-        merge_franchises(src, dst, stats, on_event=evt)
-        merge_franchise_releases(src, dst, stats, on_event=evt)
-        merge_title_genre_relations(src, dst, stats, on_event=evt)
-        merge_title_team_relations(src, dst, stats, on_event=evt)
-        merge_ratings(src, dst, stats, on_event=evt)
-        merge_history(src, dst, stats, on_event=evt)
+        def record_event(table, op):
+            # внешний on_event + verbose — как раньше
+            if on_event and verbose:
+                on_event(table, op)
+            # наши сироты
+            if "skip_orphan" in op:
+                key = None
+                if ":" in op:
+                    _, key = op.split(":", 1)
+                orphans.append({
+                    "table": table,
+                    "op": op,
+                    "key": key,
+                })
+
+        # def _noop_event(*args, **kwargs): pass
+        # evt = on_event if verbose and on_event else _noop_event
+        # порядки важны (FK!)
+        merge_days_of_week(src, dst, stats, on_event=record_event)
+        merge_genres(src, dst, stats, on_event=record_event)
+        merge_team_members(src, dst, stats, on_event=record_event)
+
+        merge_titles(src, dst, stats, on_event=record_event)
+        merge_production_studio(src, dst, stats, on_event=record_event)
+        merge_schedule(src, dst, stats, on_event=record_event)
+        merge_episodes(src, dst, stats, on_event=record_event)
+        merge_torrents(src, dst, stats, on_event=record_event)
+        merge_posters(src, dst, stats, on_event=record_event, skip_flag=skip_posters_without_hash)
+        merge_franchises(src, dst, stats, on_event=record_event)
+        merge_franchise_releases(src, dst, stats, on_event=record_event)
+        merge_title_genre_relations(src, dst, stats, on_event=record_event)
+        merge_title_team_relations(src, dst, stats, on_event=record_event)
+        merge_ratings(src, dst, stats, on_event=record_event)
+        merge_history(src, dst, stats, on_event=record_event)
 
         violate = fetch_all(dst, "PRAGMA foreign_key_check")
 
         if skip_orphans:
             ...
-        if vacuum_optimize:
-            optimize = fetch_all(dst, "PRAGMA optimize;VACUUM;")
 
         if dry_run:
             dst.rollback()
         else:
             dst.commit()
-        return stats, violate
+            if vacuum_optimize:
+                dst.execute("PRAGMA optimize")
+                dst.execute("VACUUM")
+        return stats, violate, orphans
 
 
 if __name__ == "__main__":
@@ -698,7 +716,7 @@ if __name__ == "__main__":
     ap.add_argument("--verbose", action="store_true", help="Подробный поток on_event (шумно).")
     args = ap.parse_args()
     try:
-        stats, viol = run_merge(args.source_db, args.destination_db, dry_run=args.dry_run, verbose=args.verbose)
+        stats, viol, orphans = run_merge(args.source_db, args.destination_db, dry_run=args.dry_run, verbose=args.verbose)
         # вывод сводки
         if viol:
         # вывести в лог/GUI список нарушений
@@ -708,7 +726,9 @@ if __name__ == "__main__":
         print("\n=== MERGE SUMMARY (source → dest) ===")
         for t, s in stats.items():
             print(f"{t:22s}  inserted: {s['insert']:6d}  updated: {s['update']:6d}  skipped: {s['skip']:6d}")
-
+        if orphans:
+            print("\n=== ORPHANS SUMMARY ===")
+            print(f"{len(orphans)} orphan rows (see GUI or future CSV export)")
         if args.dry_run:
             print("\nNOTE: --dry-run был включён, изменения не записаны.")
     except Exception as e:

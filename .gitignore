@@ -53,3 +53,4 @@ anime_player.db.zip
 *.tmp
 /app/sync/__pycache__
 *.pyc
+/dist_517

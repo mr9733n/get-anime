@@ -8,7 +8,13 @@ hiddenimports = (
     collect_submodules('app.qt.ui_s_generator') +
     collect_submodules('app.qt.app_helpers') +
     collect_submodules('app.qt.layout_metadata') +
-    collect_submodules('app.qt.vlc_player.py') +
+    collect_submodules('app.qt.vlc_player') +
+
+    collect_submodules('app.animedia.animedia_client') +
+    collect_submodules('app.animedia.animedia_utils') +
+    collect_submodules('app.animedia.demo') +
+    collect_submodules('app.animedia.playlist_manager') +
+
     collect_submodules('core.database_manager') +
     collect_submodules('core.get') +
     collect_submodules('core.save') +

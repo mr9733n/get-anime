@@ -22,23 +22,62 @@ from utils.config_manager import ConfigManager
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
+UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 
-# Construct the path to the database in the main directory
-base_dir = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    # В фризе всегда считаем рабочей директорией папку с exe
+    os.chdir(os.path.dirname(sys.executable))
+
+def resource_path(*parts: str) -> str:
+    """
+    Универсальный поиск ресурсов:
+      - dev: рядом с main.py
+      - frozen/onedir: сперва рядом с .exe, потом в _internal
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+
+        # 1) сначала пробуем рядом с exe
+        candidate1 = os.path.join(exe_dir, *parts)
+        if parts and os.path.exists(candidate1):
+            return candidate1
+        if not parts:
+            # resource_path() без аргументов -> корень рядом с exe
+            return exe_dir
+
+        # 2) пробуем sys._MEIPASS (PyInstaller может его ставить)
+        internal = getattr(sys, "_MEIPASS", None)
+        if internal:
+            candidate2 = os.path.join(internal, *parts)
+            if os.path.exists(candidate2):
+                return candidate2
+
+        # 3) пробуем dist/APP/_internal/...
+        internal2 = os.path.join(exe_dir, "_internal")
+        candidate3 = os.path.join(internal2, *parts)
+        if os.path.exists(candidate3):
+            return candidate3
+
+        # 4) fallback — считаем, что ресурсов нет, но хотим создать (логи, БД и т.п.)
+        return candidate1
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base, *parts)
+
+# --- пути ---
+base_dir = resource_path()  # корень приложения (для dev — рядом с main.py, для frozen — рядом с exe)
 log_dir = os.path.join(base_dir, 'logs')
 db_dir = os.path.join(base_dir, 'db')
-icon_dir = os.path.join(base_dir, 'static')
-lib_dir = os.path.join(base_dir, 'libs')
-config_path = os.path.join(base_dir, 'config', 'config.ini')
 
-# load_dotenv()
+# Статические ресурсы ищем либо рядом с exe, либо в _internal:
+icon_dir = resource_path('static')
+lib_dir = resource_path('libs')
+config_path = resource_path('config', 'config.ini')
+logging_config_path = resource_path('config', 'logging.conf')
 config_manager = ConfigManager(config_path)
 prod_key = config_manager.get_setting('System', 'PROD_KEY')
 fetch_ver = config_manager.get_setting('System', 'USE_GIT_VERSION')
-# prod_key = os.getenv("PROD_KEY")
-# fetch_ver = os.getenv('USE_GIT_VERSION')
 
-UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 if prod_key and re.match(UUID_REGEX, prod_key):
     DEVELOPMENT_MODE = False
 else:
@@ -102,7 +141,8 @@ if __name__ == "__main__":
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
+    logging.config.fileConfig(logging_config_path,
+                              disable_existing_loggers=False)
 
     sys.excepthook = log_exception
 

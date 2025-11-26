@@ -758,8 +758,6 @@ class App(tk.Tk):
                 pass
         finally:
             self.asyncio_thread.stop()
-            # TODO: Need to remove db_snapshot
-            # TODO: Need to delete incoming db if as merged
             # NOTE: снапшот теперь удаляется по завершении отправки в DBSender
 
             self.destroy()

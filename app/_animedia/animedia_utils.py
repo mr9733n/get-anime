@@ -54,3 +54,24 @@ def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
         if m:
             return urljoin(base_url, m.group(1))
     return None
+
+def replace_spaces(text: str) -> str:
+    """
+    Привести строку к безопасному имени файла:
+    • пробелы → «_»;
+    • дефис «-» → «_»;
+    • удалить все точки «.»;
+    • убрать любые остальные «опасные» символы;
+    • оставить только буквы, цифры и подчёркивание.
+    """
+    if text is None:
+        return None
+    text = str(text)
+    text = text.replace('"', "").replace("'", "")
+    text = text.replace(" ", "_").replace("-", "_")
+    text = text.replace(".", "")
+    text = re.sub(r"[^A-Za-z0-9_]", "", text)
+    return text
+
+def text_or_none(tag) -> Optional[str]:
+    return tag.get_text(strip=True) if tag else None

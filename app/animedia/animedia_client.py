@@ -1,6 +1,7 @@
 # animedia_client.py
 import asyncio
 import logging
+import httpx
 import requests
 from typing import Any, Literal, List, Dict, Optional
 
@@ -26,7 +27,7 @@ class AnimediaClient:
     async def _open_browser(self):
         """Создаёт браузер Playwright, закрывается автоматически."""
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=False)
+        browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page()
         return playwright, browser, page
 
@@ -61,11 +62,12 @@ class AnimediaClient:
         ]
 
         files: List[str] = []
-        for ep_url in episode_links:
-            resp = requests.get(ep_url, timeout=15)
-            file_url = extract_file_from_html(resp.text, ep_url)
-            if file_url:
-                files.append(safe_str(file_url))
+        async with httpx.AsyncClient(timeout=30) as client:
+            for ep_url in episode_links:
+                resp = await client.get(ep_url)
+                file_url = extract_file_from_html(resp.text, ep_url)
+                if file_url:
+                    files.append(safe_str(file_url))
         return files
 
     async def search_anime_and_collect(

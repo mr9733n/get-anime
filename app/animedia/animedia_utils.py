@@ -76,11 +76,11 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
 
     # ── список <ul> с метаданными ──
     meta = {  # ключ → CSS‑селектор внутри <li>
-        "season": "li:has(span:contains('Сезон года')) a",
-        "year": "li:has(span:contains('Год')) a",
-        "status": "li:has(span:contains('Статус')) a",
-        "type": "li:has(span:contains('Тип')) a",
-        "studio": "li:has(span:contains('Студия')) a",
+        "season": "li:has(span:-soup-contains('Сезон года')) a",
+        "year": "li:has(span:-soup-contains('Год')) a",
+        "status": "li:has(span:-soup-contains('Статус')) a",
+        "type": "li:has(span:-soup-contains('Тип')) a",
+        "studio": "li:has(span:-soup-contains('Студия')) a",
     }
     extracted = {}
     for field, selector in meta.items():

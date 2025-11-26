@@ -1,0 +1,4 @@
+beautifulsoup4~=4.13.4
+PyQt6~=6.9.0
+playwright~=1.52.0
+qasync>=0.27.1

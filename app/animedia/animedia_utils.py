@@ -2,8 +2,12 @@
 import re
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse
-from typing import Iterable, Union, Optional, Literal, List, Dict
+from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
+
+
+ID_OFFSET = 30000
+ORIGINAL_ID_FIELD = "animedia_id"
 
 
 def safe_str(value: bytes | str) -> str:
@@ -30,12 +34,10 @@ def extract_video_host(urls: Iterable[Union[str, bytes]]) -> str:
     If different hosts are found, the first one encountered is returned.
     """
     for u in urls:
-        # Convert bytes → str
         if isinstance(u, bytes):
             u = u.decode(errors="ignore")
-        u = u.strip()
 
-        # Ensure a scheme so urlparse can extract the netloc
+        u = u.strip()
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", u):
             u = "http://" + u
 
@@ -43,7 +45,6 @@ def extract_video_host(urls: Iterable[Union[str, bytes]]) -> str:
         if host:
             return host
 
-    # No valid host found
     return ""
 
 
@@ -61,25 +62,17 @@ def _insert_quality(url: str, quality: str) -> str:
     If ``hls`` is not present, insert it before the final segment.
     """
     parsed = urlparse(url)
-    parts = parsed.path.split("/")          # ['', 'segment1', 'segment2', ...]
+    parts = parsed.path.split("/")
     try:
         idx = parts.index("hls")
-        # If the next part already equals the desired quality – do nothing
         if idx + 1 < len(parts) and parts[idx + 1] != quality:
             parts.insert(idx + 1, quality)
     except ValueError:
-        # No ``hls`` – insert before the last non‑empty segment (if any)
         if len(parts) > 1:
             parts.insert(-1, quality)
 
-    # Re‑assemble the path, discarding empty fragments that may appear
     new_path = "/" + "/".join(filter(None, parts))
     return urlunparse(parsed._replace(path=new_path))
-
-
-def add_1080(url: str) -> Literal[b""]:
-    """Insert ``1080`` after ``hls`` (or before the last segment)."""
-    return _insert_quality(url, "1080")  # type: ignore[return-value]
 
 
 def add_720(url: str) -> Literal[b""]:
@@ -96,6 +89,7 @@ def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
         if m:
             return urljoin(base_url, m.group(1))
     return None
+
 
 def _text_or_none(tag) -> Optional[str]:
     return tag.get_text(strip=True) if tag else None
@@ -154,6 +148,114 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
         "rating": rating,
         "description": description,
         "poster": poster,
+    }
+
+
+def _episode_number(url: str) -> str:
+    m = re.search(r"/(\d+)_", url)
+    return str(int(m.group(1))) if m else "0"
+
+
+def episodes_dict(sorted_links: list[str]) -> Dict[str, Dict[str, str | None]]:
+    # 1080 p, 720 p и 480 p (оригинал)
+    hd_links = [add_720(u) for u in sorted_links]
+    sd_links = sorted_links  # уже 480 p
+
+    episodes: Dict[str, Dict[str, str | None]] = {}
+    for hd, sd in zip(hd_links, sd_links):
+        ep_num = _episode_number(sd)
+
+        episodes[ep_num] = {
+            "fhd": "",
+            "hd": "",
+            "sd": "",
+            "hd_animedia": hd,
+            "sd_animedia": sd
+        }
+
+    return episodes
+
+
+def _extract_id_from_url(url: str) -> int:
+    try:
+        last = url.rstrip("/").split("/")[-1]
+        num = "".join(ch for ch in last if ch.isdigit())
+        return int(num) if num else 0
+    except Exception:
+        return 0
+
+
+def _make_new_id(original_id: int) -> int:
+    return ID_OFFSET + original_id
+
+
+def build_base_dict(
+    *,
+    url: str,
+    stream_video_host: str,
+    meta: Dict[str, Any],
+    episodes: Dict[str, Dict[str, str | None]],
+    created_ts: int,
+) -> Dict[str, Any]:
+    """Собирает общий словарь‑результат без дублирования кода."""
+
+    original_id = _extract_id_from_url(url)
+    new_id = _make_new_id(_extract_id_from_url(url))
+
+    return {
+        "id": new_id,
+        ORIGINAL_ID_FIELD: original_id,
+        "code": meta.get("code", ""),
+        "announce": meta.get("announce", ""),
+        "names": {
+            "ru": meta.get("name_ru") or "",
+            "en": meta.get("name_en") or "",
+            "alternative": meta.get("name_alternative") or ""
+        },
+        "description": meta.get("description") or "",
+        "year": meta.get("year") or "",
+        "season": {
+            "code": 0,
+            "string": meta.get("season") or "",
+            "year": meta.get("year") or "",
+            "week_day": meta.get("week_day") or ""
+        },
+        "status": {
+            "code": meta.get("status_code", 0),
+            "string": meta.get("status") or ""
+        },
+        "type": {
+            "code": 0,
+            "string": meta.get("type") or "",
+            "full_string": meta.get("type_full") or "",
+            "episodes": meta.get("episodes_total") or 0,
+            "length": str(meta.get("average_duration_of_episode", ""))
+        },
+        "studio": meta.get("studio") or "",
+        "rating": meta.get("rating") or "",
+        "genres": meta.get("genres") or [],
+        "posters": {
+            "small": {"url": meta.get("poster_small") or ""},
+            "medium": {"url": meta.get("poster_medium") or ""},
+            "original": {"url": meta.get("poster") or ""}
+        },
+        "updated": to_timestamp(meta.get("updated")),
+        "last_change": to_timestamp(meta.get("updated")),
+        "in_favorites": meta.get("in_favorites", 0),
+        "blocked": {
+            "copyrights": False,
+            "geoip": False,
+            "geoip_list": []
+        },
+        "player": {
+            "host": stream_video_host,
+            "alternative_player": "",
+            "list": episodes
+        },
+        "team": {"voice": [], "translator": [], "timing": []},
+        "franchises": [],
+        "torrents": {"list": []},
+        "created_timestamp": created_ts
     }
 
 

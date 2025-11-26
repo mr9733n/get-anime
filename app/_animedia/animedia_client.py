@@ -33,7 +33,7 @@ class AnimediaClient:
     async def _search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
         search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
         await page.goto(search_url)
-        await page.wait_for_selector("div.content", timeout=5000)
+        await page.wait_for_selector("div.content", timeout=30000)
 
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")

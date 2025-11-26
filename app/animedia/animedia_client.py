@@ -24,18 +24,30 @@ class AnimediaClient:
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url.rstrip("/")
 
+        self.headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0"
+            ),
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        }
+
     async def _open_browser(self):
         """Создаёт браузер Playwright, закрывается автоматически."""
         playwright = await async_playwright().start()
         browser = await playwright.chromium.launch(headless=True)
         page = await browser.new_page()
+        await page.set_extra_http_headers(self.headers)
         return playwright, browser, page
 
     async def _search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
         """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
         search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
         await page.goto(search_url)
-        await page.wait_for_selector("div.content", timeout=5000)
+        await page.wait_for_selector("div.content", timeout=3000)
 
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")

@@ -2,9 +2,9 @@
 import logging
 
 from jinja2 import Template
-from PyQt5.QtWidgets import QTextBrowser, QLabel, QWidget
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QTextBrowser, QLabel, QWidget
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt
 from app.qt.layout_metadata import show_mode_metadata
 
 
@@ -111,7 +111,7 @@ class TitleDataFactory:
                 else:
                     return []
 
-                # Если переданы конкретные title_ids, но не попали под списочные режимы
+            # Если переданы конкретные title_ids, но не попали под списочные режимы
             elif title_ids:
                 return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
 
@@ -291,8 +291,8 @@ class TitleBrowserFactory:
         title_browser.anchorClicked.connect(self.app.on_link_click)
 
         # Настраиваем виджет на основе метаданных
-        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         title_browser.setStyleSheet("""
             text-align: right;
             border: 1px solid #444;
@@ -330,10 +330,10 @@ class TitleBrowserFactory:
         if poster_data:
             pixmap = QPixmap()
             if pixmap.loadFromData(poster_data):
-                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
             else:
                 self.app.logger.error(f"Error: Failed to load pixmap from data for title_id: {title_id}")
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         else:
-            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         return poster_label

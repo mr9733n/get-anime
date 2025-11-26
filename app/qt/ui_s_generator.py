@@ -1,7 +1,7 @@
 # ui_s_generator.py
 import logging
 
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
+from PyQt6.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
 from utils.runtime_manager import restart_application, LogWindow
 
 

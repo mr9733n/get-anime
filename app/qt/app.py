@@ -3,8 +3,13 @@ import re
 import sys
 import json
 import logging
+import logging.config
+import os
 import platform
+import re
 import subprocess
+import base64
+import datetime
 
 from datetime import datetime, timezone, timedelta
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
@@ -14,7 +19,12 @@ from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.vlc_player import VLCPlayer
+
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
+from PyQt6.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt
+
 from app.qt.ui_manger import UIManager
+from app.qt.app_state_manager import AppStateManager
 from app.qt.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
@@ -65,6 +75,7 @@ class AnimePlayerAppVer3(QWidget):
         self.current_day_of_week = None
         self.current_title_id = None
         self.vlc_window = None
+        self.day_of_week = None
         self.quality_dropdown = None
         self.playlist_filename = None
         self.current_data = None
@@ -75,6 +86,7 @@ class AnimePlayerAppVer3(QWidget):
         self.title_search_entry = None
         self.current_titles = None
         self.selected_quality = None
+        self.torrent_data = None
 
         self.discovered_links = []
         self.sanitized_titles = []

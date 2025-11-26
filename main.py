@@ -8,10 +8,10 @@ import sys
 import threading
 import faulthandler
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import QSharedMemory
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication
+from PyQt6 import QtCore
+from PyQt6.QtCore import QSharedMemory
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
 from dotenv import load_dotenv
@@ -206,4 +206,4 @@ if __name__ == "__main__":
     if DEVELOPMENT_MODE:
         app_pyqt.aboutToQuit.connect(test_exception)
 
-    sys.exit(app_pyqt.exec_())
+    sys.exit(app_pyqt.exec())

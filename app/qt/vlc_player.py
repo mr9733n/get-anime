@@ -11,11 +11,11 @@ import time
 import sys
 import argparse
 
-from PyQt5.QtGui import QIcon
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
+from PyQt6.QtGui import QIcon
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
     QStyle, QSystemTrayIcon
-from PyQt5.QtCore import Qt, QTimer, QSharedMemory
+from PyQt6.QtCore import Qt, QTimer, QSharedMemory
 
 
 ES_CONTINUOUS       = 0x80000000  # постоянный режим
@@ -28,8 +28,10 @@ class VideoWindow(QWidget):
     def __init__(self, media_player):
         super().__init__()
         self.setWindowTitle("VLC Video Player")
+        layout = QVBoxLayout(self)
         self.video_widget = QVideoWidget(self)
-        self.setCentralWidget(self.video_widget)
+        layout.addWidget(self.video_widget)
+        self.setLayout(layout)
         self.media_player = media_player
         self.media_player.set_hwnd(self.video_widget.winId())
 
@@ -79,10 +81,10 @@ class VLCPlayer(QWidget):
         self.playlist_button = QPushButton("PLAYLIST")
         self.screenshot_button = QPushButton("SCREENSHOT")
         self.skip_credits_button = QPushButton("SKIP CREDITS")
-        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(100)
-        self.progress_slider = QSlider(Qt.Horizontal)
+        self.progress_slider = QSlider(Qt.Orientation.Horizontal)
         self.progress_slider.setRange(0, 100)
         self.time_label = QLabel("00:00 / 00:00")
         self.playlist_widget = QListWidget()
@@ -444,9 +446,9 @@ class VLCPlayer(QWidget):
 
     def slider_clicked(self, event):
         """Обрабатывает клик по слайдеру и перемещает ручку с учётом буферизации."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             slider_width = self.progress_slider.width()
-            click_position = event.pos().x()
+            click_position = event.position().x()
             new_value = int((click_position / slider_width) * self.progress_slider.maximum())
             self.progress_slider.setValue(new_value)
             self.seek_position_with_buffer()
@@ -552,11 +554,11 @@ class VLCPlayer(QWidget):
         for i in range(self.playlist_widget.count()):
             item = self.playlist_widget.item(i)
             if item.text() == current_url:
-                item.setBackground(Qt.lightGray)
-                item.setForeground(Qt.black)
+                item.setBackground(Qt.GlobalColor.lightGray)
+                item.setForeground(Qt.GlobalColor.black)
             else:
-                item.setBackground(Qt.white)
-                item.setForeground(Qt.black)
+                item.setBackground(Qt.GlobalColor.white)
+                item.setForeground(Qt.GlobalColor.black)
 
     def handle_skip_credits(self):
         """Обрабатывает нажатие кнопки SKIP CREDITS – выполняется единичный пропуск титров."""

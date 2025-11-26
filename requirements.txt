@@ -10,7 +10,7 @@ pydantic
 pytest~=8.3.5
 python-dotenv~=1.1.0
 python-vlc
-PyQt5~=5.15.11
+PyQt6~=6.9.0
 pyzbar~=0.1.9
 pyzipper~=0.3.6
 qrcode~=8.2

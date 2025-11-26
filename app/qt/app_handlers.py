@@ -3,7 +3,7 @@ import ast
 import base64
 from urllib.parse import urlparse, parse_qs, unquote
 
-from PyQt5.QtCore import QTimer
+from PyQt6.QtCore import QTimer
 
 
 class LinkActionHandler:

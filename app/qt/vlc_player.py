@@ -764,4 +764,4 @@ if __name__ == "__main__":
         tray_icon.showMessage("Error", message, QSystemTrayIcon.Warning, 5000)
         QTimer.singleShot(500, lambda: sys.exit(1))
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

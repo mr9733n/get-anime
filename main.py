@@ -9,12 +9,11 @@ import threading
 import faulthandler
 
 from PyQt6 import QtCore
-from PyQt6.QtCore import QSharedMemory
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
+
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
-from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
 from utils.runtime_manager import test_exception

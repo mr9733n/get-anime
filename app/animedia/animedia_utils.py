@@ -1,5 +1,6 @@
 # utils.py
 import re
+from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse
 from typing import Iterable, Union, Optional, Literal, List, Dict
 from bs4 import BeautifulSoup
@@ -22,6 +23,30 @@ def uniq(seq: Iterable[Union[str, bytes]]) -> list[str]:
     return out
 
 
+def extract_video_host(urls: Iterable[Union[str, bytes]]) -> str:
+    """
+    Return the hostname that appears in the given URLs.
+    If all URLs share the same host, that host is returned.
+    If different hosts are found, the first one encountered is returned.
+    """
+    for u in urls:
+        # Convert bytes → str
+        if isinstance(u, bytes):
+            u = u.decode(errors="ignore")
+        u = u.strip()
+
+        # Ensure a scheme so urlparse can extract the netloc
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", u):
+            u = "http://" + u
+
+        host = urlparse(u).hostname
+        if host:
+            return host
+
+    # No valid host found
+    return ""
+
+
 def sort_by_episode(urls: list[str]) -> list[str]:
     """Сортирует ссылки по номеру эпизода, извлечённому из /<num>_/. """
     def _key(u: str) -> int:
@@ -30,19 +55,36 @@ def sort_by_episode(urls: list[str]) -> list[str]:
     return sorted(urls, key=_key)
 
 
-def add_720(url: str) -> Literal[b""]:
-    """Вставляет «720» в путь URL после сегмента «hls», если его нет."""
-    p = urlparse(url)
-    parts = p.path.split("/")
+def _insert_quality(url: str, quality: str) -> str:
+    """
+    Insert *quality* into the URL path after the ``hls`` segment.
+    If ``hls`` is not present, insert it before the final segment.
+    """
+    parsed = urlparse(url)
+    parts = parsed.path.split("/")          # ['', 'segment1', 'segment2', ...]
     try:
         idx = parts.index("hls")
-        if idx + 1 < len(parts) and parts[idx + 1] != "720":
-            parts.insert(idx + 1, "720")
+        # If the next part already equals the desired quality – do nothing
+        if idx + 1 < len(parts) and parts[idx + 1] != quality:
+            parts.insert(idx + 1, quality)
     except ValueError:
+        # No ``hls`` – insert before the last non‑empty segment (if any)
         if len(parts) > 1:
-            parts.insert(-1, "720")
+            parts.insert(-1, quality)
+
+    # Re‑assemble the path, discarding empty fragments that may appear
     new_path = "/" + "/".join(filter(None, parts))
-    return urlunparse(p._replace(path=new_path))
+    return urlunparse(parsed._replace(path=new_path))
+
+
+def add_1080(url: str) -> Literal[b""]:
+    """Insert ``1080`` after ``hls`` (or before the last segment)."""
+    return _insert_quality(url, "1080")  # type: ignore[return-value]
+
+
+def add_720(url: str) -> Literal[b""]:
+    """Insert ``720`` after ``hls`` (or before the last segment)."""
+    return _insert_quality(url, "720")   # type: ignore[return-value]
 
 
 def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
@@ -113,3 +155,21 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
         "description": description,
         "poster": poster,
     }
+
+
+def to_timestamp(iso_date: str | None) -> int:
+    """Универсальная конверсия ISO‑строки → unix‑timestamp."""
+    if not iso_date:
+        return 0
+    try:
+        # поддерживаем как «2025-10-20T21:36:25Z», так и без Z
+        s = iso_date.rstrip('Z')
+        if 'T' not in s:
+            # если пришёл только день, добавляем «T00:00:00»
+            s += 'T00:00:00'
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except Exception:
+        return 0

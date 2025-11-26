@@ -1,7 +1,7 @@
 import asyncio
 
 from app.animedia.animedia_adapter import AnimediaAdapter
-
+from qasync import QEventLoop, asyncSlot
 
 async def demo():
     adapter = AnimediaAdapter("https://amedia.online")

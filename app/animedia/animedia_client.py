@@ -47,7 +47,7 @@ class AnimediaClient:
         """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
         search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
         await page.goto(search_url)
-        await page.wait_for_selector("div.content", timeout=3000)
+        await page.wait_for_selector("div.content", timeout=60000)
 
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
@@ -82,43 +82,4 @@ class AnimediaClient:
                     files.append(safe_str(file_url))
         return files
 
-    async def search_anime_and_collect(
-        self,
-        anime_name: str,
-        max_titles: int = 5,
-    ) -> List[Dict[str, Any]]:
-        """
-        Возвращает список словарей:
-        {
-            "title_url": <url>,
-            "metadata": {name_ru, name_en, …},
-            "episode_links": [720‑url1, 720‑url2, …]
-        }
-        """
-        playwright, browser, page = await self._open_browser()
-        try:
-            title_urls = await self._search_titles(page, anime_name, max_titles)
 
-            results: List[Dict[str, Any]] = []
-            for url in title_urls:
-                # 1️⃣ Парсим метаданные, пока страница уже открыта
-                html = await page.content()          # уже на странице title_url
-                metadata = parse_title_page(html, self.base_url)
-
-                # 2️⃣ Собираем ссылки‑файлы эпизодов
-                raw_files = await self._collect_episode_files(page, url)
-                unique_files = uniq(raw_files)
-                sorted_links = sort_by_episode(unique_files)
-                episode_links = [add_720(u) for u in sorted_links]
-
-                results.append(
-                    {
-                        "title_url": url,
-                        "metadata": metadata,
-                        "episode_links": episode_links,
-                    }
-                )
-            return results
-        finally:
-            await browser.close()
-            await playwright.stop()

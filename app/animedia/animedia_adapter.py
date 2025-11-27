@@ -12,6 +12,7 @@ from animedia_utils import (
     build_base_dict,
     episodes_dict,
     extract_video_host,
+    map_status, replace_spaces,
 )
 
 class AnimediaAdapter:
@@ -27,13 +28,24 @@ class AnimediaAdapter:
             title_urls = await self.client._search_titles(page, anime_name, max_titles)
 
             async def safe_goto(page, url):
-                try:
-                    await page.goto(url, timeout=60000)
-                    await page.wait_for_load_state("networkidle", timeout=60000)
-                    await page.wait_for_selector("header.pmovie__header", timeout=60000)
-                except Exception as e:
-                    self.logger.warning(f"Не удалось загрузить {url}: {e}")
-                    raise
+                max_tries = 3
+                for attempt in range(1, max_tries + 1):
+                    try:
+                        await page.goto(url, timeout=120000, wait_until="networkidle")
+                        await page.wait_for_load_state("networkidle", timeout=120000)
+
+                        if await page.query_selector("button#accept-cookies"):
+                            await page.click("button#accept-cookies")
+
+                        await page.wait_for_selector("header.pmovie__header", timeout=120000)
+                        return
+                    except Exception as e:
+                        if attempt == max_tries:
+                            self.logger.warning(f"Не удалось загрузить {url} после {max_tries} попыток: {e}")
+                            raise
+                        else:
+                            self.logger.info(f"Попытка {attempt} не удалась, повторяем… ({e})")
+                            await asyncio.sleep(2)
 
             async def process_one(url: str) -> Dict[str, Any]:
                 # ---------- навигация ----------
@@ -43,15 +55,17 @@ class AnimediaAdapter:
                 html = await page.content()
                 meta = parse_title_page(html, self.client.base_url)
 
+                # ---------- статус ----------
+                sanitized_code = replace_spaces(meta.get("name_en"))
+                status_obj = map_status(meta.get("status"))
+
                 # ---------- эпизоды ----------
                 raw_files = await self.client._collect_episode_files(page, url)
                 unique_files = uniq(raw_files)
-                sorted_links = sort_by_episode(unique_files)
                 stream_video_host = extract_video_host(raw_files)
-                episodes = episodes_dict(sorted_links)
+                sorted_links = sort_by_episode(unique_files)
 
-                # ---------- дата создания ----------
-                created_ts = to_timestamp(meta.get("updated"))
+                episodes = episodes_dict(sorted_links)
 
                 # ---------- итоговый словарь ----------
                 result = build_base_dict(
@@ -59,7 +73,8 @@ class AnimediaAdapter:
                     stream_video_host=stream_video_host,
                     meta=meta,
                     episodes=episodes,
-                    created_ts=created_ts,
+                    status=status_obj,
+                    sanitized_code=sanitized_code,
                 )
                 return result
 

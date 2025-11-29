@@ -5,7 +5,7 @@ from jinja2 import Template
 from PyQt5.QtWidgets import QTextBrowser, QLabel, QWidget
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from app.qt.layout_metadata import show_mode_metadata
+from static.layout_metadata import show_mode_metadata
 
 
 class TitleDisplayFactory:

@@ -362,9 +362,10 @@ class AnimePlayerAppVer3(QWidget):
 
     def generate_callbacks(self):
         callbacks = {
-            "get_search_by_title_al": self.get_search_by_title_anilibria,
+            "get_search_by_title_al": self.get_search_by_title_aniliberty,
             "get_search_by_title_am": self.get_search_by_title_animedia,
-            "get_update_title": self.get_update_title,
+            "get_update_title_al": self.get_update_title_aniliberty,
+            "get_update_title_am": self.get_update_title_animedia,
             "get_random_title": self.get_random_title,
             "refresh_display": self.refresh_display,
             "save_playlist_wrapper": self.save_playlist_wrapper,
@@ -976,14 +977,42 @@ class AnimePlayerAppVer3(QWidget):
                         parsed_data.append({"day": day, "title_id": title_id})
         return parsed_data
 
-    def get_update_title(self):
+    def get_update_title_aniliberty(self):
         """Обновляет информацию о тайтле в базе данных."""
         try:
             self.ui_manager.show_loader("Updating title info...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
             search_text = self.title_search_entry.text()
-            selected_quality = self.quality_dropdown.currentText()
+
+            if not search_text:
+                if self.current_title_id is None:
+                    self.logger.warning("Unable to update title(s): missing title ID(s)")
+                    self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
+                    return False
+
+                search_text = str(self.current_title_id)
+                self.logger.debug(f"Used current title_id: {search_text} for update")
+            else:
+                self.title_search_entry.clear()
+
+            self.logger.info(f"Updating title. Keywords: {search_text}")
+            self._handle_get_titles_from_api(search_text)
+
+        except Exception as e:
+            self.logger.error(f"Error on update title: {e}")
+            return False
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
+
+    def get_update_title_animedia(self):
+        """Обновляет информацию о тайтле в базе данных."""
+        try:
+            self.ui_manager.show_loader("Updating title info...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            search_text = self.title_search_entry.text()
 
             if not search_text:
                 if self.current_title_id is None:
@@ -998,11 +1027,7 @@ class AnimePlayerAppVer3(QWidget):
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
 
-            if selected_quality == "hd_am" or "sd_am":
-                self.start_animedia_search(search_text)
-            else:
-                self._handle_get_titles_from_api(search_text)
-
+            self.start_animedia_search(search_text)
         except Exception as e:
             self.logger.error(f"Error on update title: {e}")
             return False
@@ -1010,7 +1035,7 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
-    def get_search_by_title_anilibria(self):
+    def get_search_by_title_aniliberty(self):
         try:
             self.ui_manager.show_loader("Fetching by title...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки

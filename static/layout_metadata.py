@@ -65,20 +65,9 @@
 
 
 all_layout_metadata = [
-    {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex",
-     "widget_key": "title_input"},
-    {
-        "layout": "top",
-        "type": "split_button",
-        "text": "FIND",
-        "menu_items": [
-            {"text": "AniLiberty", "callback_key": "get_search_by_title_al"},
-            {"text": "AniMedia", "callback_key": "get_search_by_title_am"},
-        ],
-        "callback_type": "complex",
-        "color_index": 0,
-    },
-    {"layout": "top", "type": "button", "text": "UT⮂", "callback_key": "get_update_title", "callback_type": "complex", "color_index": 0},
+    {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex","widget_key": "title_input"},
+    {"layout": "top","type": "split_button","text": "FIND","menu_items": [{"text": "AniLiberty", "callback_key": "get_search_by_title_al"},{"text": "AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
+    {"layout": "top","type": "split_button","text": "UT⮂","menu_items": [{"text": "AniLiberty", "callback_key": "get_update_title_al"},{"text": "AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
     {"layout": "top", "type": "button", "text": "RANDOM", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
     *[{"layout": "top", "type": "button", "text": day, "callback_key": f"display_titles_for_day_{i}", "callback_type": "complex", "color_index": 1}
       for i, day in enumerate(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])],

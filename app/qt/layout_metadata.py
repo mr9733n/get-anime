@@ -65,15 +65,28 @@
 
 
 all_layout_metadata = [
-    {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 150, "max_width": 255, "callback_type": "complex",
+    {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex",
      "widget_key": "title_input"},
-    {"layout": "top", "type": "button", "text": "FIND", "callback_key": "get_search_by_title", "callback_type": "complex", "color_index": 0},
+    {"layout": "top", "type": "button", "text": "->AL", "callback_key": "get_search_by_title", "callback_type": "complex", "color_index": 0},
+    {
+        "layout": "top",
+        "type": "split_button",
+        "text": "Поиск",
+        "menu_items": [
+            {"text": "AL", "callback_key": "get_search_by_title"},
+            {"text": "AM", "callback_key": "get_search_by_title_am"},
+        ],
+        "callback_type": "complex",
+        "color_index": 0,
+    },
+
+
     {"layout": "top", "type": "button", "text": "UT⮂", "callback_key": "get_update_title", "callback_type": "complex", "color_index": 0},
     {"layout": "top", "type": "button", "text": "RANDOM", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
     *[{"layout": "top", "type": "button", "text": day, "callback_key": f"display_titles_for_day_{i}", "callback_type": "complex", "color_index": 1}
       for i, day in enumerate(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])],
     {"layout": "top", "type": "button", "text": "RS⮂", "callback_key": "reload_schedule", "callback_type": "complex", "color_index": 0},
-    {"layout": "top", "type": "dropdown", "items": ["fhd", "hd", "sd"], "callback_key": "refresh_display", "callback_type": "complex", "widget_key": "quality_dropdown"},
+    {"layout": "top", "type": "dropdown", "items": ["fhd", "hd", "sd", "hd_am", "sd_am"], "callback_key": "refresh_display", "callback_type": "complex", "widget_key": "quality_dropdown"},
     {"layout": "bottom", "type": "button", "text": "LOAD PREV", "callback_key": "load_previous_titles", "callback_type": "simple", "color_index": 1},
     {"layout": "bottom", "type": "button", "text": "LOAD MORE", "callback_key": "load_more_titles", "callback_type": "simple", "color_index": 4},
     {"layout": "bottom", "type": "button", "text": "ONGOING", "callback_key": "display_ongoing_list", "callback_type": "simple", "color_index": 6},

@@ -3,8 +3,8 @@ import asyncio
 import logging
 
 from typing import Any, Dict, List
-from animedia_client import AnimediaClient
-from animedia_utils import (
+from app.animedia.animedia_client import AnimediaClient
+from app.animedia.animedia_utils import (
     parse_title_page,
     uniq,
     sort_by_episode,

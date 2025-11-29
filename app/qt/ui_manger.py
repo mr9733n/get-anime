@@ -1,7 +1,9 @@
 # ui_manager.py
+import pathlib
+
 from PyQt5.QtCore import QEventLoop, Qt
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
-    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication
+    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu, QAction
 
 
 class UIManager:
@@ -9,6 +11,12 @@ class UIManager:
         self.parent = parent
         self.loading_dialog = LoadingDialog(self.parent)
         self.parent_widgets = {}
+        qss_path = pathlib.Path(__file__).with_name('styles.qss')
+        if not qss_path.is_file():
+            raise FileNotFoundError(f"Не найден файл стилей: {qss_path}")
+
+        # Содержимое файла как одна строка
+        self.qss_raw = qss_path.read_text(encoding='utf-8')
         self.button_style_template = """
             QPushButton {{
                 background-color: {background_color};
@@ -39,48 +47,43 @@ class UIManager:
             ("#6b6b6b", "#7c7c7c", "#000"),  # Medium : 7
             ("#5a5a5a", "#6c6c6c", "#000")   # Dark for others : 8
         ]
-
-    def create_widgets_from_metadata(self, metadata_list, layout, callbacks):
-        for metadata in metadata_list:
-            widget_type = metadata.get("type")
-
-            if widget_type == "button":
-                self._create_button(metadata, layout, callbacks)
-            elif widget_type == "input_field":
-                self._create_input_field(metadata, layout)
-            elif widget_type == "dropdown":
-                self._create_dropdown(metadata, layout, callbacks)
-
-    def _create_button(self, metadata, layout, callbacks):
-        text = metadata.get("text", "Button")
-        color_index = metadata.get("color_index", 0)
-        callback_key = metadata.get("callback_key", None)
-
-        button = QPushButton(text, self.parent)
-        button_style = self.button_style_template.format(
-            background_color=self.button_colors[color_index][0],
-            hover_color=self.button_colors[color_index][1],
-            pressed_color=self.button_colors[color_index][2]
-        )
-        button.setStyleSheet(button_style)
-
-        if callback_key and callback_key in callbacks:
-            button.clicked.connect(callbacks[callback_key])
-
-        layout.addWidget(button)
-        self.apply_shadow_effects([button])
-
-    def _create_input_field(self, metadata, layout):
-        placeholder = metadata.get("placeholder", "")
-        min_width = metadata.get("min_width", 100)
-        max_width = metadata.get("max_width", 200)
-
-        input_field = QLineEdit(self.parent)
-        input_field.setPlaceholderText(placeholder)
-        input_field.setMinimumWidth(min_width)
-        input_field.setMaximumWidth(max_width)
-
-        input_field.setStyleSheet("""
+        self.tool_button_style_template = """
+            QToolButton {{
+                background-color: {background_color};
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QToolButton:hover {{
+                background-color: {hover_color};
+                border: 1px solid #888;
+            }}
+            QToolButton:pressed {{
+                background-color: {pressed_color};
+                border: 1px solid #555;
+            }}
+        """
+        self.menu_style_template = """
+            QMenu#customMenu {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                padding: 4px;
+                border-radius: 6px;
+            }}
+            QMenu#customMenu::item {{
+                padding: 6px 12px;
+                color: {text_color};
+                background-color: transparent;   /* обычное состояние */
+            }}
+            QMenu#customMenu::item:selected {{
+                background-color: {selected_bg};
+                color: {selected_text};
+            }}
+        """
+        self.line_edit_style_template = """
             QLineEdit {
                 background-color: #f7f7f7;
                 border: 1px solid #dcdcdc;
@@ -93,21 +96,8 @@ class UIManager:
                 border: 1px solid #0078d4;
                 background-color: #ffffff;
             }
-        """)
-
-        # Сохраняем ссылку на input в словарь с уникальным ключом
-        widget_key = metadata.get("widget_key", "input_field")
-        self.parent_widgets[widget_key] = input_field
-        layout.addWidget(input_field)
-        self.apply_shadow_effects([input_field])
-
-    def _create_dropdown(self, metadata, layout, callbacks):
-        items = metadata.get("items", [])
-        callback_name = metadata.get("callback_key", None)
-
-        dropdown = QComboBox(self.parent)
-        dropdown.addItems(items)
-        dropdown.setStyleSheet("""
+        """
+        self.combo_style_template = """
             QComboBox {
                 background-color: #f7f7f7;
                 border: 1px solid #ccc;
@@ -116,27 +106,199 @@ class UIManager:
                 font-size: 14px;
                 color: #333;
             }
-            QComboBox:drop-down {
-                border-left: 1px solid #ccc;
-                width: 20px;
-            }
+            QComboBox:drop-down { border-left: 1px solid #ccc; width: 20px; }
             QComboBox QAbstractItemView {
                 background-color: #ffffff;
                 border: 1px solid #aaa;
                 selection-background-color: #0078d4;
                 selection-color: #fff;
             }
-        """)
+        """
 
-        if callback_name and callback_name in callbacks:
-            callback = callbacks[callback_name]
-            dropdown.currentIndexChanged.connect(callback)
+    def create_widgets_from_metadata(self, metadata_list, layout, callbacks):
+        for metadata in metadata_list:
+            widget_type = metadata.get("type")
 
-        # Сохраняем ссылку на dropdown в словарь с уникальным ключом
-        widget_key = metadata.get("widget_key", "dropdown")
-        self.parent_widgets[widget_key] = dropdown
-        layout.addWidget(dropdown)
-        self.apply_shadow_effects([dropdown])
+            if widget_type == "button":
+                self._create_button(metadata, layout, callbacks)
+            elif widget_type == "input_field":
+                self._create_input_field(metadata, layout)
+            elif widget_type == "dropdown":
+                self._create_dropdown(metadata, layout, callbacks)
+            elif widget_type == "split_button":
+                self._create_split_button(metadata, layout, callbacks)
+
+    def _button_style(self, color_index: int) -> str:
+        """Возвращает готовый stylesheet для любой кнопки."""
+        bg, hover, pressed = self.button_colors[color_index]
+        return self.button_style_template.format(
+            background_color=bg,
+            hover_color=hover,
+            pressed_color=pressed,
+        )
+
+    def _tool_button_style(self, color_index: int) -> str:
+        """Стиль для QToolButton – такой же, как у QPushButton."""
+        bg, hover, pressed = self.button_colors[color_index]
+        return self.tool_button_style_template.format(
+            background_color=bg,
+            hover_color=hover,
+            pressed_color=pressed,
+        )
+
+    def _make_button(
+            self,
+            cls,  # QPushButton или QToolButton
+            text: str,
+            color_index: int,
+            callback_key: str | None,
+            callbacks: dict,
+            layout,
+    ):
+        # ---------- 1️⃣ Создание виджета ----------
+        if cls is QToolButton:  # QToolButton не принимает text
+            btn = cls(self.parent)  # только родитель
+            btn.setText(text)  # задаём подпись отдельно
+        else:  # QPushButton (и потенциально другие, принимающие text)
+            btn = cls(text, self.parent)
+
+        # ---------- 2️⃣ Общий стиль ----------
+        btn.setStyleSheet(self._button_style(color_index))
+
+        # ---------- 3️⃣ Привязка колбека ----------
+        if callback_key and callback_key in callbacks:
+            btn.clicked.connect(callbacks[callback_key])
+
+        # ---------- 4️⃣ Добавление в layout ----------
+        layout.addWidget(btn)
+        self.apply_shadow_effects([btn])
+        return btn
+
+    def _make_menu_button(
+            self,
+            text: str,
+            color_index: int,
+            menu_items: list[dict],
+            callbacks: dict,
+            layout,
+    ):
+        # ---------- 1️⃣ QToolButton ----------
+        btn = QToolButton(self.parent)  # создаём без текста‑конструктора
+        btn.setText(text)  # задаём подпись
+        btn.setToolButtonStyle(Qt.ToolButtonTextOnly)  # только текст
+        btn.setAutoRaise(False)  # отключаем «плоский» вид
+
+        # применяем стиль, идентичный QPushButton
+        btn.setStyleSheet(self._tool_button_style(color_index))
+
+        # ---------- 2️⃣ Меню ----------
+        menu = QMenu(btn)
+        menu.setObjectName("customMenu")
+        menu.setAttribute(Qt.WA_StyledBackground, True)
+
+        # добавляем пункты
+        for item in menu_items:
+            label = item.get("text", "Item")
+            cb_key = item.get("callback_key")
+            act = QAction(label, btn)
+            if cb_key and cb_key in callbacks:
+                act.triggered.connect(callbacks[cb_key])
+            menu.addAction(act)
+
+        # стиль меню (оставляем ваш шаблон)
+        menu.setStyleSheet(self._menu_style(color_index))
+
+        # привязываем меню к кнопке
+        btn.setMenu(menu)
+
+        # ---------- 3️⃣ Popup‑mode (после стиля) ----------
+        btn.setPopupMode(QToolButton.MenuButtonPopup)
+
+        # ---------- 4️⃣ Действие по умолчанию ----------
+        if menu_items:
+            first_key = menu_items[0].get("callback_key")
+            if first_key and first_key in callbacks:
+                btn.clicked.connect(callbacks[first_key])
+
+        # ---------- 5️⃣ Добавляем в layout и тень ----------
+        layout.addWidget(btn)
+        self.apply_shadow_effects([btn])
+        return btn
+
+    def _make_line_edit(self, placeholder, min_w, max_w, widget_key, layout):
+        le = QLineEdit(self.parent)
+        le.setPlaceholderText(placeholder)
+        le.setMinimumWidth(min_w)
+        le.setMaximumWidth(max_w)
+        le.setStyleSheet(self._line_edit_style())
+        self.parent_widgets[widget_key] = le
+        layout.addWidget(le)
+        self.apply_shadow_effects([le])
+        return le
+
+    def _line_edit_style(self) -> str:
+        return self.line_edit_style_template
+
+    def _make_combo_box(self, items, callback_key, callbacks, widget_key, layout):
+        cb = QComboBox(self.parent)
+        cb.addItems(items)
+        cb.setStyleSheet(self._combo_style())
+        if callback_key and callback_key in callbacks:
+            cb.currentIndexChanged.connect(callbacks[callback_key])
+        self.parent_widgets[widget_key] = cb
+        layout.addWidget(cb)
+        self.apply_shadow_effects([cb])
+        return cb
+
+    def _menu_style(self, color_index: int) -> str:
+        bg, hover, pressed = self.button_colors[color_index]  # берём те же цвета, что и для кнопки
+        return self.menu_style_template.format(
+            bg_color=bg,
+            border_color=hover,
+            text_color="#fff",
+            selected_bg=hover,
+            selected_text="#fff",
+        )
+
+    def _combo_style(self) -> str:
+        return self.combo_style_template
+
+    def _create_button(self, metadata, layout, callbacks):
+        self._make_button(
+            QPushButton,
+            metadata.get("text", "Button"),
+            metadata.get("color_index", 0),
+            metadata.get("callback_key"),
+            callbacks,
+            layout,
+        )
+
+    def _create_split_button(self, metadata, layout, callbacks):
+        self._make_menu_button(
+            text=metadata.get("text", "Button"),
+            color_index=metadata.get("color_index", 0),
+            menu_items=metadata.get("menu_items", []),
+            callbacks=callbacks,
+            layout=layout,
+        )
+
+    def _create_input_field(self, metadata, layout):
+        self._make_line_edit(
+            placeholder=metadata.get("placeholder", ""),
+            min_w=metadata.get("min_width", 100),
+            max_w=metadata.get("max_width", 200),
+            widget_key=metadata.get("widget_key", "input_field"),
+            layout=layout,
+        )
+
+    def _create_dropdown(self, metadata, layout, callbacks):
+        self._make_combo_box(
+            items=metadata.get("items", []),
+            callback_key=metadata.get("callback_key"),
+            callbacks=callbacks,
+            widget_key=metadata.get("widget_key", "dropdown"),
+            layout=layout,
+        )
 
     def setup_main_layout(self, main_layout, all_layout_metadata, callbacks):
         # Создаем два лейаута: верхний и нижний

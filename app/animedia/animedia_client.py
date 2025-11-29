@@ -3,12 +3,12 @@ import asyncio
 import logging
 import httpx
 import requests
-from typing import Any, Literal, List, Dict, Optional
+from typing import Any, Literal, List, Dict, Optional, Final
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
-from animedia_utils import (
+from app.animedia.animedia_utils import (
     safe_str,
     uniq,
     add_720,
@@ -22,7 +22,13 @@ from animedia_utils import (
 class AnimediaClient:
     def __init__(self, base_url: str):
         self.logger = logging.getLogger(__name__)
-        self.base_url = base_url.rstrip("/")
+        self.pre: Final = "https://"
+        cleaned = base_url.rstrip("/")
+        self.base_url = (
+            cleaned
+            if cleaned.startswith(("http://", "https://"))
+            else f"{self.pre}{cleaned}"
+        )
 
         self.headers = {
             "User-Agent": (

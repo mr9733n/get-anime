@@ -10,6 +10,9 @@ from datetime import datetime, timezone, timedelta
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
+from app.animedia.qt_async_worker import AsyncWorker
+from app.animedia.animedia_adapter import AnimediaAdapter
+
 from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
@@ -95,6 +98,7 @@ class AnimePlayerAppVer3(QWidget):
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
         # self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
+        self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
@@ -276,6 +280,10 @@ class AnimePlayerAppVer3(QWidget):
             title.current_links = [ep.hls_hd for ep in title.episodes if ep.hls_hd]
         elif selected_quality == 'sd':
             title.current_links = [ep.hls_sd for ep in title.episodes if ep.hls_sd]
+        elif selected_quality == 'hd_am':
+            title.current_links = [ep.hls_hd for ep in title.episodes if ep.hls_hd_animedia]
+        elif selected_quality == 'sd_am':
+            title.current_links = [ep.hls_sd for ep in title.episodes if ep.hls_sd_animedia]
         else:
             self.logger.warning(f"Неизвестное качество: {selected_quality}, используем ссылки по умолчанию.")
 
@@ -349,6 +357,7 @@ class AnimePlayerAppVer3(QWidget):
     def generate_callbacks(self):
         callbacks = {
             "get_search_by_title": self.get_search_by_title,
+            "get_search_by_title_am": self.get_search_by_title_am,
             "get_update_title": self.get_update_title,
             "get_random_title": self.get_random_title,
             "refresh_display": self.refresh_display,
@@ -968,6 +977,7 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
             search_text = self.title_search_entry.text()
+            selected_quality = self.quality_dropdown.currentText()
 
             if not search_text:
                 if self.current_title_id is None:
@@ -981,7 +991,11 @@ class AnimePlayerAppVer3(QWidget):
                 self.title_search_entry.clear()
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
-            self._handle_no_titles_found(search_text)
+
+            if selected_quality == "hd_am" or "sd_am":
+                self.start_animedia_search(search_text)
+            else:
+                self._handle_get_titles_from_api(search_text)
 
         except Exception as e:
             self.logger.error(f"Error on update title: {e}")
@@ -1004,7 +1018,31 @@ class AnimePlayerAppVer3(QWidget):
             if title_ids:
                 self._handle_found_titles(title_ids, search_text)
             else:
-                self._handle_no_titles_found(search_text)
+                self._handle_get_titles_from_api(search_text)
+
+        except Exception as e:
+            self.logger.error(f"Error while fetching get_search_by_title: {e}")
+            return False, None
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
+
+    def get_search_by_title_am(self):
+        try:
+            self.ui_manager.show_loader("Fetching by title...")
+            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+
+            search_text = self.title_search_entry.text()
+            self.title_search_entry.clear()
+            if not search_text:
+                return
+            self.logger.debug(f"keywords: {search_text}")
+            title_ids = self.db_manager.get_titles_by_keywords(search_text)
+            #if title_ids:
+            #    self._handle_found_titles(title_ids, search_text)
+            #else:
+                # self._handle_get_titles_from_api(search_text)
+            self.start_animedia_search(search_text)
 
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title: {e}")
@@ -1023,7 +1061,39 @@ class AnimePlayerAppVer3(QWidget):
             self.current_title_ids = title_ids
             self.display_titles(title_ids)
 
-    def _handle_no_titles_found(self, search_text):
+    def start_animedia_search(self, title: str):
+        """
+        Вызывается, например, из обработчика кнопки «Найти».
+        Запускает асинхронный парсер в отдельном потоке.
+        """
+        adapter = AnimediaAdapter(self.base_am_url)   # base_url берём из конфига
+
+        # создаём поток‑рабочий
+        self._animedia_thread = AsyncWorker(
+            adapter.get_by_title, title, max_titles=5
+        )
+        self._animedia_thread.finished.connect(self._on_animedia_result)
+        # self._animedia_thread.error.connect(self._on_animedia_error)
+        self._animedia_thread.start()
+
+    # -----------------------------------------------------------------
+    # Слоты, получающие результат
+    # -----------------------------------------------------------------
+    def _on_animedia_result(self, data: list):
+        """
+        `data` – список словарей, который вернул `get_by_title`.
+        Здесь можно сохранить в БД, отобразить в UI и т.п.
+        """
+        self.logger.info(f"Получено {len(data)} записей от Animedia")
+        # пример: добавить в базу
+        for rec in data:
+            print(f"ID={rec['id']} (orig={rec['animedia_id']})"
+                  f"- {rec['code']}")
+
+
+
+
+    def _handle_get_titles_from_api(self, search_text):
         try:
             keywords = search_text.split(',')
             keywords = [kw.strip() for kw in keywords]

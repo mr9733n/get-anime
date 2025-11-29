@@ -1,0 +1,100 @@
+/* -------------------------------------------------
+   {button}
+   Шаблон для QPushButton
+   ------------------------------------------------- */
+QPushButton {{
+    background-color: {bg};
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+}}
+QPushButton:hover {{
+    background-color: {hover};
+    border: 1px solid #888;
+}}
+QPushButton:pressed {{
+    background-color: {pressed};
+    border: 1px solid #555;
+}}
+
+/* -------------------------------------------------
+   {tool_button}
+   Тот же стиль, но для QToolButton
+   ------------------------------------------------- */
+QToolButton {{
+    background-color: {bg};
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+}}
+QToolButton:hover {{
+    background-color: {hover};
+    border: 1px solid #888;
+}}
+QToolButton:pressed {{
+    background-color: {pressed};
+    border: 1px solid #555;
+}}
+
+/* -------------------------------------------------
+   {menu}
+   Стиль выпадающего меню
+   ------------------------------------------------- */
+QMenu {{
+    background-color: {bg};
+    border: 1px solid {border};
+    padding: 4px;
+    border-radius: 6px;
+}}
+QMenu::item {{
+    padding: 6px 12px;
+    color: {text};
+    background-color: transparent;
+}}
+QMenu::item:selected {{
+    background-color: {selected_bg};
+    color: {selected_text};
+}}
+
+/* -------------------------------------------------
+   {line_edit}
+   Стиль QLineEdit
+   ------------------------------------------------- */
+QLineEdit {{
+    background-color: #f7f7f7;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 14px;
+    color: #333;
+}}
+QLineEdit:focus {{
+    border: 1px solid #0078d4;
+    background-color: #ffffff;
+}}
+
+/* -------------------------------------------------
+   {combo}
+   Стиль QComboBox
+   ------------------------------------------------- */
+QComboBox {{
+    background-color: #f7f7f7;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 14px;
+    color: #333;
+}}
+QComboBox::drop-down {{ border-left: 1px solid #ccc; width: 20px; }}
+QComboBox QAbstractItemView {{
+    background-color: #ffffff;
+    border: 1px solid #aaa;
+    selection-background-color: #0078d4;
+    selection-color: #fff;
+}}

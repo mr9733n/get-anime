@@ -242,11 +242,11 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
         "genres": genres,
         "season": season_name,
         "updated": updated_ts,
-        "year": extracted["year"],
+        "year": int(extracted["year"]),
         "status": extracted["status"],
         "type": extracted["type"],
         "studio": extracted["studio"],
-        "rating": rating,
+        "rating": float(rating),
         "description": description,
         "poster": poster,
         "type_full": type_info["type_full"],
@@ -330,16 +330,19 @@ def replace_spaces(text: str) -> str:
     Привести строку к безопасному имени файла:
     • пробелы → «-»;
     • удалить все точки «.»;
-    • убрать любые остальные «опасные» символы;
-    • оставить только буквы, цифры и подчёркивание.
+    • убрать любые «опасные» символы;
+    • оставить только буквы, цифры, «-» и «_»;
+    • несколько подряд идущих «-» заменить одним «-»;
+    • убрать ведущие/концевые «-».
     """
     if text is None:
         return None
-    text = str(text)
-    text = text.replace('"', "").replace("'", "")
-    text = text.replace(" ", "-")
-    text = text.replace(".", "")
-    text = re.sub(r"[^A-Za-z0-9_]", "", text)
+    txt = str(text).replace('"', "").replace("'", "")
+    txt = txt.replace(" ", "-").replace(".", "")
+    txt = re.sub(r"[^A-Za-z0-9_-]", "", txt)
+    txt = txt.replace("_", "-")
+    txt = re.sub(r"-{2,}", "-", txt)
+    txt = txt.strip("-")
     return text
 
 
@@ -371,12 +374,11 @@ def build_base_dict(
             "alternative": meta.get("alternative") or ""
         },
         "description": meta.get("description") or "",
-        "year": meta.get("year") or "",
         "season": {
-            "code": 0,
+            "code": None,
             "string": meta.get("season") or "",
-            "year": meta.get("year") or "",
-            "week_day": meta.get("week_day") or ""
+            "year": meta.get("year") or 0,
+            "week_day": meta.get("week_day") or None
         },
         "status": status,
         "type": {
@@ -387,7 +389,10 @@ def build_base_dict(
             "length": meta.get("length") or None
         },
         "studio": meta.get("studio") or "",
-        "rating": meta.get("rating") or "",
+        "rating": {
+            "name": "AniMedia",
+            "score": meta.get("rating") or 0.0
+        },
         "genres": meta.get("genres") or [],
         "posters": {
             "small": {"url": meta.get("poster_small") or ""},

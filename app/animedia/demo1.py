@@ -1,7 +1,7 @@
 # в файле, где объявлен класс AnimePlayerAppVer3
 from PyQt5.QtWidgets import QMessageBox, QWidget
-from qt_async_worker import AsyncWorker
-from animedia_adapter import AnimediaAdapter
+from app.animedia.qt_async_worker import AsyncWorker
+from app.animedia.animedia_adapter import AnimediaAdapter
 
 class AnimePlayerAppVer3(QWidget):
     # … ваш существующий код …

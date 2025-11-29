@@ -39,6 +39,7 @@ class ProcessManager:
         try:
             title_data = {
                 'title_id': title_data.get('id', None),
+                'animedia_id': title_data.get('animedia_id', None),
                 'code': title_data.get('code', ''),
                 'name_ru': title_data.get('names', {}).get('ru', ''),
                 'name_en': title_data.get('names', {}).get('en', ''),
@@ -73,6 +74,9 @@ class ProcessManager:
                 'host_for_player': title_data.get('player', {}).get('host', ''),
                 'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
                 'last_updated': datetime.now(timezone.utc),
+                'studio': title_data.get('studio', ''),
+                'rating_name': title_data.get('rating', {}).get('name', ''),
+                'rating_score': title_data.get("rating", {}).get('score', 0.0),
             }
             self.logger.debug(f"STATUS INCOMING: code={title_data.get('status', {}).get('code')} "
                               f"str='{title_data.get('status', {}).get('string')}' | id={title_data.get('id')}")
@@ -89,8 +93,6 @@ class ProcessManager:
             self.save_manager.save_genre(title_id, decoded_genres)
 
             # Извлечение данных команды напрямую
-
-
             team_data = {
                 'voice': title_data['team_voice'],
                 'translator': title_data['team_translator'],
@@ -101,6 +103,19 @@ class ProcessManager:
             # Проверяем, что данные команды существуют и сохраняем их
             if team_data:
                 self.save_manager.save_team_members(title_id, team_data)
+
+            rating_data = {
+                'rating_name': title_data['rating_name'],
+                'rating_score': title_data['rating_score']
+            }
+
+            if rating_data:
+                self.save_manager.save_ratings(title_id, rating_name=rating_data['rating_name'], external_value=rating_data['rating_score'])
+
+            studio_name = title_data['studio']
+            if studio_name:
+                self.save_manager.save_studio_to_db(title_id, studio_name=studio_name)
+
             return True
         except Exception as e:
             self.logger.error(f"Failed to save title to database: {e}")
@@ -142,6 +157,8 @@ class ProcessManager:
                         'hls_fhd': episode.get('hls', {}).get('fhd'),
                         'hls_hd': episode.get('hls', {}).get('hd'),
                         'hls_sd': episode.get('hls', {}).get('sd'),
+                        'hls_hd_animedia': episode.get('hls', {}).get('hd_animedia'),
+                        'hls_sd_animedia': episode.get('hls', {}).get('sd_animedia'),
                         'preview_path': episode.get('preview'),
                         'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
                         'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))

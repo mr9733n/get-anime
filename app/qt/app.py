@@ -6,8 +6,11 @@ import json
 import logging
 import platform
 import subprocess
+from contextlib import contextmanager
 
 from datetime import datetime, timezone, timedelta
+from typing import List, Any
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
@@ -182,6 +185,17 @@ class AnimePlayerAppVer3(QWidget):
     def current_platform():
         current_platform = platform.system()
         return current_platform
+
+    @contextmanager
+    def ui_busy(ui_manager, message: str):
+        """Показывает loader и блокирует кнопки на время выполнения."""
+        ui_manager.show_loader(message)
+        ui_manager.set_buttons_enabled(False)
+        try:
+            yield
+        finally:
+            ui_manager.hide_loader()
+            ui_manager.set_buttons_enabled(True)
 
     def setup_paths(self):
         """Sets up paths based on the current platform and returns them for use."""
@@ -1103,24 +1117,63 @@ class AnimePlayerAppVer3(QWidget):
         self._animedia_thread = AsyncWorker(
             adapter.get_by_title, title, max_titles=5
         )
-        self._animedia_thread.finished.connect(self._on_animedia_result)
+        title_ids = self._animedia_thread.finished.connect(self._on_animedia_result)
         # self._animedia_thread.error.connect(self._on_animedia_error)
         self._animedia_thread.start()
+        self._handle_found_titles(title_ids, title)
 
     # -----------------------------------------------------------------
     # Слоты, получающие результат
     # -----------------------------------------------------------------
-    def _on_animedia_result(self, data: list):
+    def _on_animedia_result(self, data: list) -> list[Any] | None:
         """
         `data` – список словарей, который вернул `get_by_title`.
         Здесь можно сохранить в БД, отобразить в UI и т.п.
         """
-        self.logger.info(f"Получено {len(data)} записей от Animedia")
-        # пример: добавить в базу
-        for rec in data:
-            print(f"ID={rec['id']} (orig={rec['animedia_id']})"
-                  f"- {rec['code']}")
+        try:
+            self.logger.info(f"Получено {len(data)} записей от Animedia")
+            # пример: добавить в базу
+            for rec in data:
+                print(f"ID={rec['id']} (orig={rec['animedia_id']})"
+                      f"- {rec['code']}")
 
+            if isinstance(data, dict) and 'error' in data:
+                self.logger.error(data['error'])
+                self.show_error_notification("AniMedia scraper Error", data['error'])
+                return None
+
+            # Проверяем тип данных в ответе
+            if isinstance(data, dict) and 'list' in data:
+                title_list = data['list']
+            elif isinstance(data, dict) and 'id' in data:
+                # Если это одиночный тайтл, оборачиваем его в список
+                title_list = [data]
+            elif isinstance(data, list):
+                title_list = data
+            else:
+                self.logger.error("No titles found in the response.")
+                self.show_error_notification("Error", "No titles found in the response.")
+                return
+
+            if not title_list:
+                self.logger.error("No titles found in the response.")
+                self.show_error_notification("Error", "No titles found in the response.")
+                return
+
+            self.logger.debug(f"Processing title data: {title_list}")
+            self.invoke_database_save(title_list)
+            title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
+
+            # Сохраняем текущие данные
+            self.current_data = data
+            return title_ids
+
+        except APIClientError as api_error:
+            self.logger.error(f"API Client Error: {api_error}")
+            self.show_error_notification("API Error", str(api_error))  # Показываем ошибку пользователю
+        except Exception as e:
+            self.logger.error(f"Error while fetching title: {e}")
+            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
 
 
 

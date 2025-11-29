@@ -364,7 +364,7 @@ def build_base_dict(
         ep_data["created_timestamp"] = updated_ts
 
     return {
-        "id": new_id,
+        # "id": new_id,
         ORIGINAL_ID_FIELD: original_id,
         "code": sanitized_code,
         "announce": meta.get("announce", ""),

@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from itertools import count
+from typing import Optional
 
 from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists
 from datetime import datetime, timezone
@@ -194,36 +195,82 @@ class SaveManager:
                     f"Error saving watch status for user_id {user_id}, title_id {title_id}, episode_id {episode_id}: {e}")
                 raise
 
-    def save_ratings(self, title_id, rating_value, rating_name):
+    @staticmethod
+    def _map_external_to_cmers(value: float, *, max_cmers: int = 6, max_external: float = 10.0) -> int:
         """
-        "Comprehensive Media Evaluation Rating System" or CMERS
-        The CMERS system would operate as follows:
-            - Title Appearance Frequency
-            - Watched Episode Count
-            - Individual Title Prominence
-            - User-Provided Ratings
-            - External Source Ratings
-            :param title_id:
-            :param rating_value:
-            :type rating_name: object
+        Приводит произвольный внешний рейтинг к шкале CMERS (0‑max_cmers).
+        - Обрезаем значение, если оно выше max_external.
+        - Делим на max_external, получаем долю от 0 до 1.
+        - Умножаем на max_cmers и округляем до ближайшего целого.
+        """
+        value = min(value, max_external)          # обрезка
+        fraction = value / max_external            # доля от 0 до 1
+        return int(round(fraction * max_cmers))    # перевод в шкалу CMERS
+
+    def _upsert_rating(
+        self,
+        title_id: int,
+        cmers_value: Optional[int] = None,
+        external_score: Optional[float] = None,
+        external_source: Optional[str] = None,
+    ) -> None:
+        """
+        Внутренний помощник: создаёт или обновляет запись.
         """
         with self.Session as session:
             try:
-                existing_rating = session.query(Rating).filter_by(title_id=title_id).one_or_none()
-                if existing_rating:
-                    existing_rating.rating_value = rating_value
-                    existing_rating.rating_name = rating_name
-                    existing_rating.last_updated = datetime.now(timezone.utc)
-                    self.logger.debug(f"Updated rating for title_id: {title_id}")
+                rating = session.query(Rating).filter_by(title_id=title_id).one_or_none()
+                if rating:
+                    if cmers_value is not None:
+                        rating.cmers_value = cmers_value
+                    if external_score is not None:
+                        rating.raw_external = external_score
+                    if external_source is not None:
+                        rating.rating_source = external_source
+                    rating.last_updated = datetime.now(timezone.utc)
+                    self.logger.debug(f"Updated rating for title_id={title_id}")
                 else:
-                    new_rating = Rating(title_id=title_id, rating_value=rating_value, rating_name=rating_name, last_updated=datetime.now(timezone.utc))
-                    session.add(new_rating)
-                    self.logger.debug(f"Added new rating for title_id: {title_id}")
+                    rating = Rating(
+                        title_id=title_id,
+                        cmers_value=cmers_value,
+                        score_external=external_score,
+                        rating_source=external_source or "CMERS",
+                        last_updated=datetime.now(timezone.utc),
+                    )
+                    session.add(rating)
+                    self.logger.debug(f"Inserted rating for title_id={title_id}")
                 session.commit()
-            except Exception as e:
+            except Exception as exc:
                 session.rollback()
-                self.logger.error(f"Error saving rating for title_id {title_id}: {e}")
+                self.logger.error(f"Error saving rating for title_id={title_id}: {exc}")
                 raise
+
+    def save_ratings(
+        self,
+        title_id: int,
+        rating_name: str = "CMERS",
+        rating_value: Optional[int] = None,
+        external_value: Optional[float] = None,
+    ) -> None:
+        """
+        Сохраняет рейтинг. Если передан external_value – пересчитывает его в шкалу CMERS.
+        Если external_value отсутствует – сохраняет уже готовый cmers_value.
+        """
+        if external_value is not None:
+            cmers = self._map_external_to_cmers(external_value, max_cmers=6, max_external=10.0)
+        elif rating_value is not None:
+            if not 0 <= rating_value <= 6:
+                raise ValueError("CMERS rating must be between 0 and 6")
+            cmers = rating_value
+        else:
+            raise ValueError("Either external_value or cmers_value must be provided")
+
+        self._upsert_rating(
+            title_id,
+            cmers_value=cmers,
+            external_score=external_value,
+            external_source=rating_name,
+        )
 
     def save_title(self, title_data):
         with self.Session as session:

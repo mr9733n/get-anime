@@ -35,6 +35,15 @@ class AnimediaClient:
             "Connection": "keep-alive",
         }
 
+
+    def _logging_length(self, result: Any) -> None:
+        ln = len(result)
+        if ln > 1:
+            self.logger.info(f"Found {ln} items")
+        else:
+            self.logger.info(f"Found {ln} item")
+
+
     async def _open_browser(self):
         """Создаёт браузер Playwright, закрывается автоматически."""
         try:
@@ -47,6 +56,7 @@ class AnimediaClient:
         except Exception as e:
             self.logger.error(f"Playwright browser was not open: {e}")
             return None, None, None
+
 
     async def _search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
         """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
@@ -66,11 +76,13 @@ class AnimediaClient:
                 a = poster.select_one("a.poster__link")
                 if a and poster.select_one("div.vysser"):
                     links.append(urljoin(self.base_url, a["href"]))
-            self.logger.info(f"Found {len(links[:max_titles])} titles")
+
+            self._logging_length(links[:max_titles])
             return links[:max_titles]
         except Exception as e:
             self.logger.error(f"_search_titles not found titles. Error: {e}")
             return []
+
 
     async def _collect_episode_files(self, page, title_url: str) -> List[str]:
         """Собирает ссылки на файлы всех эпизодов конкретного тайтла."""
@@ -91,7 +103,8 @@ class AnimediaClient:
                     file_url = extract_file_from_html(resp.text, ep_url)
                     if file_url:
                         files.append(safe_str(file_url))
-            self.logger.info(f"Found {len(files)} stream links")
+
+            self._logging_length(files)
             return files
         except Exception as e:
             self.logger.error(f"_search_titles not found titles. Error: {e}")

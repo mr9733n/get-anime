@@ -133,7 +133,7 @@ class DatabaseManager:
     def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False, torrent_id=None, is_download=False):
         return self.save_manager.save_watch_status(user_id,title_id, episode_id, is_watched, torrent_id, is_download)
 
-    def save_ratings(self, title_id, rating_value, rating_name):
+    def save_ratings(self, title_id: int, rating_name: str, rating_value: int, external_value: float):
         """
         "Comprehensive Media Evaluation Rating System" or CMERS
         The CMERS system would operate as follows:
@@ -142,11 +142,8 @@ class DatabaseManager:
             - Individual Title Prominence
             - User-Provided Ratings
             - External Source Ratings
-            :param title_id:
-            :param rating_value:
-            :type rating_name: object
         """
-        return self.save_manager.save_ratings(title_id, rating_value, rating_name)
+        return self.save_manager.save_ratings(title_id, rating_name, rating_value, external_value)
 
     def get_titles_for_day(self, day_of_week):
         """Загружает тайтлы для указанного дня недели из базы данных."""

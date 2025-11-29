@@ -1,6 +1,6 @@
 # tables.py
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, \
-    SmallInteger, PrimaryKeyConstraint
+    SmallInteger, PrimaryKeyConstraint, Float
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -11,6 +11,8 @@ Base = declarative_base()
 class Title(Base):
     __tablename__ = 'titles'
     title_id = Column(Integer, primary_key=True)
+    animedia_id = Column(Integer)
+    provider = Column(String, nullable=False)
     code = Column(String, unique=True)
     name_ru = Column(String, nullable=False)
     name_en = Column(String)
@@ -110,6 +112,7 @@ class Rating(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     rating_name = Column(String, default='CMERS', nullable=False)
     rating_value = Column(SmallInteger, nullable=False)
+    score_external = Column(Float, nullable=True)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="ratings")
@@ -191,6 +194,8 @@ class Episode(Base):
     hls_fhd = Column(String)
     hls_hd = Column(String)
     hls_sd = Column(String)
+    hls_hd_animedia = Column(String)
+    hls_sd_animedia = Column(String)
     preview_path = Column(String)
     skips_opening = Column(String)
     skips_ending = Column(String)

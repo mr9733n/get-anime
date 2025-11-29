@@ -1,4 +1,5 @@
 import os
+import pathlib
 import re
 import sys
 import json
@@ -18,7 +19,7 @@ from app.qt.app_handlers import LinkActionHandler
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.vlc_player import VLCPlayer
 from app.qt.ui_manger import UIManager
-from app.qt.layout_metadata import all_layout_metadata
+from static.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 from utils.config_manager import ConfigManager
@@ -92,7 +93,7 @@ class AnimePlayerAppVer3(QWidget):
         self.row_start = 0
         self.col_start = 0
         self.pre = "https://"
-        self.config_manager = ConfigManager('config/config.ini')
+        self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
 
         """Loads the configuration settings needed by the application."""
         self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
@@ -108,7 +109,7 @@ class AnimePlayerAppVer3(QWidget):
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
-        self.torrent_save_path = "torrents/"  # Ensure this is set correctly
+        self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
         # Initialize TorrentManager with the correct paths
@@ -140,7 +141,12 @@ class AnimePlayerAppVer3(QWidget):
 
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
-        self.ui_manager = UIManager(self)
+
+        qss_path = pathlib.Path('static/styles.qss')
+        if not qss_path.is_file():
+            raise FileNotFoundError(f"Не найден файл стилей: {qss_path}")
+        self.ui_style = qss_path.read_text(encoding='utf-8')
+        self.ui_manager = UIManager(self, self.ui_style)
 
         self.link_handler = LinkActionHandler(
             logger=self.logger,
@@ -356,8 +362,8 @@ class AnimePlayerAppVer3(QWidget):
 
     def generate_callbacks(self):
         callbacks = {
-            "get_search_by_title": self.get_search_by_title,
-            "get_search_by_title_am": self.get_search_by_title_am,
+            "get_search_by_title_al": self.get_search_by_title_anilibria,
+            "get_search_by_title_am": self.get_search_by_title_animedia,
             "get_update_title": self.get_update_title,
             "get_random_title": self.get_random_title,
             "refresh_display": self.refresh_display,
@@ -1004,7 +1010,7 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
-    def get_search_by_title(self):
+    def get_search_by_title_anilibria(self):
         try:
             self.ui_manager.show_loader("Fetching by title...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
@@ -1021,13 +1027,13 @@ class AnimePlayerAppVer3(QWidget):
                 self._handle_get_titles_from_api(search_text)
 
         except Exception as e:
-            self.logger.error(f"Error while fetching get_search_by_title: {e}")
+            self.logger.error(f"Error while fetching get_search_by_title_anilibria: {e}")
             return False, None
         finally:
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
-    def get_search_by_title_am(self):
+    def get_search_by_title_animedia(self):
         try:
             self.ui_manager.show_loader("Fetching by title...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
@@ -1045,7 +1051,7 @@ class AnimePlayerAppVer3(QWidget):
             self.start_animedia_search(search_text)
 
         except Exception as e:
-            self.logger.error(f"Error while fetching get_search_by_title: {e}")
+            self.logger.error(f"Error while fetching get_search_by_title_animedia: {e}")
             return False, None
         finally:
             self.ui_manager.hide_loader()

@@ -1,7 +1,7 @@
 /* -------------------------------------------------
-   {button}
    Шаблон для QPushButton
    ------------------------------------------------- */
+{button}
 QPushButton {{
     background-color: {bg};
     color: white;
@@ -19,11 +19,11 @@ QPushButton:pressed {{
     background-color: {pressed};
     border: 1px solid #555;
 }}
-
+{end}
 /* -------------------------------------------------
-   {tool_button}
    Тот же стиль, но для QToolButton
    ------------------------------------------------- */
+{tool_button}
 QToolButton {{
     background-color: {bg};
     color: white;
@@ -41,11 +41,11 @@ QToolButton:pressed {{
     background-color: {pressed};
     border: 1px solid #555;
 }}
-
+{end}
 /* -------------------------------------------------
-   {menu}
    Стиль выпадающего меню
    ------------------------------------------------- */
+{menu}
 QMenu {{
     background-color: {bg};
     border: 1px solid {border};
@@ -61,11 +61,11 @@ QMenu::item:selected {{
     background-color: {selected_bg};
     color: {selected_text};
 }}
-
+{end}
 /* -------------------------------------------------
-   {line_edit}
    Стиль QLineEdit
    ------------------------------------------------- */
+{line_edit}
 QLineEdit {{
     background-color: #f7f7f7;
     border: 1px solid #dcdcdc;
@@ -78,23 +78,24 @@ QLineEdit:focus {{
     border: 1px solid #0078d4;
     background-color: #ffffff;
 }}
-
+{end}
 /* -------------------------------------------------
-   {combo}
    Стиль QComboBox
    ------------------------------------------------- */
+{combo}
 QComboBox {{
-    background-color: #f7f7f7;
-    border: 1px solid #ccc;
+    background-color: {bg};
+    border: 1px solid {border};
     border-radius: 6px;
     padding: 6px;
     font-size: 14px;
-    color: #333;
+    color: {text};
 }}
-QComboBox::drop-down {{ border-left: 1px solid #ccc; width: 20px; }}
+QComboBox::drop-down {{ border-left: 1px solid {border}; width: 20px; }}
 QComboBox QAbstractItemView {{
     background-color: #ffffff;
-    border: 1px solid #aaa;
-    selection-background-color: #0078d4;
-    selection-color: #fff;
+    border: 1px solid {border};
+    selection-background-color: {hover};
+    selection-color: {text};
 }}
+{end}

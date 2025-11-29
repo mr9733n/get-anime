@@ -38,6 +38,7 @@ class AnimediaAdapter:
                             await page.click("button#accept-cookies")
 
                         await page.wait_for_selector("header.pmovie__header", timeout=120000)
+                        self.logger.info(f"safe_goto url was successfully...")
                         return
                     except Exception as e:
                         if attempt == max_tries:
@@ -79,6 +80,7 @@ class AnimediaAdapter:
                 return result
 
             results = await asyncio.gather(*[process_one(u) for u in title_urls])
+            self.logger.info(f"Animedia scrapping was successfully. Was found {len(results)}.")
             return results
         finally:
             await browser.close()

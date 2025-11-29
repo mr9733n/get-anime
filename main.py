@@ -105,14 +105,12 @@ def fetch_version():
 def log_exception(exc_type, exc_value, exc_traceback):
     """Logging unexpected exceptions.
        Enable faulthandler when it needed."""
-
     fault_log_path = os.path.join(log_dir, 'fault.log')
 
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logger.critical("Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback))
-
     with open(fault_log_path, 'a') as fault_log:
         faulthandler.enable(file=fault_log)
         faulthandler.dump_traceback(file=fault_log)

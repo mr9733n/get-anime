@@ -112,6 +112,7 @@ class Rating(Base):
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     rating_name = Column(String, default='CMERS', nullable=False)
     rating_value = Column(SmallInteger, nullable=False)
+    name_external = Column(String, nullable=True)
     score_external = Column(Float, nullable=True)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
@@ -194,8 +195,6 @@ class Episode(Base):
     hls_fhd = Column(String)
     hls_hd = Column(String)
     hls_sd = Column(String)
-    hls_hd_animedia = Column(String)
-    hls_sd_animedia = Column(String)
     preview_path = Column(String)
     skips_opening = Column(String)
     skips_ending = Column(String)

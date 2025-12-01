@@ -232,9 +232,11 @@ class SaveManager:
                 else:
                     rating = Rating(
                         title_id=title_id,
-                        cmers_value=cmers_value,
+                        # TODO: fix this hardcode
+                        rating_name="CMERS",
+                        rating_value=cmers_value,
                         score_external=external_score,
-                        rating_source=external_source or "CMERS",
+                        name_external=external_source,
                         last_updated=datetime.now(timezone.utc),
                     )
                     session.add(rating)

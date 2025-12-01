@@ -10,36 +10,23 @@ class ProcessManager:
         self.logger = logging.getLogger(__name__)
         self.save_manager = save_manager
 
-    def process_franchises(self, title_data):
-        franchises_str = title_data['title_franchises']
-
-        try:
-            self.logger.debug(f"franchises_str: {len(franchises_str)}")
-
-            # Use json.loads to parse the JSON string
-            franchises = json.loads(franchises_str)
-        except json.JSONDecodeError as e:
-            self.logger.error(
-                f"Failed to parse franchises data for title_id: {title_data.get('title_id', 'unknown')}: {e}"
-            )
-            return
-
-        if franchises:
-            for franchise in franchises:
-                franchise_data = {
-                    'title_id': title_data['title_id'],
-                    'franchise_id': franchise.get('franchise', {}).get('id'),
-                    'franchise_name': franchise.get('franchise', {}).get('name'),
-                    'releases': franchise.get('releases', [])
-                }
-                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {len(franchise_data)}")
-                self.save_manager.save_franchise(franchise_data)
-
     def process_titles(self, title_data):
         try:
+            title_id = title_data.get('id', None)
+            studio_name = title_data.get('studio', '')
+            rating_name = title_data.get('rating', {}).get('name', '')
+            rating_score = title_data.get("rating", {}).get('score', 0.0)
+
+            if rating_name and rating_score:
+                self.save_manager.save_ratings(title_id, rating_name=rating_name, external_value=rating_score)
+
+            if studio_name:
+                self.save_manager.save_studio_to_db([title_id], studio_name=studio_name)
+
             title_data = {
                 'title_id': title_data.get('id', None),
                 'animedia_id': title_data.get('animedia_id', None),
+                'provider': title_data.get('provider'),
                 'code': title_data.get('code', ''),
                 'name_ru': title_data.get('names', {}).get('ru', ''),
                 'name_en': title_data.get('names', {}).get('en', ''),
@@ -74,9 +61,6 @@ class ProcessManager:
                 'host_for_player': title_data.get('player', {}).get('host', ''),
                 'alternative_player': title_data.get('player', {}).get('alternative_player', ''),
                 'last_updated': datetime.now(timezone.utc),
-                'studio': title_data.get('studio', ''),
-                'rating_name': title_data.get('rating', {}).get('name', ''),
-                'rating_score': title_data.get("rating", {}).get('score', 0.0),
             }
             self.logger.debug(f"STATUS INCOMING: code={title_data.get('status', {}).get('code')} "
                               f"str='{title_data.get('status', {}).get('string')}' | id={title_data.get('id')}")
@@ -104,71 +88,85 @@ class ProcessManager:
             if team_data:
                 self.save_manager.save_team_members(title_id, team_data)
 
-            rating_data = {
-                'rating_name': title_data['rating_name'],
-                'rating_score': title_data['rating_score']
-            }
-
-            if rating_data:
-                self.save_manager.save_ratings(title_id, rating_name=rating_data['rating_name'], external_value=rating_data['rating_score'])
-
-            studio_name = title_data['studio']
-            if studio_name:
-                self.save_manager.save_studio_to_db(title_id, studio_name=studio_name)
-
             return True
         except Exception as e:
             self.logger.error(f"Failed to save title to database: {e}")
             return False
 
     def process_episodes(self, title_data):
-        list_data = title_data.get("player", {}).get("list")
+        try:
+            list_data = title_data.get("player", {}).get("list")
 
-        # Проверяем, является ли `list_data` словарем или списком
-        if isinstance(list_data, dict):
-            episodes = list_data.values()
-        elif isinstance(list_data, list):
-            episodes = list_data
-        else:
-            self.logger.error("Unexpected type for list_data in player. Expected dict or list.")
-            return False
+            # Проверяем, является ли `list_data` словарем или списком
+            if isinstance(list_data, dict):
+                episodes = list_data.values()
+            elif isinstance(list_data, list):
+                episodes = list_data
+            else:
+                self.logger.error("Unexpected type for list_data in player. Expected dict or list.")
+                return False
 
-        for episode in episodes:
-            if not isinstance(episode, dict):
-                self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
-                continue
+            for episode in episodes:
+                if not isinstance(episode, dict):
+                    self.logger.error(f"Invalid type for episode. Expected dict, got {type(episode)}")
+                    continue
 
-            if "hls" in episode:
-                try:
-                    # self.logger.debug(f"Processing episode: {episode.get('episode')}")
+                if "hls" in episode:
+                    try:
+                        # self.logger.debug(f"Processing episode: {episode.get('episode')}")
 
-                    created_timestamp = episode.get('created_timestamp')
-                    if created_timestamp is not None and isinstance(created_timestamp, (int, float)):
-                        created_timestamp = datetime.fromtimestamp(created_timestamp, tz=timezone.utc)
-                    else:
-                        created_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
+                        created_timestamp = episode.get('created_timestamp')
+                        if created_timestamp is not None and isinstance(created_timestamp, (int, float)):
+                            created_timestamp = datetime.fromtimestamp(created_timestamp, tz=timezone.utc)
+                        else:
+                            created_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
 
-                    episode_data = {
-                        'title_id': title_data.get('id', None),
-                        'episode_number': episode.get('episode'),
-                        'name': episode.get('name', f'Серия {episode.get("episode")}'),
-                        'uuid': episode.get('uuid'),
-                        'created_timestamp': created_timestamp,
-                        'hls_fhd': episode.get('hls', {}).get('fhd'),
-                        'hls_hd': episode.get('hls', {}).get('hd'),
-                        'hls_sd': episode.get('hls', {}).get('sd'),
-                        'hls_hd_animedia': episode.get('hls', {}).get('hd_animedia'),
-                        'hls_sd_animedia': episode.get('hls', {}).get('sd_animedia'),
-                        'preview_path': episode.get('preview'),
-                        'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
-                        'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
-                    }
+                        episode_data = {
+                            'title_id': title_data.get('id', None),
+                            'episode_number': episode.get('episode'),
+                            'name': episode.get('name', f'Серия {episode.get("episode")}'),
+                            'uuid': episode.get('uuid'),
+                            'created_timestamp': created_timestamp,
+                            'hls_fhd': episode.get('hls', {}).get('fhd'),
+                            'hls_hd': episode.get('hls', {}).get('hd'),
+                            'hls_sd': episode.get('hls', {}).get('sd'),
+                            'preview_path': episode.get('preview'),
+                            'skips_opening': json.dumps(episode.get('skips', {}).get('opening', [])),
+                            'skips_ending': json.dumps(episode.get('skips', {}).get('ending', []))
+                        }
 
-                    self.save_manager.save_episode(episode_data)
+                        self.save_manager.save_episode(episode_data)
 
-                except Exception as e:
-                    self.logger.error(f"Failed to save episode to database: {e}")
-        return True
+                    except Exception as e:
+                        self.logger.error(f"Failed to save episode to database: {e}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to save episode to database: {e}")
+
+    def process_franchises(self, title_data):
+        franchises_str = title_data['title_franchises']
+
+        try:
+            self.logger.debug(f"franchises_str: {len(franchises_str)}")
+
+            # Use json.loads to parse the JSON string
+            franchises = json.loads(franchises_str)
+        except json.JSONDecodeError as e:
+            self.logger.error(
+                f"Failed to parse franchises data for title_id: {title_data.get('title_id', 'unknown')}: {e}"
+            )
+            return
+
+        if franchises:
+            for franchise in franchises:
+                franchise_data = {
+                    'title_id': title_data['title_id'],
+                    'franchise_id': franchise.get('franchise', {}).get('id'),
+                    'franchise_name': franchise.get('franchise', {}).get('name'),
+                    'releases': franchise.get('releases', [])
+                }
+                self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {len(franchise_data)}")
+                self.save_manager.save_franchise(franchise_data)
 
     def process_torrents(self, title_data):
         if "torrents" in title_data and "list" in title_data["torrents"]:

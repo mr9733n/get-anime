@@ -274,11 +274,11 @@ def episodes_dict(sorted_links: list[str]) -> Dict[str, Dict[str, str | None]]:
         ep_num = _episode_number(sd)
 
         episodes[ep_num] = {
-            "fhd": "",
-            "hd": "",
-            "sd": "",
-            "hd_animedia": _strip_host(hd),
-            "sd_animedia": _strip_host(sd),
+            'hls': {
+                "fhd": "",
+                "hd": _strip_host(str(hd)),
+                "sd": _strip_host(sd),
+            },
             "uuid": str(uuid.uuid4()),
             "created_timestamp": 0,
             "episode": int(ep_num),
@@ -364,8 +364,9 @@ def build_base_dict(
         ep_data["created_timestamp"] = updated_ts
 
     return {
-        # "id": new_id,
+        "id": new_id,
         ORIGINAL_ID_FIELD: original_id,
+        "provider": "AniMedia",
         "code": sanitized_code,
         "announce": meta.get("announce", ""),
         "names": {

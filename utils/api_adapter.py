@@ -287,7 +287,7 @@ class APIAdapter:
         adapted = {
             'id': release.get('id'),
             'code': release.get('alias', ''),
-
+            'provider': 'AniLiberty',
             'names': {
                 'ru': release.get('name', {}).get('main', ''),
                 'en': release.get('name', {}).get('english', ''),

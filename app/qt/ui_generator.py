@@ -550,10 +550,6 @@ class UIGenerator:
                     link = episode.hls_hd
                 elif selected_quality == 'sd':
                     link = episode.hls_sd
-                elif selected_quality == 'hd_am':
-                    link = episode.hls_hd_animedia
-                elif selected_quality == 'sd_am':
-                    link = episode.hls_sd_animedia
                 else:
                     self.logger.error(f"Неизвестное качество: {selected_quality}")
                     continue

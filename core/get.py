@@ -295,7 +295,7 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке данных о команде из базы данных: {e}")
                 return None
 
-    def get_titles_by_keywords(self, search_string):
+    def get_titles_by_keywords(self, search_string: str):
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
         keywords = search_string.split(',')
         keywords = [kw.strip() for kw in keywords]
@@ -325,7 +325,8 @@ class GetManager:
                     titles = query.all()
 
                 title_ids = [title.title_id for title in titles]
-                return title_ids
+                provider = [title.provider for title in titles]
+                return title_ids, provider
 
             except Exception as e:
                 self.logger.error(f"Error during title search: {e}")

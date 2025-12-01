@@ -274,12 +274,20 @@ CREATE INDEX IF NOT EXISTS idx_torrents_covering              ON torrents(title_
 CREATE INDEX IF NOT EXISTS idx_torrents_title_q_enc_rng       ON torrents(title_id, quality, encoder, episodes_range);
 ```
 
-15. New columns for AniMedia provider 
+15. New columns for AniMedia provider
 ```sql
-ALTER TABLE episodes ADD COLUMN hls_hd_animedia TEXT DEFAULT NULL;
-ALTER TABLE episodes ADD COLUMN hls_sd_animedia TEXT DEFAULT NULL;
+ALTER TABLE ratings ADD COLUMN name_external TEXT DEFAULT NULL;
 ALTER TABLE ratings ADD COLUMN score_external FLOAT DEFAULT NULL;
+
 ALTER TABLE titles ADD COLUMN animedia_id INTEGER DEFAULT NULL;
 ALTER TABLE titles ADD COLUMN provider INTEGER DEFAULT NULL;
 UPDATE titles SET provider = 'AniLiberty';
+```
+
+16. USE IF NEEDED
+```sql
+ALTER TABLE episodes ADD COLUMN hls_hd_animedia TEXT DEFAULT NULL;
+ALTER TABLE episodes ADD COLUMN hls_sd_animedia TEXT DEFAULT NULL;
+ALTER TABLE episodes DROP COLUMN hls_hd_animedia;
+ALTER TABLE episodes DROP COLUMN hls_sd_animedia;
 ```

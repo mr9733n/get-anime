@@ -13,20 +13,21 @@ from typing import List, Any, Dict, Union
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
-from app.animedia.qt_async_worker import AsyncWorker
-from app.animedia.animedia_adapter import AnimediaAdapter
-
 from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
-from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.vlc_player import VLCPlayer
+from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.ui_manger import UIManager
-from static.layout_metadata import all_layout_metadata
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
-from utils.config_manager import ConfigManager
+from static.layout_metadata import all_layout_metadata
+# AniLiberty api client
 from utils.api_client import APIClient
 from utils.api_adapter import APIAdapter
+# AniMedia playwright client
+from utils.config_manager import ConfigManager
+from utils.animedia.qt_async_worker import AsyncWorker
+from utils.animedia.animedia_adapter import AnimediaAdapter
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
@@ -34,12 +35,13 @@ from utils.library_loader import verify_library
 
 
 VLC_PLAYER_HASH = "e5b7e7ec51ffe45d1bf65512f4ce218bdb2890d1bef675fbdeac95e252d371ca"
+PROVIDER_ANILIBRIA = "AniLibria"
+PROVIDER_ANIMEDIA = "AniMedia"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
 APP_Y_POS = 100
-PROVIDER_ANILIBRIA = "AniLibria"
-PROVIDER_ANIMEDIA = "AniMedia"
+
 
 class APIClientError(Exception):
     """Исключение для ошибок при работе с API."""

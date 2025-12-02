@@ -14,19 +14,16 @@ except Exception:
     ServiceInfo = None
 
 
-# --- Конфиги по умолчанию ---
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
 DEFAULT_PORT = 8765
-DEFAULT_CHUNK = 2 * 1024 * 1024  # 2 MiB
+DEFAULT_CHUNK = 2 * 1024 * 1024
 TOFU_FILE: Path = Path.home() / ".player_db_trust.json"
 
 
-# --- Вспомогательные функции ---
 def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
     return hmac.new(salt or b'\x00'*32, ikm, hashlib.sha256).digest()
 
 def hkdf_expand(prk: bytes, info: bytes, length: int) -> bytes:
-    # простой HKDF expand (RFC5869)
     hash_len = hashlib.sha256().digest_size
     n = (length + hash_len - 1) // hash_len
     okm = b""
@@ -64,17 +61,13 @@ def load_tofu() -> Dict[str, Any]:
     try:
         if not TOFU_FILE.exists():
             return {}
-        # Явно открыть через with
         with TOFU_FILE.open("r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError:
-        # Повреждённый JSON — можно переименовать файл для отладки
-        # TOFU_FILE.rename(TOFU_FILE.with_suffix(".corrupt"))
         return {}
     except Exception as e:
-        # Здесь логируй e если нужен
         return {}
 
 def save_tofu(data: Dict[str, Any]) -> None:
@@ -88,26 +81,19 @@ def save_tofu(data: Dict[str, Any]) -> None:
     try:
         TOFU_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = TOFU_FILE.with_suffix(".tmp")
-        # Открываем и записываем
         with tmp.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
-            # гарантируем запись на диск (работает на POSIX/Windows)
             try:
                 os.fsync(f.fileno())
             except OSError:
-                # fsync может не поддерживаться в некоторых окружениях — игнорируем
                 pass
-        # атомарная замена
         os.replace(tmp, TOFU_FILE)
-        # попытка выставить права 600 — полезно для приватности
         try:
             TOFU_FILE.chmod(0o600)
         except Exception:
             pass
     except Exception as e:
-        # Логировать e при необходимости
-        # нельзя оставлять tmp бесконтрольно — можно попытаться удалить
         try:
             if tmp.exists():
                 tmp.unlink()
@@ -121,7 +107,6 @@ def make_salt(pub_a: bytes, pub_b: bytes) -> bytes:
         x = pub_b + pub_a
     return hashlib.sha256(x).digest()
 
-# --- Класс Receiver ---
 class DBReceiver:
     def __init__(self, *,
                  host: str = "0.0.0.0",
@@ -166,17 +151,15 @@ class DBReceiver:
         self._server = await asyncio.start_server(self._handle_client, host=self.host, port=self.port)
         addr = self._server.sockets[0].getsockname()
         self._log(f"[receiver] listening on {addr}")
-        # mDNS advertise
         if self.mdns_advertise and Zeroconf and ServiceInfo:
             try:
-                # попытка взять «реальный» IP, не 127.0.0.1
                 ip = None
                 for s in self._server.sockets:
                     ip = s.getsockname()[0]
                     if ip and ip != "0.0.0.0":
                         break
                 if not ip or ip == "0.0.0.0":
-                    ip = socket.gethostbyname(socket.gethostname())  # best-effort
+                    ip = socket.gethostbyname(socket.gethostname())
 
                 self._zc = Zeroconf()
                 props = {"name": self.mdns_name}
@@ -200,7 +183,7 @@ class DBReceiver:
             self._server.close()
             await self._server.wait_closed()
             self._running = False
-        # mDNS unreg
+
         try:
             if self._zc and self._mdns_info:
                 self._zc.unregister_service(self._mdns_info)
@@ -217,7 +200,7 @@ class DBReceiver:
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peer = writer.get_extra_info("peername")
         self._log(f"[receiver] connection from {peer}")
-        # 1. read hello
+
         line = await reader.readline()
         if not line:
             self._log("[receiver] empty hello (client disconnected early)")
@@ -234,7 +217,6 @@ class DBReceiver:
         file_size = int(hello.get("file_size", 0))
         chunk_size = int(hello.get("chunk_size", DEFAULT_CHUNK))
 
-        # 2. receive sender pubkey (32 bytes)
         try:
             sender_pub = await reader.readexactly(32)
         except asyncio.IncompleteReadError:
@@ -242,18 +224,15 @@ class DBReceiver:
             writer.close();
             await writer.wait_closed()
             return
-        # generate ephemeral keypair
+
         priv = PrivateKey.generate()
         pub = bytes(priv.public_key)
-        # send our pub
         writer.write(pub); await writer.drain()
 
-        # compute SAS and TOFU check
         sas = compute_sas(sender_pub, pub)
         sender_fp = sha256_hex(sender_pub)[:16]
         self._log(f"[receiver] SAS: {sas} (verify with sender)")
 
-        # TOFU check: if known and matches, we can skip manual confirm
         tofu = load_tofu()
         trusted = tofu.get(sender_fp)
 
@@ -264,7 +243,6 @@ class DBReceiver:
             if self.sas_confirm:
                 self._log("[receiver] SAS: waiting for user confirmation…")
                 loop = asyncio.get_running_loop()
-                # Важное изменение: выносим подтверждение в thread executor
                 confirmed = await loop.run_in_executor(None, lambda: bool(self.sas_confirm(sas, sender_fp)))
                 self._log(f"[receiver] SAS: {'accepted' if confirmed else 'rejected'} by user")
             else:
@@ -277,26 +255,20 @@ class DBReceiver:
             return
 
         salt = make_salt(pub, sender_pub)
-        is_sender_a = sender_pub < pub  # True, если отправитель — тот самый "A"
-
-        # общий секрет (используем bytes(priv) для ясности)
+        is_sender_a = sender_pub < pub
         shared = nacl_bindings.crypto_scalarmult(bytes(priv), sender_pub)
 
         if is_sender_a:
-            info = b"player-db-transfer:v1:a->b"  # поток идёт A->B к нам
+            info = b"player-db-transfer:v1:a->b"
         else:
-            info = b"player-db-transfer:v1:b->a"  # поток идёт B->A к нам
+            info = b"player-db-transfer:v1:b->a"
 
         key_recv = hkdf(salt=salt, ikm=shared, info=info, length=32)
         box_recv = SecretBox(key_recv)
-
-        # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
         self._log(f"[receiver] key tag: {key_recv[:4].hex()}")
-        # --- RESUME: check existing tmp ---
         tmp_path = self.chunk_dir / self.tmp_name
         resume_from = 0
         if gzip_mode:
-            # Для gzip пока не поддерживаем resume — писать с нуля
             self._log("[receiver] gzip mode: resume disabled")
         else:
             tmp_path = self.chunk_dir / self.tmp_name
@@ -313,19 +285,15 @@ class DBReceiver:
                     self._log(f"[receiver] resume check failed: {e}")
                     resume_from = 0
 
-        # --- send resume_from to sender ---
         if not self.allow_resume or gzip_mode:
             resume_from = 0
         writer.write((json.dumps({"resume_from": resume_from}) + "\n").encode())
         await writer.drain()
-
         tmp_path = self.chunk_dir / self.tmp_name
-        # если есть докачка — открываем в "append"
         mode = "ab" if resume_from else "wb"
         f = await aiofiles.open(tmp_path, mode)
         received = resume_from
         expected_seq = resume_from // chunk_size
-
         expected_sha = None
 
         try:
@@ -338,7 +306,6 @@ class DBReceiver:
                     lng_bytes = await reader.readexactly(8)
                     l = struct.unpack("!Q", lng_bytes)[0]
                     enc = await reader.readexactly(l)
-                    # decrypt
                     try:
                         plain = box_recv.decrypt(enc)
                         if seq != expected_seq:
@@ -377,14 +344,9 @@ class DBReceiver:
             except OSError as e:
                 self._log(f"[receiver] connection reset while closing: {e}")
 
-            # verify sha (и при необходимости распаковка gzip)
             if gzip_mode:
-                # --- gzip-ветка: распаковываем во временный .db и считаем SHA по распакованным данным ---
-
                 sha = hashlib.sha256()
-                # tmp_path сейчас указывает на gzip-файл (incoming.db.tmp, но он .gz внутри)
                 db_tmp_path = tmp_path.with_suffix(".dbtmp")
-
                 self._log(f"[receiver] gunzip {tmp_path} -> {db_tmp_path}")
                 with gzip.open(tmp_path, "rb") as fin, open(db_tmp_path, "wb") as fout:
                     while True:
@@ -393,32 +355,25 @@ class DBReceiver:
                             break
                         fout.write(data)
                         sha.update(data)
-
                 got = sha.hexdigest()
                 self._log(f"[receiver] calculated sha (gunzipped): {got}")
 
                 if expected_sha and got == expected_sha:
                     final = self.chunk_dir / self.final_name
                     os.replace(db_tmp_path, final)
-
-                    # gzip-времянку можно удалить (если хочется)
                     try:
                         tmp_path.unlink()
                     except Exception:
                         pass
 
                     self._log(f"[receiver] saved DB to {final}")
-
-                    # --- общий блок «успешного завершения» ---
                     if self.on_progress:
                         self.on_progress(file_size, file_size)
-                    # уведомляем GUI о пути сохранения
                     if self.on_done:
                         try:
                             self.on_done(str(final))
                         except Exception:
                             pass
-                    # persist TOFU if not existed
                     fp = sha256_hex(sender_pub)[:16]
                     tofu = load_tofu()
                     if fp not in tofu:
@@ -427,9 +382,7 @@ class DBReceiver:
                         self._log("[receiver] saved TOFU fingerprint")
                 else:
                     self._log(f"[receiver] SHA mismatch or missing after gunzip; tmp kept at {db_tmp_path}")
-
             else:
-                # --- обычная (не gzip) ветка — твой текущий код, чуть обёрнутый в else ---
                 sha = hashlib.sha256()
                 async with aiofiles.open(tmp_path, "rb") as fr:
                     while True:
@@ -446,13 +399,11 @@ class DBReceiver:
 
                     if self.on_progress:
                         self.on_progress(file_size, file_size)
-                    # уведомляем GUI о пути сохранения
                     if self.on_done:
                         try:
                             self.on_done(str(final))
                         except Exception:
                             pass
-                    # persist TOFU if not existed
                     fp = sha256_hex(sender_pub)[:16]
                     tofu = load_tofu()
                     if fp not in tofu:
@@ -462,8 +413,6 @@ class DBReceiver:
                 else:
                     self._log(f"[receiver] SHA mismatch or missing; tmp kept at {tmp_path}")
 
-
-# --- Класс Sender ---
 class DBSender:
     def __init__(self, *,
                  chunk_size: int = DEFAULT_CHUNK,
@@ -475,7 +424,7 @@ class DBSender:
                  use_gzip: bool = False,
                  vacuum_snapshot: bool = False):
         self.chunk_size = chunk_size
-        self.throttle_kbps = throttle_kbps  # None/0 -> no limit
+        self.throttle_kbps = throttle_kbps
         self.on_progress = on_progress
         self.sas_confirm = sas_confirm
         self.sas_info = sas_info
@@ -491,7 +440,6 @@ class DBSender:
 
     async def connect_and_send(self, host: str, port: int, src_db_path: str,
                                snapshot_path: str = "db_snapshot.sqlite", schema_version: str = "1"):
-        # 1) make snapshot
         if not os.path.exists(snapshot_path):
             sqlite_make_snapshot(src_db_path, snapshot_path)
 
@@ -511,7 +459,7 @@ class DBSender:
         orig_size = os.path.getsize(db_path)
 
         if self.use_gzip:
-            gz_path = snapshot_path + ".gz"  # или Path(...) / "db_snapshot.sqlite.gz"
+            gz_path = snapshot_path + ".gz"
             with open(db_path, "rb") as fin, gzip.open(gz_path, "wb") as fout:
                 shutil.copyfileobj(fin, fout)
             xfer_path = gz_path
@@ -530,16 +478,14 @@ class DBSender:
             else:
                 self._log("[sender] gzip ratio: original size is 0?")
 
-        # ===== SHA256 по ВСЕМУ снапшоту =====
         sha = hashlib.sha256()
         with open(snapshot_path, "rb") as ff:
             for block in iter(lambda: ff.read(1024 * 1024), b""):
                 sha.update(block)
         full_sha_hex = sha.hexdigest()
-
         reader = writer = None
         last_err = None
-        for _ in range(20):  # ~10 сек при интервале 0.5s
+        for _ in range(20):
             try:
                 reader, writer = await asyncio.open_connection(host, port)
                 break
@@ -550,45 +496,33 @@ class DBSender:
             raise last_err or ConnectionError("Unable to connect")
         hello = {"role":"sender","schema_version":schema_version,"file_size":size,"chunk_size":self.chunk_size,"gzip": bool(self.use_gzip),}
         writer.write((json.dumps(hello) + "\n").encode()); await writer.drain()
-
-        # send our ephemeral pubkey
         priv = PrivateKey.generate()
         pub = bytes(priv.public_key)
         writer.write(pub); await writer.drain()
-
-        # receive receiver pubkey
         receiver_pub = await reader.readexactly(32)
-
-        # SAS and TOFU check
         sas = compute_sas(pub, receiver_pub)
         recv_fp = sha256_hex(receiver_pub)[:16]
 
         if self.sas_info:
             try:
-                self.sas_info(sas, recv_fp)  # мгновенно отправляем в UI
+                self.sas_info(sas, recv_fp)
             except Exception:
                 pass
         else:
             self._log(f"[sender] SAS: {sas}, peer FP: {recv_fp}")
 
         salt = make_salt(pub, receiver_pub)
-        is_a_local = pub < receiver_pub  # True, если МЫ — "A"
-
-        # общий секрет
+        is_a_local = pub < receiver_pub
         shared = nacl_bindings.crypto_scalarmult(bytes(priv), receiver_pub)
 
         if is_a_local:
-            info = b"player-db-transfer:v1:a->b"  # мы шлём по A->B
+            info = b"player-db-transfer:v1:a->b"
         else:
-            info = b"player-db-transfer:v1:b->a"  # мы шлём по B->A
+            info = b"player-db-transfer:v1:b->a"
 
         key_send = hkdf(salt=salt, ikm=shared, info=info, length=32)
         box_send = SecretBox(key_send)
-
-        # --- (необязательно) временный отладочный вывод: первые 4 байта ключа
         self._log(f"[sender] key tag: {key_send[:4].hex()}")
-
-        # узнаём, с какого байта продолжать
         line = await reader.readline()
         resume_from = 0
         try:
@@ -600,9 +534,7 @@ class DBSender:
         if resume_from:
             self._log(f"[sender] receiver requests resume from {resume_from} bytes")
 
-        # ===== начинаем передачу =====
         seq = resume_from // self.chunk_size
-
         start_window = time.monotonic()
         sent_in_window = 0
         window_sec = 1.0
@@ -618,14 +550,12 @@ class DBSender:
                     if not chunk:
                         break
 
-                    enc = box_send.encrypt(chunk)  # nonce + ciphertext
+                    enc = box_send.encrypt(chunk)
                     writer.write(b"CHNK")
                     writer.write(struct.pack("!Q", seq))
                     writer.write(struct.pack("!Q", len(enc)))
                     writer.write(enc)
                     await writer.drain()
-
-                    # простой лимитер по «окну» 1 сек
                     if byte_budget:
                         sent_in_window += len(chunk)
                         now = time.monotonic()
@@ -638,7 +568,6 @@ class DBSender:
                             start_window = now
                             sent_in_window = 0
 
-                    # wait ack на КАЖДЫЙ чанк
                     line = await reader.readline()
                     ack = json.loads(line.decode())
                     if ack.get("ack") != seq:
@@ -649,10 +578,8 @@ class DBSender:
                     seq += 1
 
                     if self.on_progress:
-                        # показываем реальное количество принятых байт
                         self.on_progress(min(seq * self.chunk_size, size), size)
 
-            # send done + sha
             writer.write(b"DONE")
             writer.write((full_sha_hex + "\n").encode())
             await writer.drain()
@@ -674,7 +601,6 @@ class DBSender:
                 self._log(f"[ERROR][sender] removing snapshot/xfer: {e}")
                 pass
 
-# --- Простые CLI-примеры ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DB Transfer (Receiver or Sender)")
     sub = parser.add_subparsers(dest="cmd")

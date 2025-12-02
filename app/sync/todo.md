@@ -39,7 +39,7 @@
 #### D. Сборка/релиз
 - [x] Новый entry-point `db_sync_gui.py`; старые `sync/merge_utility` исключить из spec/бандла.
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
-- [ ] Post-install подсказка про Windows Firewall (вход на выбранный порт).
+- [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
 
 ### 8.34 New sync DB «Через интернет» без релея — два пути
 

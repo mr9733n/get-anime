@@ -153,6 +153,8 @@ if os.path.isdir(tcl86) and os.path.isdir(tk86):
 datas += [(os.path.join(project_dir, "app", "sync"), "app")]
 datas += [(os.path.join(project_dir, "favicon.ico"), ".")]
 datas += [(str(build_env_path), ".")]
+datas += [(os.path.join(project_dir, "scripts", "allow_port_8765.cmd", "."))]
+datas += [(os.path.join(project_dir, "scripts", "remove_port_8765.cmd", "."))]
 
 icon_path = os.path.join(project_dir, "favicon.ico")
 

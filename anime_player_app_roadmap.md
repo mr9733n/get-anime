@@ -362,9 +362,8 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix saving episode no. 0
 - [x] fix app lite version for api v1 
 - [x] optimizations for app lite
-- [ ] Remove unused logic
 
-### 8.33 Add AniMedia as second provider
+### 8.33.1 Add AniMedia as second provider
 - [x] Add scraper for AniMedia
 - [x] Add adapter to resolve data inconsistency  
 - [x] Create demo app creating full data response that can process AnimePlayer
@@ -376,11 +375,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix fetch posters
 - [x] Fix saving episodes
 - [x] Show provider in UI for title
-- [ ] Filter by provider
-- [ ] Create adapter for season / We have to many same seasons with different name
-- [ ] 
+- [x] Remove unused logic
 
-### 8.33 New sync DB 
+### 8.33.2 New sync DB
 
 #### A. Транспорт и безопасность
 - [x] Сквозное шифрование (X25519 + HKDF + NaCl SecretBox), направленные ключи, SAS, TOFU-хранилище (атомично, с fsync).
@@ -421,7 +418,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 #### D. Сборка/релиз
 - [x] Новый entry-point `db_sync_gui.py`; старые `sync/merge_utility` исключить из spec/бандла.
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
-- [ ] Post-install подсказка про Windows Firewall (вход на выбранный порт).
+- [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
 
 ### 8.34 New sync DB «Через интернет» без релея — два пути
 
@@ -448,6 +445,14 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] абстрагировать транспорт
 - [ ] реализовать WebRTCTransport + сигналинг GUI
 - [ ] тесты и логика fallback к TCP
+
+### 8.35 Fixes
+- [ ] Filter by provider
+- [ ] Create adapter for season / We have to many same seasons with different name
+- [ ] 
+
+ 
+
 
 ## 9. Check maybe obsolete
 ### 9.0. Some fixes

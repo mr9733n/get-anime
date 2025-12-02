@@ -1,12 +1,6 @@
 # db_sync_gui.py
-import os
-import csv
-import json
-import socket
-import asyncio
-import threading
-import traceback
 import tkinter as tk
+import os, csv, json, socket, asyncio, threading, traceback
 
 from pathlib import Path
 from typing import Optional
@@ -84,7 +78,6 @@ class App(tk.Tk):
         self._log("Готово. Используйте вкладки Send/Receive. История адресов сохраняется в ~/.player_db_gui.json.")
 
     # ---------- Tabs ----------
-
     def _build_tab_send(self):
         self.tab_send = ttk.Frame(self.nb)
         self.nb.add(self.tab_send, text="Send")
@@ -145,7 +138,6 @@ class App(tk.Tk):
             text="VACUUM snapshot before send",
             variable=self.var_send_vacuum
         ).pack(anchor="w", pady=(0, 2))
-
 
         def _update_human(entry: tk.Entry, var: tk.StringVar, kind: str):
             txt = entry.get().strip()
@@ -228,8 +220,6 @@ class App(tk.Tk):
         btns = ttk.Frame(sasfrm); btns.pack(pady=(0, 8))
         ttk.Button(btns, text="Accept", command=self._sas_accept).pack(side="left", padx=6)
         ttk.Button(btns, text="Cancel",  command=self._sas_reject).pack(side="left", padx=6)
-
-        # TOFU reset
         tofu_row = ttk.Frame(self.tab_recv); tofu_row.pack(fill="x", pady=(6, 0))
         ttk.Button(tofu_row, text="Reset TOFU (forget all)", command=self._reset_tofu).pack(side="left")
 
@@ -269,43 +259,34 @@ class App(tk.Tk):
         # --- Options ---
         opts = ttk.Frame(self.tab_merge)
         opts.pack(fill="x", pady=(2, 6))
-
         self.merge_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Dry-run (read only)", variable=self.merge_dry).pack(side="left")
-
         self.merge_skip_posters_without_hash = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             opts,
             text="Skip posters without hash",
             variable=self.merge_skip_posters_without_hash,
         ).pack(side="left", padx=(8, 0))
-
         self.merge_skip_orphans = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             opts,
             text="Skip orphans",
             variable=self.merge_skip_orphans,
         ).pack(side="left", padx=(8, 0))
-
         self.merge_vacuum_optimize = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             opts,
             text="VACUUM/optimize after merge",
             variable=self.merge_vacuum_optimize,
         ).pack(side="left", padx=(8, 0))
-
         self.merge_verbose_log = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             opts,
             text="Verbose logs",
             variable=self.merge_verbose_log,
         ).pack(side="left", padx=(8, 0))
-
-        # --- Кнопка запуска ---
         self.btn_merge = ttk.Button(self.tab_merge, text="Merge", command=self._run_merge)
         self.btn_merge.pack(anchor="w", pady=(4, 8))
-
-        # --- Прогрессбар ---
         self.prog_merge = ttk.Progressbar(
             self.tab_merge,
             length=400,
@@ -328,7 +309,6 @@ class App(tk.Tk):
         yscroll.pack(side="right", fill="y")
 
     # ---------- Logs ----------
-
     def _log(self, s: str):
         ts = datetime.now().strftime("%H:%M:%S")
         self.txt.insert("end", f"[{ts}] {s}\n")
@@ -356,9 +336,7 @@ class App(tk.Tk):
         def upd():
             self._set_progress(self.prog_send, done, total)
             if total and done >= total:
-                # маленькая «анимационная» пауза и очистка
                 self.after(400, lambda: self._set_progress(self.prog_send, 0, total))
-                # чистим SAS на отправителе
                 self.send_sas_code.set("—")
                 self.send_sas_fp.set("—")
 
@@ -368,9 +346,7 @@ class App(tk.Tk):
         def upd():
             self._set_progress(self.prog_recv, done, total)
             if total and done >= total:
-                # после завершения — чуть подержим 100% и обнулим
                 self.after(800, lambda: self._set_progress(self.prog_recv, 0, total))
-                # чистим SAS на приёмнике
                 self.recv_sas_code.set("—")
                 self.recv_sas_fp.set("—")
 
@@ -383,7 +359,6 @@ class App(tk.Tk):
             widget['value'] = min(done, total)
 
     # ---- Merge ----
-
     def _pick_merge_src(self):
         p = filedialog.askopenfilename(title="Select Source DB",
                                        filetypes=[("SQLite DB", "*.db *.sqlite *.sqlite3"), ("All files", "*.*")])
@@ -491,7 +466,6 @@ class App(tk.Tk):
                     messagebox.showerror("Merge", m, parent=self)
 
                 self.after(0, handler)
-
         threading.Thread(target=worker, daemon=True).start()
 
     # ---- Utils ----
@@ -529,7 +503,6 @@ class App(tk.Tk):
             self._log(f"mDNS error: {e}")
 
     def _on_mdns_service(self, zeroconf, service_type, name, state_change):
-
         if state_change == ServiceStateChange.Added:
             info = zeroconf.get_service_info(service_type, name)
             if not info:
@@ -577,7 +550,7 @@ class App(tk.Tk):
         async def probe():
             try:
                 rdr, wtr = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=1.5)
-                wtr.close();
+                wtr.close()
                 await wtr.wait_closed()
                 return True
             except Exception:
@@ -592,15 +565,29 @@ class App(tk.Tk):
             except Exception:
                 ok = False
             self._log("Проверка: OK" if ok else "Проверка: нет соединения")
+
             if ok:
                 messagebox.showinfo("Проверка соединения", "OK — порт доступен.", parent=self)
             else:
-                messagebox.showwarning("Проверка соединения", "Соединение не установлено.", parent=self)
+                msg = (
+                    "Соединение не установлено.\n\n"
+                    "Возможные причины:\n"
+                    "  • Приёмник не запущен на целевой машине\n"
+                    "  • Блокирует Windows Firewall или другой фаервол\n\n"
+                    "Для Windows вы можете открыть порт вручную (от Администратора):\n"
+                    f'  netsh advfirewall firewall add rule name="PlayerDBSync_{port}" '
+                    f'dir=in action=allow protocol=TCP localport={port}\n'
+                )
+                messagebox.showwarning("Проверка соединения", msg, parent=self)
+                self._log(
+                    "Firewall hint (Windows): run as Administrator:\n"
+                    f'  netsh advfirewall firewall add rule name="PlayerDBSync_{port}" '
+                    f'dir=in action=allow protocol=TCP localport={port}'
+                )
 
         fut.add_done_callback(done_cb)
 
     # ---------- SEND ----------
-
     def _on_send(self):
         host = self.cmb_host.get().strip()
         if not host:
@@ -628,10 +615,8 @@ class App(tk.Tk):
                 self.send_sas_fp.set(fp)
                 self._log(f"SAS (sender): {sas} | FP: {fp}")
                 self.nb.select(self.tab_send)
-
             self.after(0, upd)
 
-        # read settings
         try:
             chunk_mib = float(self.entry_chunk.get().strip() or "0")
             if chunk_mib <= 0:
@@ -685,7 +670,6 @@ class App(tk.Tk):
                 self.cfg["sender_vacuum"] = "1" if self.var_send_vacuum.get() else "0"
                 save_gui_cfg(self.cfg)
                 self.cmb_host["values"] = self.cfg["recent"]
-
         fut.add_done_callback(done_cb)
 
     # ---------- RECEIVE ----------
@@ -722,7 +706,6 @@ class App(tk.Tk):
     def _reset_tofu(self):
         try:
             if TOFU_FILE.exists():
-                # полная очистка
                 save_tofu({})
             messagebox.showinfo("TOFU", "Хранилище доверия очищено.", parent=self)
             self._log("TOFU: cleared (~/.player_db_trust.json)")
@@ -761,7 +744,6 @@ class App(tk.Tk):
         ))
 
     # ---------- shutdown ----------
-
     def on_close(self):
         try:
             if self.receiver_running and self.receiver:
@@ -778,8 +760,6 @@ class App(tk.Tk):
                 pass
         finally:
             self.asyncio_thread.stop()
-            # NOTE: снапшот теперь удаляется по завершении отправки в DBSender
-
             self.destroy()
 
 

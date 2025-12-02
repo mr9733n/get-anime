@@ -58,7 +58,7 @@ def Version(*, file_version, product_version, company_name, file_description, in
     )
 
 # ---
-# main.spec
+# animedia_player_demo.spec
 
 def calculate_sha256(file_path):
     hash_function = hashlib.sha256()
@@ -90,20 +90,17 @@ project_dir = os.getcwd()
 # Compile the files in the 'app' directory
 compileall.compile_dir('app', force=True)
 
-# ---
-# animedia_player_demo.spec
-
 block_cipher = None
 
 block = {
     "FileVersion": "0.0.0.1",
     "ProductVersion": "0.0.1",
     "CompanyName": "666s.dev",
-    "FileDescription": "AnimediaPlayerDemo",
-    "InternalName": "AnimediaPlayerDemo",
+    "FileDescription": "AniMediaPlayerDemo",
+    "InternalName": "AniMediaPlayerDemo",
     "LegalCopyright": "© 2025 666s.dev",
-    "OriginalFilename": "AnimediaPlayerDemo.exe",
-    "ProductName": "AnimediaPlayerDemo",
+    "OriginalFilename": "AniMediaPlayerDemo.exe",
+    "ProductName": "AniMediaPlayerDemo",
 }
 
 version_resource = Version(
@@ -145,7 +142,7 @@ exe = EXE(
 	d.scripts,
 	[],
 	exclude_binaries=True,
-    name='AnimediaPlayerDemo',
+    name='AniMediaPlayerDemo',
 	icon='favicon.ico',
 	debug=False,
 	bootloader_ignore_signals=False,
@@ -161,11 +158,11 @@ coll = COLLECT(
 	d.zipfiles,
 	d.datas,
 	strip=False,
-	name='AnimediaPlayerDemo'
+	name='AniMediaPlayerDemo'
 )
 
 dist_dir = os.path.join(project_dir, 'dist')
-compiled_dir2 = os.path.join(dist_dir, 'AnimediaPlayerDemo', '_internal')
+compiled_dir2 = os.path.join(dist_dir, 'AniMediaPlayerDemo', '_internal')
 
 def delete_folders(target_dir, folder_patterns):
     for pattern in folder_patterns:
@@ -220,7 +217,7 @@ files_to_delete += [
 for target_folder in target_folders:
     delete_files(target_folder, files_to_delete)
 
-dest_dir1 = os.path.join(dist_dir, 'AnimediaPlayerDemo')
+dest_dir1 = os.path.join(dist_dir, 'AniMediaPlayerDemo')
 
 folders_mapping = {
     compiled_dir2: (

@@ -1,27 +1,27 @@
 # db_sync_gui.py
-import csv
 import os
+import csv
 import json
-import asyncio
 import socket
+import asyncio
 import threading
-import tkinter as tk
 import traceback
+import tkinter as tk
 
-from datetime import datetime
-from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
+from tkinter import ttk, filedialog, messagebox
 
 os.environ.setdefault("ZC_DISABLE_CYTHON", "1")
-
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 
-from merge import run_merge
+from db_merge import run_merge
 from db_transfer import DBReceiver, DBSender, TOFU_FILE, save_tofu
 
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
 CFG_PATH = Path.home() / ".player_db_gui.json"
+
 
 def load_gui_cfg():
     try:
@@ -61,7 +61,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Player DB Sync (LAN)")
-        self.geometry("780x400")
+        self.geometry("780x450")
         self['padx'] = 8
         self['pady'] = 8
         self._zc = None
@@ -131,6 +131,21 @@ class App(tk.Tk):
         self.speed_human = tk.StringVar()
         lbl_speed_human = ttk.Label(srow2, textvariable=self.speed_human)
         lbl_speed_human.pack(side="left", padx=(6, 0))
+
+        self.var_send_compress = tk.BooleanVar(value=self.cfg.get("compress_gzip", False))
+        ttk.Checkbutton(
+            setgrp,
+            text="Compress snapshot (gzip)",
+            variable=self.var_send_compress
+        ).pack(anchor="w", pady=(2, 2))
+
+        self.var_send_vacuum = tk.BooleanVar(value=self.cfg.get("sender_vacuum", False))
+        ttk.Checkbutton(
+            setgrp,
+            text="VACUUM snapshot before send",
+            variable=self.var_send_vacuum
+        ).pack(anchor="w", pady=(0, 2))
+
 
         def _update_human(entry: tk.Entry, var: tk.StringVar, kind: str):
             txt = entry.get().strip()
@@ -634,12 +649,17 @@ class App(tk.Tk):
             messagebox.showerror("Ошибка", "Speed limit должен быть целым числом (KB/s) или пусто.", parent=self)
             return
 
+        use_gzip = self.var_send_compress.get()
+        vacuum_snapshot = self.var_send_vacuum.get()
+
         sender = DBSender(
             chunk_size=chunk_size,
             throttle_kbps=speed_kbps,
             on_progress=self._on_progress_send,
             sas_info=sas_info_cb,
             log=self._log,
+            use_gzip=use_gzip,
+            vacuum_snapshot=vacuum_snapshot,
         )
         fut = self.asyncio_thread.call(sender.connect_and_send(host, port, path))
         self._pending.append(fut)
@@ -655,20 +675,20 @@ class App(tk.Tk):
                 messagebox.showerror("Ошибка", str(err), parent=self)
             else:
                 self._log("Отправка завершена")
-                # сохранить адрес в историю
                 addr = f"{host}"
                 recent = [addr] + [x for x in self.cfg.get("recent", []) if x != addr]
                 self.cfg["recent"] = recent[:8]
                 self.cfg["last_port"] = str(port)
                 self.cfg["chunk_size"] = self.entry_chunk.get().strip()
                 self.cfg["speed_kbps"] = "" if speed_kbps is None else str(speed_kbps)
+                self.cfg["compress_gzip"] = "1" if self.var_send_compress.get() else "0"
+                self.cfg["sender_vacuum"] = "1" if self.var_send_vacuum.get() else "0"
                 save_gui_cfg(self.cfg)
                 self.cmb_host["values"] = self.cfg["recent"]
 
         fut.add_done_callback(done_cb)
 
     # ---------- RECEIVE ----------
-
     def _on_toggle_receive(self):
         if not self.receiver_running:
             try:

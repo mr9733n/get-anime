@@ -1,27 +1,18 @@
 # db_transfer.py
-import asyncio
-import json
-import os
-import struct
-import hashlib
-import hmac
-import sqlite3
-import socket
-import time
-
-import aiofiles
+import os, hmac, time, json, gzip, shutil, socket, struct, asyncio, sqlite3, hashlib, aiofiles, argparse
 
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any
-from nacl.public import PrivateKey, PublicKey
 from nacl.secret import SecretBox
+from nacl.public import PrivateKey, PublicKey
 from nacl import bindings as nacl_bindings
+from typing import Optional, Callable, Dict, Any
 
 try:
     from zeroconf import Zeroconf, ServiceInfo
 except Exception:
     Zeroconf = None
     ServiceInfo = None
+
 
 # --- Конфиги по умолчанию ---
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
@@ -239,6 +230,7 @@ class DBReceiver:
             writer.close(); await writer.wait_closed()
             return
 
+        gzip_mode = bool(hello.get("gzip"))
         file_size = int(hello.get("file_size", 0))
         chunk_size = int(hello.get("chunk_size", DEFAULT_CHUNK))
 
@@ -303,22 +295,26 @@ class DBReceiver:
         # --- RESUME: check existing tmp ---
         tmp_path = self.chunk_dir / self.tmp_name
         resume_from = 0
-        if tmp_path.exists():
-            try:
-                sz = tmp_path.stat().st_size
-                # докачка только если размер кратен чанку и меньше полного файла
-                if 0 < sz < file_size and (sz % chunk_size == 0):
-                    resume_from = sz
-                    self._log(f"[receiver] resume possible from {resume_from} bytes")
-                else:
-                    self._log("[receiver] resume not possible, removing bad tmp")
-                    tmp_path.unlink(missing_ok=True)
-            except Exception as e:
-                self._log(f"[receiver] resume check failed: {e}")
-                resume_from = 0
+        if gzip_mode:
+            # Для gzip пока не поддерживаем resume — писать с нуля
+            self._log("[receiver] gzip mode: resume disabled")
+        else:
+            tmp_path = self.chunk_dir / self.tmp_name
+            if tmp_path.exists():
+                try:
+                    sz = os.path.getsize(tmp_path)
+                    if 0 < sz < file_size and (sz % chunk_size == 0):
+                        resume_from = sz
+                        self._log(f"[receiver] resume possible from {resume_from} bytes")
+                    else:
+                        self._log("[receiver] resume not possible, removing bad tmp")
+                        tmp_path.unlink(missing_ok=True)
+                except Exception as e:
+                    self._log(f"[receiver] resume check failed: {e}")
+                    resume_from = 0
 
         # --- send resume_from to sender ---
-        if not self.allow_resume:
+        if not self.allow_resume or gzip_mode:
             resume_from = 0
         writer.write((json.dumps({"resume_from": resume_from}) + "\n").encode())
         await writer.drain()
@@ -381,38 +377,91 @@ class DBReceiver:
             except OSError as e:
                 self._log(f"[receiver] connection reset while closing: {e}")
 
-        # verify sha
-        sha = hashlib.sha256()
-        async with aiofiles.open(tmp_path, "rb") as fr:
-            while True:
-                data = await fr.read(1024*1024)
-                if not data:
-                    break
-                sha.update(data)
-        got = sha.hexdigest()
-        self._log(f"[receiver] calculated sha: {got}")
-        if expected_sha and got == expected_sha:
-            final = self.chunk_dir / self.final_name
-            os.replace(tmp_path, final)
-            self._log(f"[receiver] saved DB to {final}")
+            # verify sha (и при необходимости распаковка gzip)
+            if gzip_mode:
+                # --- gzip-ветка: распаковываем во временный .db и считаем SHA по распакованным данным ---
 
-            if self.on_progress:
-                self.on_progress(file_size, file_size)
-            # уведомляем GUI о пути сохранения
-            if self.on_done:
-                try:
-                    self.on_done(str(final))
-                except Exception:
-                    pass
-            # persist TOFU if not existed
-            fp = sha256_hex(sender_pub)[:16]
-            tofu = load_tofu()
-            if fp not in tofu:
-                tofu[fp] = True
-                save_tofu(tofu)
-                self._log("[receiver] saved TOFU fingerprint")
-        else:
-            self._log(f"[receiver] SHA mismatch or missing; tmp kept at {tmp_path}" )
+                sha = hashlib.sha256()
+                # tmp_path сейчас указывает на gzip-файл (incoming.db.tmp, но он .gz внутри)
+                db_tmp_path = tmp_path.with_suffix(".dbtmp")
+
+                self._log(f"[receiver] gunzip {tmp_path} -> {db_tmp_path}")
+                with gzip.open(tmp_path, "rb") as fin, open(db_tmp_path, "wb") as fout:
+                    while True:
+                        data = fin.read(1024 * 1024)
+                        if not data:
+                            break
+                        fout.write(data)
+                        sha.update(data)
+
+                got = sha.hexdigest()
+                self._log(f"[receiver] calculated sha (gunzipped): {got}")
+
+                if expected_sha and got == expected_sha:
+                    final = self.chunk_dir / self.final_name
+                    os.replace(db_tmp_path, final)
+
+                    # gzip-времянку можно удалить (если хочется)
+                    try:
+                        tmp_path.unlink()
+                    except Exception:
+                        pass
+
+                    self._log(f"[receiver] saved DB to {final}")
+
+                    # --- общий блок «успешного завершения» ---
+                    if self.on_progress:
+                        self.on_progress(file_size, file_size)
+                    # уведомляем GUI о пути сохранения
+                    if self.on_done:
+                        try:
+                            self.on_done(str(final))
+                        except Exception:
+                            pass
+                    # persist TOFU if not existed
+                    fp = sha256_hex(sender_pub)[:16]
+                    tofu = load_tofu()
+                    if fp not in tofu:
+                        tofu[fp] = True
+                        save_tofu(tofu)
+                        self._log("[receiver] saved TOFU fingerprint")
+                else:
+                    self._log(f"[receiver] SHA mismatch or missing after gunzip; tmp kept at {db_tmp_path}")
+
+            else:
+                # --- обычная (не gzip) ветка — твой текущий код, чуть обёрнутый в else ---
+                sha = hashlib.sha256()
+                async with aiofiles.open(tmp_path, "rb") as fr:
+                    while True:
+                        data = await fr.read(1024 * 1024)
+                        if not data:
+                            break
+                        sha.update(data)
+                got = sha.hexdigest()
+                self._log(f"[receiver] calculated sha: {got}")
+                if expected_sha and got == expected_sha:
+                    final = self.chunk_dir / self.final_name
+                    os.replace(tmp_path, final)
+                    self._log(f"[receiver] saved DB to {final}")
+
+                    if self.on_progress:
+                        self.on_progress(file_size, file_size)
+                    # уведомляем GUI о пути сохранения
+                    if self.on_done:
+                        try:
+                            self.on_done(str(final))
+                        except Exception:
+                            pass
+                    # persist TOFU if not existed
+                    fp = sha256_hex(sender_pub)[:16]
+                    tofu = load_tofu()
+                    if fp not in tofu:
+                        tofu[fp] = True
+                        save_tofu(tofu)
+                        self._log("[receiver] saved TOFU fingerprint")
+                else:
+                    self._log(f"[receiver] SHA mismatch or missing; tmp kept at {tmp_path}")
+
 
 # --- Класс Sender ---
 class DBSender:
@@ -422,13 +471,17 @@ class DBSender:
                  on_progress: Optional[Callable[[int, int], None]] = None,
                  sas_confirm: Optional[Callable[[str, str], bool]] = None,
                  sas_info: Optional[Callable[[str, str], None]] = None,
-                 log: Optional[Callable[[str], None]] = None):
+                 log: Optional[Callable[[str], None]] = None,
+                 use_gzip: bool = False,
+                 vacuum_snapshot: bool = False):
         self.chunk_size = chunk_size
         self.throttle_kbps = throttle_kbps  # None/0 -> no limit
         self.on_progress = on_progress
         self.sas_confirm = sas_confirm
         self.sas_info = sas_info
         self._log_cb = log
+        self.use_gzip = use_gzip
+        self.vacuum_snapshot = vacuum_snapshot
 
     def _log(self, msg: str):
         if self._log_cb:
@@ -441,7 +494,49 @@ class DBSender:
         # 1) make snapshot
         if not os.path.exists(snapshot_path):
             sqlite_make_snapshot(src_db_path, snapshot_path)
-        size = os.path.getsize(snapshot_path)
+
+        if self.vacuum_snapshot:
+            try:
+                self._log(f"[sender] VACUUM snapshot {snapshot_path} ...")
+                con = sqlite3.connect(snapshot_path)
+                with con:
+                    con.execute("PRAGMA optimize")
+                    con.execute("VACUUM")
+                con.close()
+                self._log("[sender] VACUUM snapshot: done")
+            except Exception as e:
+                self._log(f"[sender] VACUUM snapshot failed: {e}")
+
+        db_path = snapshot_path
+        orig_size = os.path.getsize(db_path)
+
+        if self.use_gzip:
+            gz_path = snapshot_path + ".gz"  # или Path(...) / "db_snapshot.sqlite.gz"
+            with open(db_path, "rb") as fin, gzip.open(gz_path, "wb") as fout:
+                shutil.copyfileobj(fin, fout)
+            xfer_path = gz_path
+        else:
+            xfer_path = db_path
+
+        size = os.path.getsize(xfer_path)
+        if self.use_gzip:
+            if orig_size > 0:
+                saved = (1.0 - size / orig_size) * 100.0
+                self._log(
+                    "[sender] gzip ratio: "
+                    f"{orig_size / (1024*1024):.2f} MiB -> {size / (1024*1024):.2f} MiB "
+                    f"({saved:.1f}% saved)"
+                )
+            else:
+                self._log("[sender] gzip ratio: original size is 0?")
+
+        # ===== SHA256 по ВСЕМУ снапшоту =====
+        sha = hashlib.sha256()
+        with open(snapshot_path, "rb") as ff:
+            for block in iter(lambda: ff.read(1024 * 1024), b""):
+                sha.update(block)
+        full_sha_hex = sha.hexdigest()
+
         reader = writer = None
         last_err = None
         for _ in range(20):  # ~10 сек при интервале 0.5s
@@ -453,7 +548,7 @@ class DBSender:
                 await asyncio.sleep(0.5)
         if not reader:
             raise last_err or ConnectionError("Unable to connect")
-        hello = {"role":"sender","schema_version":schema_version,"file_size":size,"chunk_size":self.chunk_size}
+        hello = {"role":"sender","schema_version":schema_version,"file_size":size,"chunk_size":self.chunk_size,"gzip": bool(self.use_gzip),}
         writer.write((json.dumps(hello) + "\n").encode()); await writer.drain()
 
         # send our ephemeral pubkey
@@ -505,13 +600,6 @@ class DBSender:
         if resume_from:
             self._log(f"[sender] receiver requests resume from {resume_from} bytes")
 
-        # ===== SHA256 по ВСЕМУ снапшоту =====
-        sha = hashlib.sha256()
-        with open(snapshot_path, "rb") as ff:
-            for block in iter(lambda: ff.read(1024 * 1024), b""):
-                sha.update(block)
-        full_sha_hex = sha.hexdigest()
-
         # ===== начинаем передачу =====
         seq = resume_from // self.chunk_size
 
@@ -522,7 +610,7 @@ class DBSender:
         byte_budget = kbps * 1024 if kbps > 0 else None
 
         try:
-            with open(snapshot_path, "rb") as f:
+            with open(xfer_path, "rb") as f:
                 if resume_from:
                     f.seek(resume_from)
                 while True:
@@ -577,15 +665,17 @@ class DBSender:
                     pass
 
         finally:
-            # аккуратно чистим снапшот (может не удалиться — игнорируем)
             try:
-                os.remove(snapshot_path)
-            except Exception:
+                if snapshot_path and os.path.exists(snapshot_path):
+                    os.remove(snapshot_path)
+                if xfer_path and xfer_path != snapshot_path and os.path.exists(xfer_path):
+                    os.remove(xfer_path)
+            except Exception as e:
+                self._log(f"[ERROR][sender] removing snapshot/xfer: {e}")
                 pass
 
 # --- Простые CLI-примеры ---
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser(description="DB Transfer (Receiver or Sender)")
     sub = parser.add_subparsers(dest="cmd")
 

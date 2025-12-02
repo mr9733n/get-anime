@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import argparse, sqlite3, time, sys
 from contextlib import closing
+import argparse, sqlite3, time, sys
+
 
 NOW = int(time.time())
 

@@ -364,6 +364,22 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] optimizations for app lite
 - [ ] Remove unused logic
 
+### 8.33 Add AniMedia as second provider
+- [x] Add scraper for AniMedia
+- [x] Add adapter to resolve data inconsistency  
+- [x] Create demo app creating full data response that can process AnimePlayer
+- [x] Implement worker for async scraper
+- [x] Build-in AniMedia provider in AnimePlayer
+- [x] Add provider to FIND
+- [x] Add provider to Update Title
+- [x] Fix playing in AnimePlayerVLC
+- [x] Fix fetch posters
+- [x] Fix saving episodes
+- [x] Show provider in UI for title
+- [ ] Filter by provider
+- [ ] Create adapter for season / We have to many same seasons with different name
+- [ ] 
+
 ### 8.33 New sync DB 
 
 #### A. Транспорт и безопасность
@@ -404,19 +420,6 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Новый entry-point `db_sync_gui.py`; старые `sync/merge_utility` исключить из spec/бандла.
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
 - [ ] Post-install подсказка про Windows Firewall (вход на выбранный порт).
-
-### 8.33 Add AniMedia as second provider
-- [x] Add scraper for AniMedia
-- [x] Add adapter to resolve data inconsistency  
-- [x] Create demo app creating full data response that can process AnimePlayer
-- [x] Implement worker for async scraper
-- [x] Build-in AniMedia provider in AnimePlayer
-- [x] Add provider to FIND
-- [x] Add provider to Update Title
-- [x] Fix playing in AnimePlayerVLC
-- [x] Fix fetch posters
-- [x] Fix saving episodes
-- [x] Show provider in UI for title
 
 ### 8.34 New sync DB «Через интернет» без релея — два пути
 

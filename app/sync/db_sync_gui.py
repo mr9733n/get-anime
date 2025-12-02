@@ -11,6 +11,8 @@ os.environ.setdefault("ZC_DISABLE_CYTHON", "1")
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 
 from db_merge import run_merge
+from internet_tcp import InternetReceiver
+from transports import TcpSenderTransport, WebRTCSenderTransport
 from db_transfer import DBReceiver, DBSender, TOFU_FILE, save_tofu
 
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
@@ -55,15 +57,24 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Player DB Sync (LAN)")
-        self.geometry("780x450")
+        self.geometry("780x550")
         self['padx'] = 8
         self['pady'] = 8
         self._zc = None
         self._mdns_browser = None
         self._mdns_hosts = set()
         self.asyncio_thread = AsyncioThread()
-        self.receiver: Optional[DBReceiver] = None
+        # Для разных режимов приёма
+        self.receiver_mode = "lan"      # 'lan' или 'internet'
+        self.receiver_tcp: Optional[DBReceiver] = None
+        self.receiver_inet: Optional[InternetReceiver] = None
         self.receiver_running = False
+
+        # Информация для Internet TCP режима
+        self.internet_ext_ip = tk.StringVar(value="—")
+        self.internet_nat_type = tk.StringVar(value="—")
+        self.internet_upnp_status = tk.StringVar(value="—")
+
         self.merge_running = False
         self._pending = []
         self._sas_event = None
@@ -95,6 +106,25 @@ class App(tk.Tk):
         btns.pack(fill="x", pady=(0, 8))
         ttk.Button(btns, text="Send DB…", command=self._on_send).pack(side="right", padx=6)
         ttk.Button(btns, text="Check connection", command=self._on_check_conn).pack(side="right")
+        # Transport mode
+        trgrp = ttk.LabelFrame(self.tab_send, text="Transport")
+        trgrp.pack(fill="x", pady=(0, 6))
+
+        self.var_transport_send = tk.StringVar(value="tcp")
+        ttk.Radiobutton(
+            trgrp,
+            text="TCP (LAN / Internet, текущий протокол)",
+            value="tcp",
+            variable=self.var_transport_send,
+        ).pack(anchor="w", padx=4, pady=2)
+
+        ttk.Radiobutton(
+            trgrp,
+            text="WebRTC (P2P, экспериментально)",
+            value="webrtc",
+            variable=self.var_transport_send,
+        ).pack(anchor="w", padx=4, pady=2)
+
         md = ttk.Frame(self.tab_send)
         md.pack(fill="x", pady=(0, 6))
         ttk.Button(md, text="Find active on LAN (mDNS)", command=self._start_mdns_browse).pack(side="left")
@@ -193,8 +223,8 @@ class App(tk.Tk):
     def _build_tab_receive(self):
         self.tab_recv = ttk.Frame(self.nb)
         self.nb.add(self.tab_recv, text="Receive")
-        row = ttk.Frame(self.tab_recv);
-        row.pack(fill="x", pady=(10, 6))
+
+        row = ttk.Frame(self.tab_recv); row.pack(fill="x", pady=(10, 6))
         self.recv_led = tk.Canvas(row, width=14, height=14, highlightthickness=0)
         self.recv_led.pack(side="left", padx=(0, 6))
         self._recv_led_id = self.recv_led.create_oval(2, 2, 12, 12, fill="#d9534f", outline="#a94442")  # red
@@ -205,6 +235,66 @@ class App(tk.Tk):
         self.entry_port_recv = ttk.Entry(port_row, width=7)
         self.entry_port_recv.pack(side="left", padx=(6, 10))
         self.entry_port_recv.insert(0, self.cfg.get("last_port", "8765"))
+
+        # Transport mode (Receive)
+        trgrp = ttk.LabelFrame(self.tab_recv, text="Transport")
+        trgrp.pack(fill="x", pady=(4, 4))
+
+        self.var_transport_recv = tk.StringVar(value="tcp")
+        ttk.Radiobutton(
+            trgrp,
+            text="TCP (LAN / Internet, текущий протокол)",
+            value="tcp",
+            variable=self.var_transport_recv,
+        ).pack(anchor="w", padx=4, pady=2)
+
+        ttk.Radiobutton(
+            trgrp,
+            text="WebRTC (P2P, экспериментально)",
+            value="webrtc",
+            variable=self.var_transport_recv,
+        ).pack(anchor="w", padx=4, pady=2)
+
+        # TCP подрежим: LAN vs Internet
+        tcpgrp = ttk.LabelFrame(self.tab_recv, text="TCP mode")
+        tcpgrp.pack(fill="x", pady=(4, 4))
+
+        self.var_tcp_mode_recv = tk.StringVar(value="lan")
+        ttk.Radiobutton(
+            tcpgrp,
+            text="LAN (локальная сеть, mDNS)",
+            value="lan",
+            variable=self.var_tcp_mode_recv,
+        ).pack(anchor="w", padx=4, pady=2)
+        ttk.Radiobutton(
+            tcpgrp,
+            text="Internet (STUN + UPnP, без mDNS)",
+            value="internet",
+            variable=self.var_tcp_mode_recv,
+        ).pack(anchor="w", padx=4, pady=2)
+
+        # Инфо по Internet TCP
+        inetgrp = ttk.LabelFrame(self.tab_recv, text="Internet info (TCP)")
+        inetgrp.pack(fill="x", pady=(4, 4))
+
+        rowi1 = ttk.Frame(inetgrp); rowi1.pack(fill="x", pady=2)
+        ttk.Label(rowi1, text="External IP:").pack(side="left")
+        ttk.Label(rowi1, textvariable=self.internet_ext_ip).pack(side="left", padx=4)
+
+        rowi2 = ttk.Frame(inetgrp); rowi2.pack(fill="x", pady=2)
+        ttk.Label(rowi2, text="NAT type:").pack(side="left")
+        ttk.Label(rowi2, textvariable=self.internet_nat_type).pack(side="left", padx=4)
+
+        rowi3 = ttk.Frame(inetgrp); rowi3.pack(fill="x", pady=2)
+        ttk.Label(rowi3, text="UPnP:").pack(side="left")
+        ttk.Label(rowi3, textvariable=self.internet_upnp_status).pack(side="left", padx=4)
+
+        ttk.Button(
+            inetgrp,
+            text="Check external availability",
+            command=self._on_check_internet_port,
+        ).pack(anchor="w", pady=(4, 0))
+
         btn_recv = ttk.Button(self.tab_recv, text="Start / Stop", command=self._on_toggle_receive)
         btn_recv.pack(anchor="w", pady=(0, 8))
         sasfrm = ttk.LabelFrame(self.tab_recv, text="SAS confirmation")
@@ -236,6 +326,84 @@ class App(tk.Tk):
             self.recv_led.itemconfig(self._recv_led_id, fill=fill, outline=outline)
         except Exception:
             pass
+
+    def _on_internet_info(self, ext_ip: str | None, nat_type: str, upnp_status: str):
+        def upd():
+            self.internet_ext_ip.set(ext_ip or "—")
+            self.internet_nat_type.set(nat_type or "—")
+            self.internet_upnp_status.set(upnp_status or "—")
+        self.after(0, upd)
+
+    def _on_check_internet_port(self):
+        """
+        Проверка доступности внешнего IP:port.
+        Работает только если:
+          - есть external IP
+          - приёмник запущен
+        На самом деле это попытка подключиться с этой же машины
+        (если роутер не поддерживает hairpin NAT, может не сработать даже при корректном пробросе).
+        """
+        host = self.internet_ext_ip.get().strip()
+        if not host or host == "—":
+            messagebox.showwarning(
+                "Internet check",
+                "Нет внешнего IP. Сначала запусти приёмник в режиме Internet (TCP).",
+                parent=self,
+            )
+            return
+
+        try:
+            port = int(self.entry_port_recv.get().strip() or "8765")
+        except ValueError:
+            messagebox.showerror("Error", "Incorrect port", parent=self)
+            return
+
+        self._log(f"Internet check: trying {host}:{port} …")
+
+        async def probe():
+            import asyncio
+            try:
+                rdr, wtr = await asyncio.wait_for(
+                    asyncio.open_connection(host, port),
+                    timeout=2.0,
+                )
+                wtr.close()
+                await wtr.wait_closed()
+                return True
+            except Exception:
+                return False
+
+        fut = self.asyncio_thread.call(probe())
+
+        def done_cb(_):
+            ok = False
+            try:
+                ok = fut.result(timeout=0)
+            except Exception:
+                ok = False
+
+            if ok:
+                self._log("Internet check: OK — external port reachable.")
+                messagebox.showinfo(
+                    "Internet check",
+                    "OK — внешний порт доступен (с текущей машины).\n"
+                    "Учти, что это всё равно не гарантирует доступность из любой сети.",
+                    parent=self,
+                )
+            else:
+                self._log("Internet check: failed — no connectivity.")
+                messagebox.showwarning(
+                    "Internet check",
+                    "Подключиться к внешнему IP не удалось.\n\n"
+                    "Возможные причины:\n"
+                    "  • Приёмник не запущен\n"
+                    "  • UPnP не сработал или отключён\n"
+                    "  • Маршрутизатор не поддерживает hairpin NAT\n"
+                    "  • Провайдер или фаервол блокирует соединение",
+                    parent=self,
+                )
+
+        fut.add_done_callback(done_cb)
 
     def _build_tab_merge(self):
         self.tab_merge = ttk.Frame(self.nb)
@@ -606,6 +774,9 @@ class App(tk.Tk):
         if not path:
             return
 
+        transport_mode = getattr(self, "var_transport_send", None)
+        mode = transport_mode.get() if transport_mode is not None else "tcp"
+
         self._log(f"Отправка файла: {path} → {host}:{port}")
         self.nb.select(self.tab_send)
 
@@ -637,16 +808,39 @@ class App(tk.Tk):
         use_gzip = self.var_send_compress.get()
         vacuum_snapshot = self.var_send_vacuum.get()
 
-        sender = DBSender(
-            chunk_size=chunk_size,
-            throttle_kbps=speed_kbps,
-            on_progress=self._on_progress_send,
-            sas_info=sas_info_cb,
-            log=self._log,
-            use_gzip=use_gzip,
-            vacuum_snapshot=vacuum_snapshot,
-        )
-        fut = self.asyncio_thread.call(sender.connect_and_send(host, port, path))
+        # --- Выбор транспорта ---
+        if mode == "tcp":
+            transport = TcpSenderTransport(
+                host=host,
+                port=port,
+                chunk_size=chunk_size,
+                speed_kbps=speed_kbps,
+                log=self._log,
+                on_progress=self._on_progress_send,
+                sas_info=sas_info_cb,
+                use_gzip=use_gzip,
+                vacuum_snapshot=vacuum_snapshot,
+            )
+        elif mode == "webrtc":
+            # Пока заглушка — позже сюда придёт настоящая реализация WebRTC.
+            transport = WebRTCSenderTransport(
+                log=self._log,
+                on_progress=self._on_progress_send,
+            )
+        else:
+            messagebox.showerror("Ошибка", f"Неизвестный режим транспорта: {mode}", parent=self)
+            return
+
+        async def _runner():
+            try:
+                await transport.send_db(path)
+            finally:
+                try:
+                    await transport.close()
+                except Exception:
+                    pass
+
+        fut = self.asyncio_thread.call(_runner())
         self._pending.append(fut)
 
         def done_cb(_):
@@ -656,10 +850,10 @@ class App(tk.Tk):
                 pass
             err = fut.exception()
             if err:
-                self._log(f"Ошибка отправки: {err}")
+                self._log(f"Ошибка отправки ({mode}): {err}")
                 messagebox.showerror("Ошибка", str(err), parent=self)
             else:
-                self._log("Отправка завершена")
+                self._log(f"Отправка завершена ({mode})")
                 addr = f"{host}"
                 recent = [addr] + [x for x in self.cfg.get("recent", []) if x != addr]
                 self.cfg["recent"] = recent[:8]
@@ -674,34 +868,79 @@ class App(tk.Tk):
 
     # ---------- RECEIVE ----------
     def _on_toggle_receive(self):
+        transport = getattr(self, "var_transport_recv", None)
+        transport_mode = transport.get() if transport is not None else "tcp"
+
         if not self.receiver_running:
+            # --- START ---
+            if transport_mode != "tcp":
+                messagebox.showinfo(
+                    "Receive",
+                    "Режим приёма WebRTC пока не реализован.\n"
+                    "Используй TCP (LAN/Internet) для текущей версии.",
+                    parent=self,
+                )
+                return
+
             try:
                 port = int(self.entry_port_recv.get().strip() or "8765")
             except ValueError:
                 messagebox.showerror("Ошибка", "Некорректный порт", parent=self)
                 return
 
-            self.receiver = DBReceiver(
-                host="0.0.0.0",
-                port=port,
-                chunk_dir="./incoming",
-                on_progress=self._on_progress_recv,
-                sas_confirm=self._sas_confirm_inline,
-                on_done=self._on_receive_done,
-                log=self._log,
-            )
-            self._log(f"Запуск приёмника на порту {port} …")
-            self.recv_status.set(f"Server: Running on 0.0.0.0:{port}")
-            self.receiver_running = True
-            self._set_recv_led(True)
-            self.asyncio_thread.call(self.receiver.start_listen())
+            tcp_mode = getattr(self, "var_tcp_mode_recv", None)
+            tcp_mode_val = tcp_mode.get() if tcp_mode is not None else "lan"
+
+            if tcp_mode_val == "lan":
+                # Обычный DBReceiver, как раньше
+                self.receiver_mode = "lan"
+                self.receiver_tcp = DBReceiver(
+                    host="0.0.0.0",
+                    port=port,
+                    chunk_dir="./incoming",
+                    on_progress=self._on_progress_recv,
+                    sas_confirm=self._sas_confirm_inline,
+                    on_done=self._on_receive_done,
+                    log=self._log,
+                )
+                self._log(f"Запуск приёмника (LAN) на порту {port} …")
+                self.recv_status.set(f"Server: Running (LAN) on 0.0.0.0:{port}")
+                self.receiver_running = True
+                self._set_recv_led(True)
+                self.asyncio_thread.call(self.receiver_tcp.start_listen())
+
+            else:  # internet
+                self.receiver_mode = "internet"
+                self.receiver_inet = InternetReceiver(
+                    port=port,
+                    chunk_dir="./incoming",
+                    on_progress=self._on_progress_recv,
+                    sas_confirm=self._sas_confirm_inline,
+                    on_done=self._on_receive_done,
+                    log=self._log,
+                    info_cb=self._on_internet_info,
+                )
+                self._log(f"Запуск приёмника (Internet TCP) на порту {port} …")
+                self.recv_status.set(f"Server: Running (Internet) on 0.0.0.0:{port}")
+                self.receiver_running = True
+                self._set_recv_led(True)
+                self.asyncio_thread.call(self.receiver_inet.start())
+
         else:
+            # --- STOP ---
             self._log("Остановка приёмника …")
             self.recv_status.set("Server: Stopped")
             self.receiver_running = False
             self._set_recv_led(False)
-            if self.receiver:
-                self.asyncio_thread.call(self.receiver.stop())
+
+            if self.receiver_mode == "lan" and self.receiver_tcp:
+                self.asyncio_thread.call(self.receiver_tcp.stop())
+            elif self.receiver_mode == "internet" and self.receiver_inet:
+                self.asyncio_thread.call(self.receiver_inet.stop())
+
+            self.receiver_tcp = None
+            self.receiver_inet = None
+            self.receiver_mode = "lan"
 
     def _reset_tofu(self):
         try:
@@ -746,8 +985,12 @@ class App(tk.Tk):
     # ---------- shutdown ----------
     def on_close(self):
         try:
-            if self.receiver_running and self.receiver:
-                self.asyncio_thread.call(self.receiver.stop())
+            if self.receiver_running:
+                if self.receiver_mode == "lan" and self.receiver_tcp:
+                    self.asyncio_thread.call(self.receiver_tcp.stop())
+                elif self.receiver_mode == "internet" and self.receiver_inet:
+                    self.asyncio_thread.call(self.receiver_inet.stop())
+
             for fut in list(self._pending):
                 try:
                     fut.result(timeout=2)

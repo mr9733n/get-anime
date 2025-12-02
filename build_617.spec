@@ -154,6 +154,7 @@ datas = [
     (os.path.join(project_dir, 'app/qt'), 'app/qt'),
     (os.path.join(project_dir, 'core/'), 'core'),
     (os.path.join(project_dir, 'utils/'), 'utils'),
+    (os.path.join(project_dir, 'utils/animedia/'), 'utils/animedia'),
     (os.path.join(project_dir, 'libs/'), 'libs'),
     (os.path.join(project_dir, 'app/qt/__pycache__'), 'app/qt/__pycache__'),  # Add compiled .pyc files
     (os.path.join(project_dir, 'core/__pycache__'), 'core/__pycache__'),      # Add compiled .pyc files
@@ -345,6 +346,8 @@ a = Analysis(
         'httpx',
         'uuid',
         'jinja2',
+        'beautifulsoup4',
+        'playwright',
         'python-vlc',
 		'sqlalchemy',
 		'sqlalchemy.orm',

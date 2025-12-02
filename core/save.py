@@ -3,6 +3,7 @@ import ast
 import json
 import logging
 import re
+import uuid
 from itertools import count
 from typing import Optional
 
@@ -209,42 +210,56 @@ class SaveManager:
 
     def _upsert_rating(
         self,
+        *,
         title_id: int,
-        cmers_value: Optional[int] = None,
-        external_score: Optional[float] = None,
-        external_source: Optional[str] = None,
+        rating_name: Optional[str] = None,
+        rating_value: Optional[int] = None,
+        name_external: Optional[str] = None,
+        score_external: Optional[float] = None,
     ) -> None:
         """
-        Внутренний помощник: создаёт или обновляет запись.
+        Создаёт или обновляет запись.
+        * Если `rating_name == "CMERS"` → сохраняем внутренний рейтинг.
+        * Иначе → сохраняем внешний рейтинг (`rating_name` – источник, `external_name` – подпись).
         """
         with self.Session as session:
             try:
-                rating = session.query(Rating).filter_by(title_id=title_id).one_or_none()
-                if rating:
-                    if cmers_value is not None:
-                        rating.cmers_value = cmers_value
-                    if external_score is not None:
-                        rating.raw_external = external_score
-                    if external_source is not None:
-                        rating.rating_source = external_source
-                    rating.last_updated = datetime.now(timezone.utc)
-                    self.logger.debug(f"Updated rating for title_id={title_id}")
-                else:
+                query = session.query(Rating).filter_by(title_id=title_id)
+                if rating_name and rating_name != "CMERS":
+                    query = query.filter_by(rating_name=rating_name)
+
+                rating = query.one_or_none()
+                if rating is None:
                     rating = Rating(
                         title_id=title_id,
-                        # TODO: fix this hardcode
-                        rating_name="CMERS",
-                        rating_value=cmers_value,
-                        score_external=external_score,
-                        name_external=external_source,
+                        rating_name=rating_name,
+                        rating_value=rating_value,
+                        name_external=name_external,
+                        score_external=score_external,
                         last_updated=datetime.now(timezone.utc),
                     )
                     session.add(rating)
-                    self.logger.debug(f"Inserted rating for title_id={title_id}")
+                    self.logger.debug(
+                        f"Inserted rating title_id={title_id} source={rating_name}"
+                    )
+                else:
+                    if rating_value is not None:
+                        rating.rating_value = rating_value
+                    if score_external is not None:
+                        rating.score_external = score_external
+                    if name_external is not None:
+                        rating.name_external = name_external
+                    rating.last_updated = datetime.now(timezone.utc)
+                    self.logger.debug(
+                        f"Updated rating title_id={title_id} source={rating_name}"
+                    )
+
                 session.commit()
             except Exception as exc:
                 session.rollback()
-                self.logger.error(f"Error saving rating for title_id={title_id}: {exc}")
+                self.logger.error(
+                    f"Error saving rating title_id={title_id}: {exc}"
+                )
                 raise
 
     def save_ratings(
@@ -252,26 +267,39 @@ class SaveManager:
         title_id: int,
         rating_name: str = "CMERS",
         rating_value: Optional[int] = None,
-        external_value: Optional[float] = None,
+        name_external: Optional[str] = None,
+        score_external: Optional[float] = None,
     ) -> None:
         """
-        Сохраняет рейтинг. Если передан external_value – пересчитывает его в шкалу CMERS.
-        Если external_value отсутствует – сохраняет уже готовый cmers_value.
+        Принимает:
+        * `rating_name` – имя источника (для CMERS обычно «CMERS»).
+        * `rating_value` – готовый внутренний рейтинг (0‑6).
+        * `external_name` – произвольное название внешнего рейтинга (например, «IMDb»).
+        * `external_value` – оригинальное внешнее значение (например, 8.3).
+
+        Логика:
+        1. Если передан `external_value` → конвертируем в CMERS.
+        2. Если `external_value` отсутствует, но есть `rating_value` → используем его.
+        3. Если ни то, ни другое – бросаем ошибку.
         """
-        if external_value is not None:
-            cmers = self._map_external_to_cmers(external_value, max_cmers=6, max_external=10.0)
+        if score_external is not None:
+            cmers = self._map_external_to_cmers(
+                score_external, max_cmers=6, max_external=10.0
+            )
         elif rating_value is not None:
             if not 0 <= rating_value <= 6:
                 raise ValueError("CMERS rating must be between 0 and 6")
             cmers = rating_value
         else:
-            raise ValueError("Either external_value or cmers_value must be provided")
-
+            raise ValueError(
+                "Either external_value or rating_value must be provided"
+            )
         self._upsert_rating(
-            title_id,
-            cmers_value=cmers,
-            external_score=external_value,
-            external_source=rating_name,
+            title_id=title_id,
+            rating_name=rating_name,
+            rating_value=cmers,
+            name_external=name_external,
+            score_external=score_external,
         )
 
     def save_title(self, title_data):
@@ -488,66 +516,96 @@ class SaveManager:
                 self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
                 return False
 
-    def save_episode(self, episode_data):
+    def save_episode(self, episode_data: dict) -> None:
+        """
+        Сохраняет эпизод, используя естественный ключ
+        (title_id, episode, provider).  Если запись уже есть –
+        обновляет только изменённые поля.
+        """
+        if not isinstance(episode_data, dict):
+            self.logger.error(f"Invalid episode data: {episode_data}")
+            return
+
+        # копируем, чтобы не менять оригинал
+        data = episode_data.copy()
+
+        # обязательные поля для поиска
+        title_id = data["title_id"]
+        episode_no = data["episode_number"]
+        provider = data["provider"]
+        episode_uuid = data["uuid"]
+
         with self.Session as session:
-            title_id = episode_data['title_id']
-            episode_uuid = episode_data['uuid']
             try:
-                if not isinstance(episode_data, dict):
-                    self.logger.error(f"Invalid episode data: {episode_data}")
-                    return
+                # ищем по естественному ключу, а не по uuid
+                ep = (
+                    session.query(Episode)
+                    .filter_by(title_id=title_id, episode_number=episode_no, provider=provider)
+                    .first()
+                )
 
-                # Создаем копию данных
-                processed_data = episode_data.copy()
+                if not ep:
+                    ep = session.query(Episode).filter_by(uuid=episode_uuid).first()
 
-                existing_episode = session.query(Episode).filter_by(
-                    uuid=processed_data['uuid'],
-                    title_id=processed_data['title_id']
-                ).first()
-                self.logger.debug(f"Successfully saved episode: {episode_uuid}  for title_id: {title_id}")
+                # ---------- если запись уже есть ----------
+                if ep:
+                    updated = False
+                    protected = {"episode_id", "title_id", "episode"}  # не меняем
 
-                if existing_episode:
-                    is_updated = False
-                    protected_fields = {'episode_id', 'title_id'}
+                    # корректируем created_timestamp, если он был «нулевым»
+                    if (
+                            ep.created_timestamp == datetime.fromtimestamp(0, tz=timezone.utc)
+                            and data.get("created_timestamp")
+                            and data["created_timestamp"] != datetime.fromtimestamp(0, tz=timezone.utc)
+                    ):
+                        ep.created_timestamp = data["created_timestamp"]
+                        updated = True
 
-                    # Особая обработка для created_timestamp
-                    if 'created_timestamp' in processed_data:
-                        default_timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
-                        if (existing_episode.created_timestamp == default_timestamp and
-                                processed_data['created_timestamp'] != default_timestamp):
-                            existing_episode.created_timestamp = processed_data['created_timestamp']
-                            is_updated = True
-                            self.logger.debug(f"Updating incorrect timestamp for episode {episode_uuid}")
+                    # обновляем остальные поля
+                    for key, value in data.items():
+                        if key in protected or not hasattr(ep, key):
+                            continue
 
-                    for key, value in processed_data.items():
-                        if key not in protected_fields and hasattr(existing_episode, key):
-                            current_value = getattr(existing_episode, key)
+                        cur = getattr(ep, key)
 
-                            if isinstance(current_value, datetime) and isinstance(value, datetime):
-                                if current_value.tzinfo is None and value.tzinfo is not None:
-                                    # Добавляем часовой пояс к дате из БД для корректного сравнения
-                                    current_value = current_value.replace(tzinfo=timezone.utc)
+                        # сравнение datetime с учётом tz
+                        if isinstance(cur, datetime) and isinstance(value, datetime):
+                            if cur.tzinfo is None:
+                                cur = cur.replace(tzinfo=timezone.utc)
 
-                            if current_value != value:
-                                setattr(existing_episode, key, value)
-                                is_updated = True
-                                self.logger.debug(f"Updated field '{key}' for episode {episode_uuid}")
+                        if cur != value:
+                            setattr(ep, key, value)
+                            updated = True
 
-                    if is_updated:
+                    if updated:
                         session.commit()
-                        self.logger.debug(f"Successfully updated episode: {episode_uuid} for title_id: {title_id}")
-                else:
-                    if 'created_timestamp' not in processed_data or processed_data[
-                        'created_timestamp'] == datetime.fromtimestamp(0, tz=timezone.utc):
-                        processed_data['created_timestamp'] = datetime.now(timezone.utc)
-                    new_episode = Episode(**processed_data)
-                    session.add(new_episode)
-                    session.commit()
-                    self.logger.debug(f"Added episode: {episode_uuid} for title_id: {title_id}")
+                        self.logger.debug(
+                            f"Updated episode {episode_no} (provider={provider}) for title_id={title_id}"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"No changes for episode {episode_no} (provider={provider})"
+                        )
 
-            except Exception as e:
+                # ---------- если записи нет ----------
+                else:
+                    # если created_timestamp не задан – ставим «сейчас»
+                    if not data.get("created_timestamp"):
+                        data["created_timestamp"] = datetime.now(timezone.utc)
+
+                    # uuid генерируем, если его нет (можно оставить из API)
+                    data.setdefault("uuid", str(uuid.uuid4()))
+
+                    new_ep = Episode(**data)
+                    session.add(new_ep)
+                    session.commit()
+                    self.logger.debug(
+                        f"Inserted new episode {episode_no} (provider={provider}) for title_id={title_id}"
+                    )
+
+            except Exception as exc:
                 session.rollback()
-                self.logger.error(f"Ошибка при сохранении эпизода в базе данных: {e}")
+                self.logger.error(f"Error saving episode: {exc}")
 
     def save_schedule(self, day_of_week, title_id, last_updated=None):
         with self.Session as session:

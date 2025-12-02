@@ -59,7 +59,7 @@ class UIManager:
                 self._make_menu_button(
                     md.get('text', 'Button'),
                     md.get('color_index', 0),
-                    md.get('callback_key'),
+                    md.get('default_callback_key'),
                     md.get('menu_items', []),
                     callbacks,
                     layout,
@@ -120,7 +120,7 @@ class UIManager:
             self,
             text: str,
             color_index: int,
-            callback_key: str | None,
+            default_callback_key: str | None,
             menu_items: list[dict],
             callbacks: dict,
             layout,
@@ -150,8 +150,8 @@ class UIManager:
 
         btn.showEvent = lambda e: (sync_width(), QToolButton.showEvent(btn, e))
 
-        if callback_key and callback_key in callbacks:
-            btn.clicked.connect(callbacks[callback_key])
+        if default_callback_key and default_callback_key in callbacks:
+            btn.clicked.connect(callbacks[default_callback_key])
 
         layout.addWidget(btn)
         self.apply_shadow_effects([btn])

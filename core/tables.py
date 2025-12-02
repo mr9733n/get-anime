@@ -188,6 +188,8 @@ class Episode(Base):
     __tablename__ = 'episodes'
     episode_id = Column(Integer, primary_key=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'))
+    # TODO: maybe need provider table ?
+    provider = Column(String)
     episode_number = Column(Integer, nullable=False)
     name = Column(String)
     uuid = Column(String, unique=True)

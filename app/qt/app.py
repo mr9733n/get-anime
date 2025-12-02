@@ -9,7 +9,6 @@ import subprocess
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Any, Dict, Union
-
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 
@@ -34,8 +33,8 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "e5b7e7ec51ffe45d1bf65512f4ce218bdb2890d1bef675fbdeac95e252d371ca"
-PROVIDER_ANILIBRIA = "AniLibria"
+VLC_PLAYER_HASH = "1736e39019ba110b36cb31ad4f168379d9ad4d7aa5364fc5801b770502422c11"
+PROVIDER_ANILIBERTY = "AniLiberty"
 PROVIDER_ANIMEDIA = "AniMedia"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
@@ -106,6 +105,7 @@ class AnimePlayerAppVer3(QWidget):
         # self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
+        self.headless = self.config_manager.get_setting('Settings', 'headless')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
@@ -1030,15 +1030,18 @@ class AnimePlayerAppVer3(QWidget):
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if providers == [PROVIDER_ANILIBRIA]:
+            if providers == [PROVIDER_ANILIBERTY]:
                 self._handle_get_titles_from_api(search_text)
             elif providers == [PROVIDER_ANIMEDIA]:
-                title_list = self.db_manager.get_titles_from_db(title_ids)
+                title_list = self.db_manager.get_titles_from_db(title_ids=title_ids)
+                self.logger.info(f"Updating titles: {(', '.join(str(t) for t in title_ids))}")
                 for title_data in title_list:
                     search_text = getattr(title_data, "name_en", None)
-                    adapter = AnimediaAdapter(self.base_am_url)
+                    if self.headless == 'true':
+                        adapter = AnimediaAdapter(self.base_am_url, headless=True)
+                    else:
+                        adapter = AnimediaAdapter(self.base_am_url)
                     self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-                    # подключаем сигналы
                     self._animedia_worker.finished.connect(self._on_animedia_result)
                     self._animedia_worker.error.connect(self._on_animedia_update_error)
                     self._animedia_worker.run()
@@ -1103,7 +1106,10 @@ class AnimePlayerAppVer3(QWidget):
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
 
-            adapter = AnimediaAdapter(self.base_am_url)
+            if self.headless == 'true':
+                adapter = AnimediaAdapter(self.base_am_url, headless=True)
+            else:
+                adapter = AnimediaAdapter(self.base_am_url)
             self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
             # подключаем сигналы
             self._animedia_worker.finished.connect(self._on_animedia_result)
@@ -1130,10 +1136,13 @@ class AnimePlayerAppVer3(QWidget):
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
             if title_ids:
                 self._handle_found_titles(title_ids, search_text)
-            elif title_ids and providers == [PROVIDER_ANILIBRIA]:
+            elif title_ids and providers == [PROVIDER_ANILIBERTY]:
                 self._handle_get_titles_from_api(search_text)
             elif title_ids and providers == [PROVIDER_ANIMEDIA]:
-                adapter = AnimediaAdapter(self.base_am_url)
+                if self.headless == 'true':
+                    adapter = AnimediaAdapter(self.base_am_url, headless=True)
+                else:
+                    adapter = AnimediaAdapter(self.base_am_url)
                 self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
                 # подключаем сигналы
                 self._animedia_worker.finished.connect(self._on_animedia_result)
@@ -1186,7 +1195,10 @@ class AnimePlayerAppVer3(QWidget):
             if title_ids:
                 self._handle_found_titles(title_ids, search_text)
             else:
-                adapter = AnimediaAdapter(self.base_am_url)
+                if self.headless == 'true':
+                    adapter = AnimediaAdapter(self.base_am_url, headless=True)
+                else:
+                    adapter = AnimediaAdapter(self.base_am_url)
                 self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
                 # подключаем сигналы
                 self._animedia_worker.finished.connect(self._on_animedia_result)
@@ -1215,8 +1227,8 @@ class AnimePlayerAppVer3(QWidget):
         self.ui_manager.hide_loader()
         self.ui_manager.set_buttons_enabled(True)
 
-        self.logger.error(f"Animedia worker error: {msg}")
-        self.show_error_notification("Animedia error", msg)
+        self.logger.error(f"AniMedia worker error: {msg}")
+        self.show_error_notification("AniMedia error", msg)
 
     def _on_animedia_result(self, data: list):
         """

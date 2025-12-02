@@ -9,7 +9,25 @@
 #        "callback_key": "new_button_callback",
 #        "callback_type": "simple",
 #        "color_index": 5
-#    }
+#    },
+#    {
+#        "layout": "top",
+#        "type": "split_button",
+#        "text": "FIND",
+#        "default_callback_key": "get_search_by_title",
+#        "menu_items": [
+#            {
+#                "text": "AniLiberty",
+#                "callback_key": "get_search_by_title_al"
+#            },
+#            {
+#                "text": "AniMedia",
+#                "callback_key": "get_search_by_title_am"
+#            }
+#            ],
+#        "callback_type": "complex",\
+#        "color_index": 0,
+#     },
 #
 # Parameter Descriptions:
 # - "layout": Determines where the button will be positioned on the screen (e.g., "top", "bottom").
@@ -66,8 +84,8 @@
 
 all_layout_metadata = [
     {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex","widget_key": "title_input"},
-    {"layout": "top","type": "split_button","text": "FIND", "callback_key": "get_search_by_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_search_by_title_al"},{"text": "AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
-    {"layout": "top","type": "split_button","text": "UT⮂", "callback_key": "get_update_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_update_title_al"},{"text": "AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
+    {"layout": "top","type": "split_button","text": "FIND", "default_callback_key": "get_search_by_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_search_by_title_al"},{"text": "AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
+    {"layout": "top","type": "split_button","text": "UT⮂", "default_callback_key": "get_update_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_update_title_al"},{"text": "AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
     {"layout": "top", "type": "button", "text": "RANDOM", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
     *[{"layout": "top", "type": "button", "text": day, "callback_key": f"display_titles_for_day_{i}", "callback_type": "complex", "color_index": 1}
       for i, day in enumerate(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])],

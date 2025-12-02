@@ -5,12 +5,20 @@ import httpx
 from typing import Any, Literal, List, Dict, Optional, Final
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-
-from app.animedia.animedia_utils import (
+from utils.animedia.animedia_utils import (
     safe_str,
     extract_file_from_html,
     urljoin,
 )
+
+
+async def block_unwanted(route, request):
+    # список доменов/подстрок, которые не нужны для парсинга
+    unwanted = ["googlesyndication", "adservice", "analytics", "doubleclick", "gtag"]
+    if any(u in request.url for u in unwanted):
+        await route.abort()  # отбрасываем запрос
+    else:
+        await route.continue_()  # пропускаем остальные
 
 
 class AnimediaClient:
@@ -44,11 +52,11 @@ class AnimediaClient:
             self.logger.info(f"Found {ln} item")
 
 
-    async def _open_browser(self):
+    async def open_browser(self, headless: bool = False):
         """Создаёт браузер Playwright, закрывается автоматически."""
         try:
             playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(headless=True)
+            browser = await playwright.chromium.launch(headless=headless)
             page = await browser.new_page()
             await page.set_extra_http_headers(self.headers)
             self.logger.info(f"Playwright browser was opened.")
@@ -58,12 +66,12 @@ class AnimediaClient:
             return None, None, None
 
 
-    async def _search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
+    async def search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
         """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
         try:
             search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
             await page.goto(search_url)
-            await page.wait_for_selector("div.content", timeout=60000)
+            await page.wait_for_selector("div.content", timeout=120000)
 
             html = await page.content()
             soup = BeautifulSoup(html, "html.parser")
@@ -80,11 +88,11 @@ class AnimediaClient:
             self._logging_length(links[:max_titles])
             return links[:max_titles]
         except Exception as e:
-            self.logger.error(f"_search_titles not found titles. Error: {e}")
+            self.logger.error(f"search_titles not found titles. Error: {e}")
             return []
 
 
-    async def _collect_episode_files(self, page, title_url: str) -> List[str]:
+    async def collect_episode_files(self, page, title_url: str) -> List[str]:
         """Собирает ссылки на файлы всех эпизодов конкретного тайтла."""
         try:
             await page.goto(title_url)
@@ -107,7 +115,7 @@ class AnimediaClient:
             self._logging_length(files)
             return files
         except Exception as e:
-            self.logger.error(f"_search_titles not found titles. Error: {e}")
+            self.logger.error(f"collect_episode_files not found m3u8. Error: {e}")
             return []
 
 

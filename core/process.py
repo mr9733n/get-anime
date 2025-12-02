@@ -10,18 +10,36 @@ class ProcessManager:
         self.logger = logging.getLogger(__name__)
         self.save_manager = save_manager
 
-    def process_titles(self, title_data):
+
+    def process_external_data(self, title_data):
         try:
             title_id = title_data.get('id', None)
             studio_name = title_data.get('studio', '')
             rating_name = title_data.get('rating', {}).get('name', '')
             rating_score = title_data.get("rating", {}).get('score', 0.0)
 
+            rating_ok = False
             if rating_name and rating_score:
-                self.save_manager.save_ratings(title_id, rating_name=rating_name, external_value=rating_score)
+                self.save_manager.save_ratings(title_id, name_external=rating_name, score_external=rating_score)
+                rating_ok = True
 
+            studio_ok = False
             if studio_name:
                 self.save_manager.save_studio_to_db([title_id], studio_name=studio_name)
+                studio_ok = True
+
+            return rating_ok or studio_ok
+        except Exception as e:
+            self.logger.error(f"Failed to save external Rating or Studio to database: {e}")
+            return False
+
+    def process_titles(self, title_data):
+        try:
+            if not self.process_external_data(title_data):
+                self.logger.info(
+                    f"Skipping further processing for title_id={title_data.get('id')}"
+                )
+                return
 
             title_data = {
                 'title_id': title_data.get('id', None),
@@ -123,6 +141,7 @@ class ProcessManager:
 
                         episode_data = {
                             'title_id': title_data.get('id', None),
+                            'provider': title_data.get('provider', None),
                             'episode_number': episode.get('episode'),
                             'name': episode.get('name', f'Серия {episode.get("episode")}'),
                             'uuid': episode.get('uuid'),

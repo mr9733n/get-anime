@@ -1,4 +1,4 @@
-# utils.py
+# snimedia_utils.py
 import re
 import uuid
 from datetime import datetime, timezone
@@ -54,6 +54,14 @@ def _strip_host(url: str) -> str:
     parsed = urlparse(url)
     path = parsed.path
     return path if path.startswith("/") else f"/{path}"
+
+
+def dedup_and_sort(urls: List[str]) -> List[str]:
+    """
+    Убирает дубликаты и сортирует ссылки по номеру эпизода.
+    """
+    unique_urls = uniq(urls)
+    return sort_by_episode(unique_urls)
 
 
 def sort_by_episode(urls: list[str]) -> list[str]:
@@ -218,6 +226,10 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
     rating = _text_or_none(soup.select_one(
         "div.item-slide__ext-rating.item-slide__ext-rating--imdb"
     ))
+    # TODO: add Chinese rating. But it displays not for every title
+    # rating_kp = _text_or_none(soup.select_one(
+    #    "div.item-slide__ext-rating.item-slide__ext-rating--kp"
+    # ))
 
     # ── описание ──
     description = _text_or_none(soup.select_one(

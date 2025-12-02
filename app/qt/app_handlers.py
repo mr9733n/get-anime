@@ -2,7 +2,6 @@
 import ast
 import base64
 from urllib.parse import urlparse, parse_qs, unquote
-
 from PyQt5.QtCore import QTimer
 
 
@@ -256,8 +255,8 @@ class LinkActionHandler:
     def _handle_set_rating(self, parts):
         if len(parts) >= 4:
             title_id = int(parts[1])
-            rating_name = parts[2]
-            rating_value = parts[3]
+            rating_name = str(parts[2])
+            rating_value = int(parts[3])
             self.logger.debug(f"Setting rating for title_id: {title_id}, rating: {rating_name}:{rating_value}")
             self.db_manager.save_ratings(title_id, rating_name=rating_name, rating_value=rating_value)
             QTimer.singleShot(100, lambda: self.display_info(title_id))

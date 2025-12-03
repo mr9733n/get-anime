@@ -5,7 +5,7 @@ import asyncio
 import json
 from typing import Optional, Callable
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
 from aiortc import RTCDataChannel
 
 LogFunc = Optional[Callable[[str], None]]
@@ -30,9 +30,11 @@ class WebRTCSenderCore:
         self._connected = asyncio.Event()
 
     async def create_offer(self) -> str:
-        from aiortc import RTCPeerConnection
-
-        pc = RTCPeerConnection()
+        # раньше было просто: pc = RTCPeerConnection()
+        config = RTCConfiguration(
+            iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+        )
+        pc = RTCPeerConnection(configuration=config)
         self._pc = pc
 
         # создаём datachannel заранее
@@ -121,9 +123,10 @@ class WebRTCReceiverCore:
         self._on_message = cb
 
     async def accept_offer_and_create_answer(self, offer_sdp: str) -> str:
-        from aiortc import RTCPeerConnection, RTCSessionDescription
-
-        pc = RTCPeerConnection()
+        config = RTCConfiguration(
+            iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+        )
+        pc = RTCPeerConnection(configuration=config)
         self._pc = pc
 
         @pc.on("datachannel")
@@ -151,6 +154,14 @@ class WebRTCReceiverCore:
             if pc.iceConnectionState in ("failed", "disconnected", "closed"):
                 if not self._connected.is_set():
                     self._connected.set()
+
+        @pc.on("icegatheringstatechange")
+        def _on_gather_state_change():
+            self._log(f"[webrtc] ICE gathering state: {pc.iceGatheringState}")
+
+        @pc.on("icecandidate")
+        def _on_ice_candidate(candidate):
+            self._log(f"[webrtc] ICE candidate: {candidate}")
 
         # парсим offer
         try:

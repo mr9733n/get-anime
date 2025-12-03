@@ -1,6 +1,5 @@
 # transports.py
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Optional, Callable
 
@@ -65,17 +64,13 @@ class TcpSenderTransport(SenderTransportBase):
         await self._sender.connect_and_send(self._host, self._port, db_path)
 
     async def close(self) -> None:
-        # Для TCP тут нечего закрывать. Оставлено для совместимости.
         return
 
 
 class WebRTCSenderTransport(SenderTransportBase):
     """
-    Заглушка под будущий WebRTC DataChannel.
-    Потом здесь будет логика установления WebRTC-соединения
-    и отправки чанков через datachannel.
+    WebRTC DataChannel - логика установления WebRTC-соединения и отправки чанков через datachannel.
     """
-
     def __init__(
         self,
         log: LogFunc,
@@ -90,37 +85,31 @@ class WebRTCSenderTransport(SenderTransportBase):
         self._core = WebRTCSenderCore(log=log)
 
     async def send_db(self, db_path: str) -> None:
-        """
-        Пока: только WebRTC-handshake + тестовое сообщение.
-        Потом сюда вкрутим реальную отправку БД поверх datachannel.
-        """
-        # 1) создаём offer
-        if self._log:
-            self._log("[webrtc] creating offer…")
-        offer = await self._core.create_offer()
+        try:
+            if self._log:
+                self._log("[webrtc] creating offer…")
+            offer = await self._core.create_offer()
+            self._show_offer(offer)
 
-        # 2) показываем offer в GUI (в Text/Entry на вкладке Send)
-        self._show_offer(offer)
+            if self._log:
+                self._log("[webrtc] waiting for answer from GUI…")
+            answer_sdp = self._wait_for_answer()
+            if not answer_sdp.strip():
+                raise WebRTCSignalingError("Empty WebRTC answer")
 
-        # 3) ждём answer от пользователя (GUI должен вернуть строку SDP)
-        if self._log:
-            self._log("[webrtc] waiting for answer from GUI…")
-        answer_sdp = self._wait_for_answer()
-        if not answer_sdp.strip():
-            raise WebRTCSignalingError("Empty WebRTC answer")
+            await self._core.accept_answer(answer_sdp)
 
-        # 4) применяем answer и ждём подключения
-        await self._core.accept_answer(answer_sdp)
+            if self._log:
+                self._log("[webrtc] sending test message over DataChannel…")
+            await self._core.send_bytes(b"hello from WebRTC sender")
 
-        # 5) тестовое сообщение — пока без реальной отправки db_path
-        if self._log:
-            self._log("[webrtc] sending test message over DataChannel…")
-        await self._core.send_bytes(b"hello from WebRTC sender")
+            if self._log:
+                self._log("[webrtc] test message sent; DB transfer over WebRTC is not implemented yet")
 
-        if self._log:
-            self._log("[webrtc] test message sent; DB transfer over WebRTC is not implemented yet")
-        # Тут можно либо просто завершить, либо позже вставить логику передачи БД
-
+        except WebRTCSignalingError as e:
+            if self._log:
+                self._log(f"[webrtc] failed: {e}. WebRTC не установился, используй режим Internet TCP.")
+            raise
 
     async def close(self) -> None:
         return

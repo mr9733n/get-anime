@@ -420,6 +420,8 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
 - [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
 
+### 8.34 New sync DB «Через интернет» без релея — два пути
+
 #### Вариант 1 — **без релея, без «магии»** (самый простой и надёжный)
 #### Этап 1 — Internet (TCP + STUN/UPnP)
 - [x] использовать текущий TCP протокол
@@ -433,11 +435,37 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 
 #### Вариант 2 — **NAT traversal без ручного проброса** (без релея; STUN допустим)
 #### Этап 2 — WebRTC (DataChannel)
-- [ ] WebRTCTransport
-- [ ] GUI: офлайн-сигналинг (Offer/Answer копипастой), индикатор ICE
-- [ ] Логика fallback к TCP
+- [x] WebRTCTransport — ядро (offer/answer, ICE, DataChannel) есть.
+- [x] GUI: офлайн-сигналинг (Offer/Answer) есть.
+- [x] Индикатор ICE есть (states в логах и label).
+- [+] Логика fallback к TCP
+- [x] GUI: Отобразить компактно в два столбца по смыслу, add scroll
+- [x] Pretty Gui
+- [ ] **Нет передачи БД поверх WebRTC** — ни на отправителе, ни на приёмнике.
+#### 1. **Отправитель (WebRTCSenderTransport):**
+   - вместо `send_bytes(b"hello from WebRTC sender")`:
+   - открыть `db_path`;
+   - читать по `chunk_size`;
+   - слать через `self._core.send_bytes(...)`;
+   - вызывать `self._on_progress(sent, total)`.
+
+#### 2. **Приёмник (WebRTCReceiverCore + GUI):**
+   - в `set_on_message` повесить обработчик, который:
+   - создаёт файл в `incoming` (имя можно передать в первом сообщении — «хедер» с метаданными: имя, размер, флаг gzip и т.п.);
+   - пишет прилетевшие байты в этот файл;
+   - по мере записи обновляет прогресс в GUI;
+   - в конце — закрывает файл и логирует «файл принят».
+
+#### 3. **Мини-протокол поверх DataChannel:**
+   - либо:
+     - первое сообщение — JSON с метаданными (`{"name": "...", "size": ..., "gzip": true}`),
+     - дальше — сырые чанки;
+   - либо поверх WebRTC просто прогнать уже существующий TCP-протокол `DBSender`/`DBReceiver`, но тогда надо чуть больше аккуратности (фрейминг, размеры и т.п.).
+
 - [ ] Тест-кнопка «ICE connected?» с логом статусов
 - [ ] Тестирование разных NAT/CGNAT сценариев
+- [ ] expand offer/answer data. показывать свернутым по умолчанию
+- [ ] формировать QR code for offer/answer
 
 ### 8.35 Fixes
 - [x] Fix process poster link

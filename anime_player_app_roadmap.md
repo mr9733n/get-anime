@@ -420,41 +420,35 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
 - [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
 
-### 8.34 New sync DB «Через интернет» без релея — два пути
-
 #### Вариант 1 — **без релея, без «магии»** (самый простой и надёжный)
-- [ ] Режим «Internet» в GUI (переключатель Receive)
-- [ ]  STUN-детектор внешнего IP (pystun3), отображение адреса и порта
-- [ ] UPnP / NAT-PMP автопроброс (miniupnpc); результат в логах
-- [ ] Кнопка «Проверить доступность» (таймаут, диагностика)
+#### Этап 1 — Internet (TCP + STUN/UPnP)
+- [x] использовать текущий TCP протокол
+- [x] Режим «Internet» в GUI (переключатель Receive)
+- [x]  STUN-детектор внешнего IP (pystun3), отображение адреса и порта
+- [x] UPnP / NAT-PMP автопроброс (miniupnpc); результат в логах
+- [x] Кнопка «Проверить доступность» (таймаут, диагностика)
+- [x] Абстрактный TransportBase
+- [x] Реализация TCPTransport
 - [ ] Ограничение источников по IP / rate-limit
 
 #### Вариант 2 — **NAT traversal без ручного проброса** (без релея; STUN допустим)
-- [ ] Абстрактный TransportBase + реализации TCPTransport и WebRTCTransport
+#### Этап 2 — WebRTC (DataChannel)
+- [ ] WebRTCTransport
 - [ ] GUI: офлайн-сигналинг (Offer/Answer копипастой), индикатор ICE
+- [ ] Логика fallback к TCP
 - [ ] Тест-кнопка «ICE connected?» с логом статусов
 - [ ] Тестирование разных NAT/CGNAT сценариев
 
-Этап 1 — Internet (TCP + STUN/UPnP)
-- [ ] добавить режим «Internet» в GUI
-- [ ] встроить STUN детектор + автопорт-форвардинг
-- [ ] кнопка проверки доступности
-- [ ] использовать текущий TCP протокол
-
-Этап 2 — WebRTC (DataChannel)
-- [ ] абстрагировать транспорт
-- [ ] реализовать WebRTCTransport + сигналинг GUI
-- [ ] тесты и логика fallback к TCP
-
 ### 8.35 Fixes
+- [x] Fix process poster link
+- [x] Add check for poster download
+- [x] Pretty code Restore app state
+- [x] Add check for Fatal log
 - [ ] Filter by provider
 - [ ] Create adapter for season / We have to many same seasons with different name
-- [ ] 
+- [ ] Windows fatal exception: access violation 2025-12-03 02:18:29 | CRITICAL | __main__.log_exception | Unexpected exception TypeError: invalid argument to sipBadCatcherResult()
 
- 
-
-
-## 9. Check maybe obsolete
+ ## 9. Check maybe obsolete
 ### 9.0. Some fixes
 - [ ] test build.spec for py installer 6.x
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position

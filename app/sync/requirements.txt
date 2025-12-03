@@ -3,3 +3,4 @@ aiofiles
 zeroconf
 pystun3
 miniupnpc
+aiortc

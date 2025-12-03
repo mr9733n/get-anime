@@ -33,7 +33,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "1736e39019ba110b36cb31ad4f168379d9ad4d7aa5364fc5801b770502422c11"
+VLC_PLAYER_HASH = "7d280cabad9f2063749b8ac832b21951a70dc3380927403a078180b120a333d5"
 PROVIDER_ANILIBERTY = "AniLiberty"
 PROVIDER_ANIMEDIA = "AniMedia"
 APP_WIDTH = 1000
@@ -461,41 +461,41 @@ class AnimePlayerAppVer3(QWidget):
             self.display_titles(title_ids=title_ids)
 
     def restore_state(self, state: Dict[str, Any]) -> None:
-        """Re‑create the UI from a previously saved snapshot."""
+        """Re-create the UI from a previously saved snapshot."""
         try:
-            # Basic fields
             self.current_template = state.get("template_name", "default")
             self.logger.info("Restored template: %s", self.current_template)
 
             if "player_offset" in state:
-                self.current_offset = int(state["player_offset"])
+                try:
+                    self.current_offset = int(state["player_offset"])
+                except (TypeError, ValueError):
+                    self.current_offset = 0
                 self.logger.info("Offset restored: %d", self.current_offset)
 
-            # Extract optional parts
             day = state.get("current_day")
             title_id = state.get("current_title_id")
             title_ids = state.get("current_title_ids")
             show_mode = state.get("show_mode", "default")
 
-            # Decision tree – order matters
-            if day and not title_id and not title_ids:
+            has_day = day is not None
+            has_title_id = title_id is not None
+            has_title_ids = bool(title_ids)
+
+            if has_day and not has_title_id and not has_title_ids:
                 self._restore_day(day)
-
-            elif day and title_id and not title_ids:
+            elif has_day and has_title_id and not has_title_ids:
                 self._restore_title(title_id)
-
-            elif not day and title_id:
+            elif not has_day and has_title_id:
                 self._restore_title(title_id)
-
-            elif title_ids:
+            elif has_title_ids:
                 self._restore_titles(title_ids, show_mode)
-
             else:
-                self.logger.info("Falling back to offset‑based restore")
+                self.logger.info("Falling back to offset-based restore")
                 self.display_titles(start=True)
 
         except Exception as exc:
-            self.logger.error("Error restoring app state: %s", exc)
+            self.logger.exception("Error restoring app state: %s", exc)
 
     def navigate_pagination(self, go_forward=True):
         """
@@ -1438,6 +1438,7 @@ class AnimePlayerAppVer3(QWidget):
         base_url или base_am_url, он возвращается без добавления префикса.
         """
         try:
+            standardized_url = None
             self.logger.debug(f"Processing poster link: {poster_link}")
             is_full_url = poster_link.startswith(("http://", "https://"))
             contains_base = any(
@@ -1448,16 +1449,10 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug(
                     f"Poster link already full URL → {standardized_url[-41:]}"
                 )
-            else:
-                if poster_link.startswith("/"):
-                    poster_url = f"{self.pre}{self.base_url}"
-                else:
-                    clean_path = poster_link.lstrip("/")
-                    poster_url = f"{self.pre}{self.base_url}{clean_path}"
+            elif poster_link.startswith("/"):
+                poster_url = f"{self.pre}{self.base_url}{poster_link}"
                 standardized_url = self.standardize_url(poster_url)
-                self.logger.debug(
-                    f"Constructed poster URL → {standardized_url[-41:]}"
-                )
+                self.logger.debug(f"Constructed poster URL → {standardized_url[-41:]}")
 
             cached_urls = [url for _, url in self.poster_manager.poster_links]
             if standardized_url in cached_urls:

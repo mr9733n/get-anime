@@ -9,8 +9,7 @@ from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QLabel, QWidget
 
 
 def test_exception():
-    ctypes.string_at(0)
-    raise Exception("TEST EXCEPTION...")
+    raise RuntimeError("Test exception on quit")
 
 def restart_application():
     """Перезапускает приложение, учитывая, скрипт это или скомпилированный .exe/.app"""

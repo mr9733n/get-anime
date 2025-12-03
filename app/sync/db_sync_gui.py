@@ -217,6 +217,27 @@ class App(tk.Tk):
         ttk.Label(row2, text="FP:").pack(side="left")
         self.send_sas_fp = tk.StringVar(value="—")
         ttk.Label(row2, textvariable=self.send_sas_fp).pack(side="left", padx=6)
+
+        # ---- WebRTC signaling (Send) ----
+        webrtc_grp = ttk.LabelFrame(self.tab_send, text="WebRTC signaling (experimental)")
+        webrtc_grp.pack(fill="both", expand=False, pady=(4, 6), padx=0)
+
+        # Offer (то, что отправитель генерирует и копирует на приёмник)
+        row_offer = ttk.Frame(webrtc_grp)
+        row_offer.pack(fill="x", pady=(2, 2))
+        ttk.Label(row_offer, text="Offer (sender → receiver):").pack(anchor="w")
+
+        self.webrtc_offer = tk.Text(webrtc_grp, height=6, wrap="word")
+        self.webrtc_offer.pack(fill="x", padx=4, pady=(0, 4))
+
+        # Answer (то, что получаем от приёмника и вставляем сюда)
+        row_answer = ttk.Frame(webrtc_grp)
+        row_answer.pack(fill="x", pady=(2, 2))
+        ttk.Label(row_answer, text="Answer (receiver → sender):").pack(anchor="w")
+
+        self.webrtc_answer = tk.Text(webrtc_grp, height=6, wrap="word")
+        self.webrtc_answer.pack(fill="x", padx=4, pady=(0, 4))
+
         self.prog_send = ttk.Progressbar(self.tab_send, length=400, mode="determinate")
         self.prog_send.pack(fill="x", pady=(10, 10))
 
@@ -822,10 +843,24 @@ class App(tk.Tk):
                 vacuum_snapshot=vacuum_snapshot,
             )
         elif mode == "webrtc":
-            # Пока заглушка — позже сюда придёт настоящая реализация WebRTC.
+            def show_offer(sdp: str) -> None:
+                def upd():
+                    self.webrtc_offer.delete("1.0", "end")
+                    self.webrtc_offer.insert("1.0", sdp)
+                    self._log("[webrtc] Offer updated in GUI, скопируй его на приёмник")
+
+                self.after(0, upd)
+
+            def wait_for_answer() -> str:
+                # Блокирующая часть — пользователь сам вставляет answer и жмёт "Send"
+                # Для простоты пока можно просто прочитать текст из поля:
+                return self.webrtc_answer.get("1.0", "end").strip()
+
             transport = WebRTCSenderTransport(
                 log=self._log,
                 on_progress=self._on_progress_send,
+                show_offer=show_offer,
+                wait_for_answer=wait_for_answer,
             )
         else:
             messagebox.showerror("Ошибка", f"Неизвестный режим транспорта: {mode}", parent=self)

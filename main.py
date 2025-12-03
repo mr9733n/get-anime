@@ -1,12 +1,13 @@
 # main.py
-import ctypes
-import logging.config
 import os
 import re
-import subprocess
 import sys
+import ctypes
+import subprocess
 import threading
+import traceback
 import faulthandler
+import logging.config
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QSharedMemory
@@ -64,6 +65,7 @@ def resource_path(*parts: str) -> str:
         base = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(base, *parts)
 
+fault_log_file = None
 # --- пути ---
 base_dir = resource_path()  # корень приложения (для dev — рядом с main.py, для frozen — рядом с exe)
 log_dir = os.path.join(base_dir, 'logs')
@@ -103,17 +105,33 @@ def fetch_version():
         logger.info(f"Production version: {version}")
 
 def log_exception(exc_type, exc_value, exc_traceback):
-    """Logging unexpected exceptions.
-       Enable faulthandler when it needed."""
-    fault_log_path = os.path.join(log_dir, 'fault.log')
-
+    """Global handler for uncaught *Python* exceptions."""
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    logger.critical("Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback))
-    with open(fault_log_path, 'a') as fault_log:
-        faulthandler.enable(file=fault_log)
-        faulthandler.dump_traceback(file=fault_log)
+
+    # Логируем кратко
+    try:
+        logger.critical(
+            "Unexpected exception: %s",
+            exc_value,
+        )
+    except Exception:
+        try:
+            print("Unexpected exception:", exc_type, exc_value, file=sys.stderr)
+        except Exception:
+            pass
+
+    # А тут — полный traceback в fault.log (или просто в обычный лог)
+    try:
+        if fault_log_file:
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=fault_log_file)
+            fault_log_file.flush()
+        else:
+            tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            logger.critical("Full traceback:\n%s", tb_str)
+    except Exception:
+        pass
 
 def qt_message_handler(mode, context, message):
     if mode == QtCore.QtMsgType.QtInfoMsg:
@@ -138,6 +156,15 @@ if __name__ == "__main__":
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
+
+    fault_log_path = os.path.join(log_dir, 'fault.log')
+    fault_log_file = open(
+        fault_log_path, 'a',
+        buffering=1,
+        encoding='utf-8',
+        errors='replace',
+    )
+    faulthandler.enable(file=fault_log_file)
 
     logging.config.fileConfig(logging_config_path,
                               disable_existing_loggers=False)

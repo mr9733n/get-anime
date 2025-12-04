@@ -85,7 +85,7 @@ class App(tk.Tk):
         else:
             self.title("AnimePlayer DB Sync and Merge")
 
-        self.geometry("780x560")
+        self.geometry("780x600")
         self['padx'] = 8
         self['pady'] = 8
         self._zc = None
@@ -117,6 +117,10 @@ class App(tk.Tk):
         self._webrtc_sender_transport = None
         self._webrtc_answer_event = threading.Event()
         self._webrtc_answer_value: str = ""
+
+        # WebRTC hints (подсказки по шагам)
+        self.webrtc_hint_send = tk.StringVar(value="")
+        self.webrtc_hint_recv = tk.StringVar(value="")
 
         self.merge_running = False
         self._pending = []
@@ -298,6 +302,19 @@ class App(tk.Tk):
         webrtc_grp = ttk.LabelFrame(self.send_body, text="WebRTC signaling (experimental)")
         webrtc_grp.pack(fill="both", expand=False, pady=(4, 6), padx=4)
 
+        # Подсказка по шагам WebRTC (Send)
+        self.lbl_webrtc_hint_send = ttk.Label(
+            webrtc_grp,
+            textvariable=self.webrtc_hint_send,
+            foreground="#0055aa",
+            justify="left",
+            wraplength=520,
+        )
+        self.lbl_webrtc_hint_send.pack(fill="x", padx=4, pady=(2, 4))
+        self.webrtc_hint_send.set(
+            "WebRTC: после старта отправки здесь будут появляться шаги, что делать дальше."
+        )
+
         # === Offer (collapsible) ===
         offer_frame = ttk.Frame(webrtc_grp)
         offer_frame.pack(fill="x", pady=(2, 2))
@@ -308,11 +325,14 @@ class App(tk.Tk):
         offer_toggle = ttk.Label(offer_hdr, text="►", cursor="hand2")
         offer_toggle.pack(side="left", padx=(0, 4))
 
-        ttk.Label(offer_hdr, text="Offer (sender → receiver):").pack(side="left")
+        ttk.Label(
+            offer_hdr,
+            text="Offer (sender → receiver) — шаг 1: скопируй и отправь на приёмник",
+        ).pack(side="left")
 
         ttk.Button(
             offer_hdr,
-            text="Copy",
+            text="Copy Offer",
             command=lambda: self._copy_text(self.webrtc_offer),
         ).pack(side="right", padx=(4, 0))
 
@@ -355,11 +375,14 @@ class App(tk.Tk):
         answer_toggle = ttk.Label(answer_hdr, text="►", cursor="hand2")
         answer_toggle.pack(side="left", padx=(0, 4))
 
-        ttk.Label(answer_hdr, text="Answer (receiver → sender):").pack(side="left")
+        ttk.Label(
+            answer_hdr,
+            text="Answer (receiver → sender) — шаг 2: вставь от приёмника",
+        ).pack(side="left")
 
         ttk.Button(
             answer_hdr,
-            text="Paste",
+            text="Paste Answer",
             command=lambda: self._paste_text(self.webrtc_answer),
         ).pack(side="right", padx=(4, 0))
 
@@ -560,6 +583,22 @@ class App(tk.Tk):
         webrtc_grp = ttk.LabelFrame(self.recv_body, text="WebRTC signaling (experimental)")
         webrtc_grp.pack(fill="both", expand=True, pady=(4, 4), padx=4)
 
+        # Подсказка по шагам WebRTC (Receive)
+        self.lbl_webrtc_hint_recv = ttk.Label(
+            webrtc_grp,
+            textvariable=self.webrtc_hint_recv,
+            foreground="#0055aa",
+            justify="left",
+            wraplength=520,
+        )
+        self.lbl_webrtc_hint_recv.pack(fill="x", padx=4, pady=(2, 4))
+        self.webrtc_hint_recv.set(
+            "WebRTC приём:\n"
+            "① Вставь Offer от отправителя (кнопка 'Paste Offer') и нажми 'Apply offer / create answer'.\n"
+            "② Нажми 'Copy Answer' и отправь его отправителю.\n"
+            "После этого просто жди начала приёма файла."
+        )
+
         # === Offer (collapsible) ===
         offer_frame = ttk.Frame(webrtc_grp)
         offer_frame.pack(fill="x", pady=(2, 2))
@@ -570,11 +609,14 @@ class App(tk.Tk):
         offer_toggle = ttk.Label(offer_hdr, text="►", cursor="hand2")
         offer_toggle.pack(side="left", padx=(0, 4))
 
-        ttk.Label(offer_hdr, text="Offer (sender → receiver):").pack(side="left")
+        ttk.Label(
+            offer_hdr,
+            text="Offer (sender → receiver) — шаг 1: вставь сюда от отправителя",
+        ).pack(side="left")
 
         ttk.Button(
             offer_hdr,
-            text="Paste",
+            text="Paste Offer",
             command=lambda: self._paste_text(self.webrtc_offer_recv),
         ).pack(side="right", padx=(4, 0))
 
@@ -617,13 +659,16 @@ class App(tk.Tk):
         answer_toggle = ttk.Label(answer_hdr, text="►", cursor="hand2")
         answer_toggle.pack(side="left", padx=(0, 4))
 
-        ttk.Label(answer_hdr, text="Answer (receiver → sender):").pack(side="left")
-
-        (ttk.Button(
+        ttk.Label(
             answer_hdr,
-            text="Copy",
+            text="Answer (receiver → sender) — шаг 2: отправь обратно отправителю",
+        ).pack(side="left")
+
+        ttk.Button(
+            answer_hdr,
+            text="Copy Answer",
             command=lambda: self._copy_text(self.webrtc_answer_recv),
-        ).pack(side="right", padx=(4, 0)))
+        ).pack(side="right", padx=(4, 0))
 
         ttk.Button(
             answer_hdr,
@@ -1265,6 +1310,11 @@ class App(tk.Tk):
 
         self.webrtc_ice_status.set("processing offer…")
         self._log("[webrtc] applying offer on receiver, creating answer…")
+        self.webrtc_hint_recv.set(
+            "Шаг 1. Offer вставлен.\n"
+            "• Сейчас будет создан Answer.\n"
+            "• После появления Answer внизу — нажми 'Copy Answer' и отправь его отправителю."
+        )
 
         async def worker():
             try:
@@ -1275,6 +1325,12 @@ class App(tk.Tk):
                     self.webrtc_answer_recv.insert("1.0", answer)
                     self.webrtc_ice_status.set("waiting ICE…")
                     self._log("[webrtc] Answer created, скопируй его отправителю")
+                    self.webrtc_hint_recv.set(
+                        "Шаг 2.\n"
+                        "• Нажми 'Copy Answer' и отправь его отправителю.\n"
+                        "• На отправителе: вставь Answer ('Paste Answer') и нажми 'Use Answer / connect'.\n"
+                        "После этого просто жди начала приёма файла."
+                    )
 
                 self.after(0, upd_answer)
 
@@ -1562,6 +1618,12 @@ class App(tk.Tk):
                         "Скопируй его на приёмник, там нажми 'Apply offer / create answer', "
                         "затем вставь Answer сюда и нажми 'Use Answer / connect'."
                     )
+                    #Подсказка по шагу 1
+                    self.webrtc_hint_send.set(
+                        "Шаг 1.\n"
+                        "• Нажми 'Copy Offer' и отправь Offer на принимающий компьютер (мессенджер, почта и т.п.).\n"
+                        "• На приёмнике: вставь Offer ('Paste Offer') и нажми 'Apply offer / create answer'."
+                    )
                 self.after(0, upd)
 
             def wait_for_answer() -> str:
@@ -1569,6 +1631,12 @@ class App(tk.Tk):
                 self._webrtc_answer_value = ""
                 self._webrtc_answer_event.clear()
                 self._log("[webrtc] Ожидаю Answer — вставь его в поле и нажми 'Use Answer / connect'.")
+
+                self.webrtc_hint_send.set(
+                    "Шаг 2.\n"
+                    "• Жди Answer от приёмника.\n"
+                    "• Когда получишь — вставь его в блок 'Answer' ('Paste Answer') и нажми 'Use Answer / connect'."
+                )
 
                 # Блокирующее ожидание в рабочем потоке (НЕ в Tk!)
                 self._webrtc_answer_event.wait()

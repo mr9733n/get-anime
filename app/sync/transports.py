@@ -150,4 +150,9 @@ class WebRTCSenderTransport(SenderTransportBase):
             raise
 
     async def close(self) -> None:
-        return
+        # Аккуратно гасим WebRTC, чтобы aiortc не оставлял таски
+        try:
+            await self._core.close()
+        except Exception:
+            # на shutdown лишние трэйсы не нужны
+            pass

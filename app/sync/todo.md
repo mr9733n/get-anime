@@ -65,7 +65,7 @@
 - [x] Split in 2 version LAN and Inet
 - [x] Fix transport for LAN version
 - [x] Fix shutdown
-- [ ] **Нет передачи БД поверх WebRTC** — ни на отправителе, ни на приёмнике.
+- [x] **Нет передачи БД поверх WebRTC** — ни на отправителе, ни на приёмнике.
 #### 1. **Отправитель (WebRTCSenderTransport):**
    - вместо `send_bytes(b"hello from WebRTC sender")`:
    - открыть `db_path`;

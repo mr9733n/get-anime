@@ -111,8 +111,10 @@ class App(tk.Tk):
         self.webrtc_rx_meta = None      # dict с метаданными header
         self.webrtc_rx_file = None      # открытый файловый дескриптор
         self.webrtc_rx_received = 0     # сколько байт уже приняли
+        self.webrtc_rx_got_any = False
 
         # WebRTC (send) – ожидание Answer
+        self._webrtc_sender_transport = None
         self._webrtc_answer_event = threading.Event()
         self._webrtc_answer_value: str = ""
 
@@ -1180,6 +1182,7 @@ class App(tk.Tk):
             }
             self.webrtc_rx_file = f
             self.webrtc_rx_received = 0
+            self.webrtc_rx_got_any = True
 
             self._log(f"[webrtc] header received: {name} ({size} bytes)")
             # подготовим прогрессбар
@@ -1191,6 +1194,7 @@ class App(tk.Tk):
             self._log("[webrtc] got data chunk but file handle is None; ignoring")
             return
 
+        self.webrtc_rx_got_any = True
         try:
             self.webrtc_rx_file.write(data)
             self.webrtc_rx_received += len(data)
@@ -1249,6 +1253,7 @@ class App(tk.Tk):
                 self.webrtc_rx_file.close()
             except Exception:
                 pass
+        self.webrtc_rx_got_any = False
         self.webrtc_rx_meta = None
         self.webrtc_rx_file = None
         self.webrtc_rx_received = 0
@@ -1284,10 +1289,19 @@ class App(tk.Tk):
 
             except WebRTCSignalingError as e:
                 self._log(f"[webrtc] signaling error: {e}")
+                if self.webrtc_rx_got_any:
+                    def mark_closed():
+                        # просто помечаем состояние, но без popup
+                        self.webrtc_ice_status.set("closed")
+                    self.after(0, mark_closed)
+                    return
                 def show_err(msg=str(e)):
                     self.webrtc_ice_status.set("error")
-                    messagebox.showerror("WebRTC", f"Signaling error: {msg}", parent=self)
-
+                    messagebox.showerror(
+                        "WebRTC",
+                        f"Signaling error: {msg}",
+                        parent=self,
+                    )
                 self.after(0, show_err)
             except Exception as e:
                 self._log(f"[webrtc] unexpected error: {e}")
@@ -1297,7 +1311,7 @@ class App(tk.Tk):
 
                 self.after(0, show_err)
 
-        self.asyncio_thread.call(worker())
+        self.asyncio_thread.call(worker()) # сброс состояния приёмника WebRTC
 
     def _on_webrtc_use_answer(self):
         """
@@ -1573,7 +1587,7 @@ class App(tk.Tk):
                     wait_for_answer=wait_for_answer,
                     chunk_size=chunk_size,
                 )
-
+                self._webrtc_sender_transport = transport
         else:
             messagebox.showerror("Ошибка", f"Неизвестный режим транспорта: {mode}", parent=self)
             return
@@ -1582,10 +1596,11 @@ class App(tk.Tk):
             try:
                 await transport.send_db(path)
             finally:
-                try:
-                    await transport.close()
-                except Exception:
-                    pass
+                if mode != "webrtc":
+                    try:
+                        await transport.close()
+                    except Exception:
+                        pass
 
         fut = self.asyncio_thread.call(_runner())
         self._pending.append(fut)
@@ -1753,11 +1768,30 @@ class App(tk.Tk):
                 self._sas_event = None
 
             # 2) Останавливаем приёмник
+            # 2) Останавливаем приёмник
             if self.receiver_running:
                 if self.receiver_mode == "lan" and self.receiver_tcp:
                     self.asyncio_thread.call(self.receiver_tcp.stop())
                 elif self.receiver_mode == "internet" and self.receiver_inet:
                     self.asyncio_thread.call(self.receiver_inet.stop())
+                elif self.receiver_mode == "webrtc" and self.webrtc_rx_core:
+                    fut = self.asyncio_thread.call(self.webrtc_rx_core.close())
+                    # Добавим в список "ожидаемых", чтобы дождаться shutdown'а aiortc
+                    self._pending.append(fut)
+
+                self.receiver_tcp = None
+                self.receiver_inet = None
+                self.receiver_mode = "lan"
+                self.webrtc_ice_status.set("idle")
+
+            # 2.5) Закрываем WebRTC-отправитель, если есть
+            try:
+                tx = getattr(self, "_webrtc_sender_transport", None)
+                if tx is not None:
+                    fut = self.asyncio_thread.call(tx.close())
+                    self._pending.append(fut)
+            except Exception:
+                pass
 
             # 3) Ждём незавершённые future'ы (отправка и т.п.)
             for fut in list(self._pending):

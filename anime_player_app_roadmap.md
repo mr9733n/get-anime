@@ -441,6 +441,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [+] Логика fallback к TCP
 - [x] GUI: Отобразить компактно в два столбца по смыслу, add scroll
 - [x] Pretty Gui
+- [x] Split in 2 version LAN and Inet
+- [x] Fix transport for LAN version
+- [x] Fix shutdown
 - [ ] **Нет передачи БД поверх WebRTC** — ни на отправителе, ни на приёмнике.
 #### 1. **Отправитель (WebRTCSenderTransport):**
    - вместо `send_bytes(b"hello from WebRTC sender")`:

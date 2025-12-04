@@ -77,14 +77,19 @@ class WebRTCSenderTransport(SenderTransportBase):
         on_progress: ProgressCb,
         show_offer: Callable[[str], None],
         wait_for_answer: Callable[[], str],
+        *,
+        chunk_size: int = 2 * 1024 * 1024,  # MiB из GUI
     ) -> None:
         self._log = log
         self._on_progress = on_progress
         self._show_offer = show_offer
         self._wait_for_answer = wait_for_answer
         self._core = WebRTCSenderCore(log=log)
+        self._chunk_size = max(1, int(chunk_size))
 
     async def send_db(self, db_path: str) -> None:
+        import os, json
+
         try:
             if self._log:
                 self._log("[webrtc] creating offer…")
@@ -99,12 +104,45 @@ class WebRTCSenderTransport(SenderTransportBase):
 
             await self._core.accept_answer(answer_sdp)
 
-            if self._log:
-                self._log("[webrtc] sending test message over DataChannel…")
-            await self._core.send_bytes(b"hello from WebRTC sender")
+            # --- Мини-протокол: header + чанки ---
+            if not os.path.exists(db_path):
+                raise WebRTCSignalingError(f"DB file not found: {db_path}")
+
+            total = os.path.getsize(db_path)
+            name = os.path.basename(db_path)
 
             if self._log:
-                self._log("[webrtc] test message sent; DB transfer over WebRTC is not implemented yet")
+                self._log(f"[webrtc] start sending DB over DataChannel: {name} ({total} bytes)")
+
+            # 1) Header (JSON)
+            header_obj = {
+                "kind": "header",
+                "name": name,
+                "size": total,
+            }
+            header_bytes = json.dumps(header_obj).encode("utf-8")
+            await self._core.send_bytes(header_bytes)
+
+            # 2) Raw chunks
+            sent = 0
+            chunk_size = self._chunk_size
+
+            with open(db_path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    await self._core.send_bytes(chunk)
+                    sent += len(chunk)
+
+                    if self._on_progress:
+                        try:
+                            self._on_progress(sent, total)
+                        except Exception:
+                            pass
+
+            if self._log:
+                self._log(f"[webrtc] DB sent over DataChannel: {sent}/{total} bytes")
 
         except WebRTCSignalingError as e:
             if self._log:

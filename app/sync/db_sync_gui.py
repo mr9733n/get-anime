@@ -11,9 +11,27 @@ os.environ.setdefault("ZC_DISABLE_CYTHON", "1")
 from zeroconf import Zeroconf, ServiceBrowser, ServiceStateChange
 
 from db_merge import run_merge
-from internet_tcp import InternetReceiver
-from transports import TcpSenderTransport, WebRTCSenderTransport
-from webrtc_transport import WebRTCReceiverCore, WebRTCSignalingError
+
+try:
+    from transports import WebRTCSenderTransport
+    from webrtc_transport import WebRTCReceiverCore, WebRTCSignalingError
+    HAS_WEBRTC = True
+except Exception:
+    WebRTCSenderTransport = None
+    WebRTCReceiverCore = None
+    WebRTCSignalingError = None
+    HAS_WEBRTC = False
+
+try:
+    from transports import TcpSenderTransport
+    from internet_tcp import InternetReceiver
+    HAS_STUN = True
+except Exception:
+    from tranports_lan import TcpSenderTransportLan
+    TcpSenderTransport = None
+    InternetReceiver = None
+    HAS_STUN = False
+
 from db_transfer import DBReceiver, DBSender, TOFU_FILE, save_tofu
 
 MDNS_SERVICE_TYPE = "_playersync._tcp.local."
@@ -51,13 +69,22 @@ class AsyncioThread:
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
     def stop(self):
-        self.loop.call_soon_threadsafe(self.loop.stop)
-        self.thread.join()
+        try:
+            if self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.loop.stop)
+        except Exception:
+            pass
+        self.thread.join(timeout=1.5)
+
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AnimePlayer DB Sync and Merge")
+        if not HAS_WEBRTC and not HAS_STUN:
+            self.title("AnimePlayer DB LAN Sync and Merge")
+        else:
+            self.title("AnimePlayer DB Sync and Merge")
+
         self.geometry("780x560")
         self['padx'] = 8
         self['pady'] = 8
@@ -79,6 +106,11 @@ class App(tk.Tk):
         # WebRTC (receive)
         self.webrtc_rx_core: Optional[WebRTCReceiverCore] = None
         self.webrtc_ice_status = tk.StringVar(value="idle")
+
+        # WebRTC receive state (file transfer)
+        self.webrtc_rx_meta = None      # dict с метаданными header
+        self.webrtc_rx_file = None      # открытый файловый дескриптор
+        self.webrtc_rx_received = 0     # сколько байт уже приняли
 
         # WebRTC (send) – ожидание Answer
         self._webrtc_answer_event = threading.Event()
@@ -132,18 +164,21 @@ class App(tk.Tk):
         ttk.Button(btns, text="Send DB…", command=self._on_send).pack(side="right", padx=6)
         ttk.Button(btns, text="Check connection", command=self._on_check_conn).pack(side="right")
 
-        # --- Transport + LAN discovery (два столбца) ---
+        # --- Transport mode (Send) + mDNS discovery ---
         row_modes = ttk.Frame(self.send_body)
-        row_modes.pack(fill="x", pady=(6, 6))
+        row_modes.pack(fill="x", pady=(6, 4))
 
         row_modes.columnconfigure(0, weight=1)
         row_modes.columnconfigure(1, weight=1)
 
-        # Left: Transport mode
+        # Left: Transport
         trgrp = ttk.LabelFrame(row_modes, text="Transport")
         trgrp.grid(row=0, column=0, sticky="nsew", padx=(4, 4))
 
+        # >>> СНАЧАЛА создаём переменную
         self.var_transport_send = tk.StringVar(value="tcp")
+
+        # TCP радиокнопка
         ttk.Radiobutton(
             trgrp,
             text="TCP (LAN / Internet, текущий протокол)",
@@ -151,12 +186,19 @@ class App(tk.Tk):
             variable=self.var_transport_send,
         ).pack(anchor="w", padx=4, pady=2)
 
-        ttk.Radiobutton(
+        # WebRTC радиокнопка
+        rb_webrtc_send = ttk.Radiobutton(
             trgrp,
             text="WebRTC (P2P, экспериментально)",
             value="webrtc",
             variable=self.var_transport_send,
-        ).pack(anchor="w", padx=4, pady=2)
+        )
+        rb_webrtc_send.pack(anchor="w", padx=4, pady=2)
+
+        if not HAS_WEBRTC:
+            rb_webrtc_send.config(state="disabled", text="WebRTC (not available in this build)")
+
+        self._maybe_disable(rb_webrtc_send, HAS_WEBRTC, "WebRTC removed in LAN build")
 
         # Right: mDNS discovery
         mdgrp = ttk.LabelFrame(row_modes, text="LAN discovery (mDNS)")
@@ -315,8 +357,8 @@ class App(tk.Tk):
 
         ttk.Button(
             answer_hdr,
-            text="Copy",
-            command=lambda: self._copy_text(self.webrtc_answer),
+            text="Paste",
+            command=lambda: self._paste_text(self.webrtc_answer),
         ).pack(side="right", padx=(4, 0))
 
         ttk.Button(
@@ -351,11 +393,13 @@ class App(tk.Tk):
         row_btn = ttk.Frame(webrtc_grp)
         row_btn.pack(fill="x", pady=(4, 4))
 
-        ttk.Button(
+        webrtc_connect_btn = ttk.Button(
             row_btn,
             text="Use Answer / connect",
             command=self._on_webrtc_use_answer,
-        ).pack(side="right", padx=(0, 4))
+        )
+        webrtc_connect_btn.pack(side="right", padx=(0, 4))
+        self._maybe_disable(webrtc_connect_btn, HAS_WEBRTC, "WebRTC removed in LAN build")
 
         # Progress
         self.prog_send = ttk.Progressbar(self.send_body, length=400, mode="determinate")
@@ -373,6 +417,7 @@ class App(tk.Tk):
         trgrp = ttk.LabelFrame(row, text="Transport")
         trgrp.pack(side="left", fill="both", expand=True, padx=4)
         self.var_transport_recv = tk.StringVar(value="tcp")
+
         ttk.Radiobutton(
             trgrp,
             text="TCP (LAN / Internet, текущий протокол)",
@@ -380,12 +425,14 @@ class App(tk.Tk):
             variable=self.var_transport_recv,
         ).pack(anchor="w", padx=4, pady=2)
 
-        ttk.Radiobutton(
+        rb_webrtc_recv = ttk.Radiobutton(
             trgrp,
             text="WebRTC (P2P, экспериментально)",
             value="webrtc",
             variable=self.var_transport_recv,
-        ).pack(anchor="w", padx=4, pady=2)
+        )
+        rb_webrtc_recv.pack(anchor="w", padx=4, pady=2)
+        self._maybe_disable(rb_webrtc_recv, HAS_WEBRTC, "WebRTC removed in LAN build")
 
         # TCP подрежим: LAN vs Internet
         tcpgrp = ttk.LabelFrame(row, text="TCP mode")
@@ -398,12 +445,14 @@ class App(tk.Tk):
             value="lan",
             variable=self.var_tcp_mode_recv,
         ).pack(anchor="w", padx=4, pady=2)
-        ttk.Radiobutton(
+        rb_stun_recv = ttk.Radiobutton(
             tcpgrp,
             text="Internet (STUN + UPnP, без mDNS)",
             value="internet",
             variable=self.var_tcp_mode_recv,
-        ).pack(anchor="w", padx=4, pady=2)
+        )
+        rb_stun_recv.pack(anchor="w", padx=4, pady=2)
+        self._maybe_disable(rb_stun_recv, HAS_STUN, "Internet mode disabled in LAN build")
 
         # --- Server control block ---
         server_grp = ttk.LabelFrame(self.recv_body, text="Server control")
@@ -497,11 +546,13 @@ class App(tk.Tk):
         ttk.Label(rowi3, text="UPnP:").pack(side="left")
         ttk.Label(rowi3, textvariable=self.internet_upnp_status).pack(side="left", padx=4)
 
-        ttk.Button(
+        stun_activity_btn = ttk.Button(
             inetgrp,
             text="Check external availability",
             command=self._on_check_internet_port,
-        ).pack(anchor="w", pady=(4, 0))
+        )
+        stun_activity_btn.pack(anchor="w", pady=(4, 0))
+        self._maybe_disable(stun_activity_btn, HAS_STUN, "Internet mode disabled in LAN build")
 
         # ---- WebRTC signaling (Receive) ----
         webrtc_grp = ttk.LabelFrame(self.recv_body, text="WebRTC signaling (experimental)")
@@ -521,8 +572,8 @@ class App(tk.Tk):
 
         ttk.Button(
             offer_hdr,
-            text="Copy",
-            command=lambda: self._copy_text(self.webrtc_offer_recv),
+            text="Paste",
+            command=lambda: self._paste_text(self.webrtc_offer_recv),
         ).pack(side="right", padx=(4, 0))
 
         ttk.Button(
@@ -566,11 +617,11 @@ class App(tk.Tk):
 
         ttk.Label(answer_hdr, text="Answer (receiver → sender):").pack(side="left")
 
-        ttk.Button(
+        (ttk.Button(
             answer_hdr,
             text="Copy",
             command=lambda: self._copy_text(self.webrtc_answer_recv),
-        ).pack(side="right", padx=(4, 0))
+        ).pack(side="right", padx=(4, 0)))
 
         ttk.Button(
             answer_hdr,
@@ -607,11 +658,13 @@ class App(tk.Tk):
         ttk.Label(row_ctrl, text="ICE:").pack(side="left")
         ttk.Label(row_ctrl, textvariable=self.webrtc_ice_status).pack(side="left", padx=(4, 0))
 
-        ttk.Button(
+        webrtc_apply_offer_btn = ttk.Button(
             row_ctrl,
             text="Apply offer / create answer",
             command=self._webrtc_apply_offer,
-        ).pack(side="right", padx=(0, 8))
+        )
+        webrtc_apply_offer_btn.pack(side="right", padx=(0, 8))
+        self._maybe_disable(webrtc_apply_offer_btn, HAS_WEBRTC, "WebRTC removed in LAN build")
 
         self.prog_recv = ttk.Progressbar(self.recv_body, length=400, mode="determinate")
         self.prog_recv.pack(fill="x", pady=(8, 10))
@@ -841,6 +894,11 @@ class App(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     # ---- Utils ----
+    def _maybe_disable(self, widget, feature_flag: bool, msg: str):
+        if not feature_flag:
+            widget.config(state="disabled")
+            widget._disabled_reason = msg
+
     def _make_collapsible(self, labelframe: ttk.LabelFrame) -> None:
         """
         Делает ttk.LabelFrame сворачиваемым.
@@ -874,6 +932,28 @@ class App(tk.Tk):
 
         # Первоначальное раскрытие
         content.pack(fill="x", padx=4, pady=(2, 4))
+
+    def _paste_text(self, text_widget: tk.Text) -> None:
+        """
+        Вставить текст из буфера обмена в указанный Text:
+        - читает clipboard
+        - триммит
+        - заменяет содержимое виджета
+        """
+        try:
+            data = self.clipboard_get()
+        except Exception as e:
+            self._log(f"[webrtc] clipboard read error: {e}")
+            return
+
+        data = (data or "").strip()
+        if not data:
+            self._log("[webrtc] clipboard is empty")
+            return
+
+        text_widget.delete("1.0", "end")
+        text_widget.insert("1.0", data)
+        self._log("[webrtc] text pasted from clipboard")
 
     def _copy_text(self, text_widget: tk.Text) -> None:
         data = text_widget.get("1.0", "end").strip()
@@ -1057,18 +1137,121 @@ class App(tk.Tk):
         fut.add_done_callback(done_cb)
 
     def _on_webrtc_message(self, data: bytes):
-        # сюда прилетит test-сообщение "hello from WebRTC sender"
+        """
+        Обработчик сообщений по WebRTC DataChannel (receiver side).
+
+        Протокол:
+          1) первое сообщение — JSON header {"kind":"header","name":"...","size":...}
+          2) далее — сырые чанки байт файла
+        """
+        import json, os
+        from pathlib import Path
+
+        # 1) Если метаданных ещё нет — ожидаем header
+        if self.webrtc_rx_meta is None:
+            try:
+                text = data.decode("utf-8")
+                obj = json.loads(text)
+            except Exception:
+                self._log("[webrtc] first message is not valid JSON header; ignoring")
+                return
+
+            if obj.get("kind") != "header":
+                self._log(f"[webrtc] unexpected JSON message (no kind=header): {obj}")
+                return
+
+            name = obj.get("name") or "webrtc_incoming.db"
+            size = int(obj.get("size") or 0)
+
+            incoming_dir = Path("./incoming")
+            incoming_dir.mkdir(parents=True, exist_ok=True)
+            tmp_path = incoming_dir / f"{name}.tmp"
+
+            try:
+                f = open(tmp_path, "wb")
+            except Exception as e:
+                self._log(f"[webrtc] cannot open file for write: {e}")
+                return
+
+            self.webrtc_rx_meta = {
+                "name": name,
+                "size": size,
+                "tmp_path": tmp_path,
+            }
+            self.webrtc_rx_file = f
+            self.webrtc_rx_received = 0
+
+            self._log(f"[webrtc] header received: {name} ({size} bytes)")
+            # подготовим прогрессбар
+            self.after(0, lambda: self._set_progress(self.prog_recv, 0, size))
+            return
+
+        # 2) Метаданные уже есть — это должен быть чанк байт
+        if self.webrtc_rx_file is None:
+            self._log("[webrtc] got data chunk but file handle is None; ignoring")
+            return
+
         try:
-            text = data.decode("utf-8", errors="replace")
-        except Exception:
-            text = repr(data)
-        self._log(f"[webrtc] received message: {text}")
+            self.webrtc_rx_file.write(data)
+            self.webrtc_rx_received += len(data)
+        except Exception as e:
+            self._log(f"[webrtc] write error: {e}")
+            try:
+                self.webrtc_rx_file.close()
+            except Exception:
+                pass
+            self.webrtc_rx_file = None
+            return
+
+        meta = self.webrtc_rx_meta or {}
+        total = int(meta.get("size") or 0)
+        done = self.webrtc_rx_received
+
+        # обновляем прогрессбар в GUI-потоке
+        self.after(0, lambda: self._on_progress_recv(done, total))
+
+        # 3) Проверяем завершение по размеру
+        if total and done >= total:
+            try:
+                self.webrtc_rx_file.close()
+            except Exception:
+                pass
+            self.webrtc_rx_file = None
+
+            tmp_path = meta.get("tmp_path")
+            name = meta.get("name") or "webrtc_incoming.db"
+            incoming_dir = os.path.dirname(str(tmp_path)) if tmp_path else "./incoming"
+            final_path = os.path.join(incoming_dir, name)
+
+            try:
+                if tmp_path:
+                    os.replace(tmp_path, final_path)
+                self._log(f"[webrtc] file received and saved: {final_path}")
+                # выносим диалог и финальный прогресс в GUI-поток
+                self.after(0, lambda: self._on_receive_done(final_path))
+            except Exception as e:
+                self._log(f"[webrtc] finalize error: {e}")
+
+            # сбрасываем состояние
+            self.webrtc_rx_meta = None
+            self.webrtc_rx_file = None
+            self.webrtc_rx_received = 0
 
     def _webrtc_apply_offer(self):
         offer = self.webrtc_offer_recv.get("1.0", "end").strip()
         if not offer:
             messagebox.showerror("WebRTC", "Вставь Offer от отправителя.", parent=self)
             return
+
+        # сброс состояния приёмника WebRTC
+        if self.webrtc_rx_file:
+            try:
+                self.webrtc_rx_file.close()
+            except Exception:
+                pass
+        self.webrtc_rx_meta = None
+        self.webrtc_rx_file = None
+        self.webrtc_rx_received = 0
 
         # лениво создаём core
         if not self.webrtc_rx_core:
@@ -1329,19 +1512,33 @@ class App(tk.Tk):
 
         # --- Выбор транспорта ---
         if mode == "tcp":
-            transport = TcpSenderTransport(
-                host=host,
-                port=port,
-                chunk_size=chunk_size,
-                speed_kbps=speed_kbps,
-                log=self._log,
-                on_progress=self._on_progress_send,
-                sas_info=sas_info_cb,
-                use_gzip=use_gzip,
-                vacuum_snapshot=vacuum_snapshot,
-            )
+            if HAS_STUN and TcpSenderTransport is not None:
+                self._log("[tcp] Using Internet-capable TCP transport")
+                transport = TcpSenderTransport(
+                    host=host,
+                    port=port,
+                    chunk_size=chunk_size,
+                    speed_kbps=speed_kbps,
+                    log=self._log,
+                    on_progress=self._on_progress_send,
+                    sas_info=sas_info_cb,
+                    use_gzip=use_gzip,
+                    vacuum_snapshot=vacuum_snapshot,
+                )
+            else:
+                self._log("[tcp] Using LAN TCP transport (no STUN/UPnP in this build)")
+                transport = TcpSenderTransportLan(
+                    host=host,
+                    port=port,
+                    chunk_size=chunk_size,
+                    speed_kbps=speed_kbps,
+                    log=self._log,
+                    on_progress=self._on_progress_send,
+                    sas_info=sas_info_cb,
+                    use_gzip=use_gzip,
+                    vacuum_snapshot=vacuum_snapshot,
+                )
         elif mode == "webrtc":
-
             def show_offer(sdp: str) -> None:
                 def upd():
                     self.webrtc_offer.delete("1.0", "end")
@@ -1351,7 +1548,6 @@ class App(tk.Tk):
                         "Скопируй его на приёмник, там нажми 'Apply offer / create answer', "
                         "затем вставь Answer сюда и нажми 'Use Answer / connect'."
                     )
-
                 self.after(0, upd)
 
             def wait_for_answer() -> str:
@@ -1362,16 +1558,22 @@ class App(tk.Tk):
 
                 # Блокирующее ожидание в рабочем потоке (НЕ в Tk!)
                 self._webrtc_answer_event.wait()
-
                 ans = self._webrtc_answer_value.strip()
                 return ans
 
-            transport = WebRTCSenderTransport(
-                log=self._log,
-                on_progress=self._on_progress_send,
-                show_offer=show_offer,
-                wait_for_answer=wait_for_answer,
-            )
+            if not HAS_WEBRTC or WebRTCSenderTransport is None:
+                self._log("[webrtc] not available in this build")
+                messagebox.showerror("WebRTC", "WebRTC is not available in this build.")
+                return
+            else:
+                transport = WebRTCSenderTransport(
+                    log=self._log,
+                    on_progress=self._on_progress_send,
+                    show_offer=show_offer,
+                    wait_for_answer=wait_for_answer,
+                    chunk_size=chunk_size,
+                )
+
         else:
             messagebox.showerror("Ошибка", f"Неизвестный режим транспорта: {mode}", parent=self)
             return
@@ -1464,6 +1666,12 @@ class App(tk.Tk):
                     self.asyncio_thread.call(self.receiver_inet.start())
 
             elif transport_mode == "webrtc":
+
+                if not HAS_WEBRTC:
+                    self._log("[webrtc] not available in this build")
+                    messagebox.showerror("WebRTC", "WebRTC is not available in this build.")
+                    return
+
                 self.receiver_mode = "webrtc"
                 self.receiver_running = True
                 self._set_recv_led(True)
@@ -1534,17 +1742,31 @@ class App(tk.Tk):
     # ---------- shutdown ----------
     def on_close(self):
         try:
+            # 1) Если ждём SAS — принудительно "отклоняем" и будим поток
+            if getattr(self, "_sas_event", None):
+                self._log("SAS: window closed, cancelling SAS")
+                try:
+                    self._sas_event["ok"] = False
+                    self._sas_event["ev"].set()
+                except Exception:
+                    pass
+                self._sas_event = None
+
+            # 2) Останавливаем приёмник
             if self.receiver_running:
                 if self.receiver_mode == "lan" and self.receiver_tcp:
                     self.asyncio_thread.call(self.receiver_tcp.stop())
                 elif self.receiver_mode == "internet" and self.receiver_inet:
                     self.asyncio_thread.call(self.receiver_inet.stop())
 
+            # 3) Ждём незавершённые future'ы (отправка и т.п.)
             for fut in list(self._pending):
                 try:
                     fut.result(timeout=2)
                 except Exception:
                     pass
+
+            # 4) Закрываем Zeroconf
             try:
                 if self._zc:
                     self._zc.close()

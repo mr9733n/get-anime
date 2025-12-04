@@ -62,6 +62,9 @@
 - [+] Логика fallback к TCP
 - [x] GUI: Отобразить компактно в два столбца по смыслу, add scroll
 - [x] Pretty Gui
+- [x] Split in 2 version LAN and Inet
+- [x] Fix transport for LAN version
+- [x] Fix shutdown
 - [ ] **Нет передачи БД поверх WebRTC** — ни на отправителе, ни на приёмнике.
 #### 1. **Отправитель (WebRTCSenderTransport):**
    - вместо `send_bytes(b"hello from WebRTC sender")`:
@@ -83,6 +86,7 @@
      - дальше — сырые чанки;
    - либо поверх WebRTC просто прогнать уже существующий TCP-протокол `DBSender`/`DBReceiver`, но тогда надо чуть больше аккуратности (фрейминг, размеры и т.п.).
 
+- [ ] Добить мелкую косметику (например, текст заголовков/подсказок под каждый режим)
 - [ ] Тест-кнопка «ICE connected?» с логом статусов
 - [ ] Тестирование разных NAT/CGNAT сценариев
 - [ ] expand offer/answer data. показывать свернутым по умолчанию

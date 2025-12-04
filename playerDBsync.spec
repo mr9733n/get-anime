@@ -6,6 +6,7 @@ import site
 import sys
 import uuid
 import tempfile
+import av, pylibsrtp
 
 from pathlib import Path
 from PyInstaller.building.api import PYZ, COLLECT, EXE
@@ -104,6 +105,7 @@ if env_path.exists():
         os.environ["PROD_KEY"] = prod_key
     print(f"✅ Temporary .env file created and modified: {build_env_path}")
 # ----
+# AnimePlayerDBSync_Full.spec
 
 block = {
     "FileVersion": "0.0.0.1",
@@ -150,11 +152,11 @@ if os.path.isdir(tcl86) and os.path.isdir(tk86):
     datas += [(tcl86, "tcl/tcl8.6")]
     datas += [(tk86,  "tcl/tk8.6")]
 
+datas +=[(str(Path(av.__file__).parent), "av")]
+datas +=[(str(Path(pylibsrtp.__file__).parent), "pylibsrtp")]
 datas += [(os.path.join(project_dir, "app", "sync"), "app")]
 datas += [(os.path.join(project_dir, "favicon.ico"), ".")]
 datas += [(str(build_env_path), ".")]
-datas += [(os.path.join(project_dir, "scripts", "allow_port_8765.cmd", "."))]
-datas += [(os.path.join(project_dir, "scripts", "remove_port_8765.cmd", "."))]
 
 icon_path = os.path.join(project_dir, "favicon.ico")
 
@@ -165,7 +167,19 @@ a = Analysis(['app/sync/db_sync_gui.py'],
              ],
              binaries=binaries,
              datas=datas,
-             hiddenimports=hidden + ['nacl', 'zeroconf', 'aiofiles', 'tkinter', 'tkinter.ttk'],
+             hiddenimports=hidden + [
+                 "zeroconf",
+                 "nacl",
+                 "aiortc",
+                 "aioice",
+                 'aiofiles',
+                 "av",
+                 "pyee",
+                 "pylibsrtp",
+                 "crc32c",
+                 'tkinter',
+                 'tkinter.ttk'
+             ],
              hookspath=['.'],
              runtime_hooks=[],
              excludes=['PIL', 'numpy', 'psutils'],
@@ -204,6 +218,98 @@ exe = EXE(pyz,
 #               upx=True,
 #               upx_exclude=[],
 #               name='PlayerDBSync')
+
+# ----
+# AnimePlayerDBSync Lite (only Local LAN)
+
+block = {
+    "FileVersion": "0.0.0.1",
+    "ProductVersion": "0.0.0.1",
+    "CompanyName": "666s.dev",
+    "FileDescription": "AnimePlayerDBSyncLANUtilityApp",
+    "InternalName": "AnimePlayerDBSyncLANUtilityApp",
+    "LegalCopyright": "© 2025 666s.dev",
+    "OriginalFilename": "PlayerDBSyncLAN.exe",
+    "ProductName": "AnimePlayerDBSyncLANUtilityApp",
+}
+
+version_resource = Version(
+    file_version=block["FileVersion"],
+    product_version=block["ProductVersion"],
+    company_name=block["CompanyName"],
+    file_description=block["FileDescription"],
+    internal_name=block["InternalName"],
+    legal_copyright=block["LegalCopyright"],
+    original_filename=block["OriginalFilename"],
+    product_name=block["ProductName"],
+)
+hidden = []
+datas = []
+binaries = []
+
+# ---- PyNaCl / cffi ----
+hidden += collect_submodules("nacl")
+hidden += ["_cffi_backend", "cffi", "cffi.backend_ctypes"]
+binaries += collect_dynamic_libs("nacl")       # libsodium/*.pyd/*.dll если есть
+binaries += collect_dynamic_libs("cffi")       # _cffi_backend.pyd подтянуть наверняка
+
+# ---- zeroconf (иногда нужны data-файлы) ----
+datas += collect_data_files("zeroconf", include_py_files=True)
+hidden += collect_submodules("zeroconf")
+binaries += collect_dynamic_libs("zeroconf")
+
+# ---- Tkinter: TCL/TK data ----
+# PyInstaller обычно сам кладёт, но если ошибка есть — добавляем явно:
+tcl_base = os.path.join(sys.base_prefix, "tcl")
+tcl86 = os.path.join(tcl_base, "tcl8.6")
+tk86  = os.path.join(tcl_base, "tk8.6")
+if os.path.isdir(tcl86) and os.path.isdir(tk86):
+    datas += [(tcl86, "tcl/tcl8.6")]
+    datas += [(tk86,  "tcl/tk8.6")]
+
+datas += [(os.path.join(project_dir, "app", "sync"), "app")]
+datas += [(os.path.join(project_dir, "favicon.ico"), ".")]
+datas += [(str(build_env_path), ".")]
+
+icon_path = os.path.join(project_dir, "favicon.ico")
+
+a = Analysis(['app/sync/db_sync_gui.py'],
+             pathex=[
+                 project_dir,
+                 PACKAGES_FOLDER,
+             ],
+             binaries=binaries,
+             datas=datas,
+             hiddenimports=hidden + ['nacl', 'zeroconf', 'aiofiles', 'tkinter', 'tkinter.ttk'],
+             hookspath=['.'],
+             runtime_hooks=[],
+             excludes=['PIL', 'numpy', 'psutils', 'av', 'pylibsrtp'],
+             win_no_prefer_redirects=False,
+             win_private_assemblies=False,
+             cipher=block_cipher,
+             noarchive=False)
+
+pyz = PYZ(a.pure, a.zipped_data,
+          cipher=block_cipher)
+
+exe = EXE(pyz,
+          a.scripts,
+          a.binaries,
+          a.zipfiles,
+          a.datas,
+          [],
+#          exclude_binaries=True,
+          name='PlayerDBSyncLAN',
+          icon=icon_path,
+          console=False,
+          debug=False,
+          bootloader_ignore_signals=False,
+          strip=False,
+          upx=True,
+          version=version_resource,
+          onefile=True
+          )
+
 
 dist_dir = os.path.join(project_dir, 'dist')
 compiled_dir1 = os.path.join(dist_dir, 'PlayerDBSync')

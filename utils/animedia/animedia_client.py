@@ -1,37 +1,24 @@
-# animedia_client.py
-import logging
+# utils/animedia/animedia_client.py
 import httpx
+import asyncio
+import logging
 
-from typing import Any, Literal, List, Dict, Optional, Final
+from typing import List, Dict, Any, Final, Optional
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+
 from utils.animedia.animedia_utils import (
     safe_str,
     extract_file_from_html,
     urljoin,
 )
 
-
-async def block_unwanted(route, request):
-    # список доменов/подстрок, которые не нужны для парсинга
-    unwanted = ["googlesyndication", "adservice", "analytics", "doubleclick", "gtag"]
-    if any(u in request.url for u in unwanted):
-        await route.abort()  # отбрасываем запрос
-    else:
-        await route.continue_()  # пропускаем остальные
-
-
 class AnimediaClient:
     def __init__(self, base_url: str):
         self.logger = logging.getLogger(__name__)
-        self.pre: Final = "https://"
-        cleaned = base_url.rstrip("/")
-        self.base_url = (
-            cleaned
-            if cleaned.startswith(("http://", "https://"))
-            else f"{self.pre}{cleaned}"
-        )
-
+        self.base_url = base_url.rstrip("/")
+        if not self.base_url.startswith(("http://", "https://")):
+            self.base_url = f"https://{self.base_url}"
+        self._file_cache: Dict[str, str] = {}
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -43,79 +30,68 @@ class AnimediaClient:
             "Connection": "keep-alive",
         }
 
+    def _log_len(self, name: str, seq: list) -> None:
+        n = len(seq)
+        self.logger.info(f"{name}: {n} item{'s' if n != 1 else ''}")
 
-    def _logging_length(self, result: Any) -> None:
-        ln = len(result)
-        if ln > 1:
-            self.logger.info(f"Found {ln} items")
-        else:
-            self.logger.info(f"Found {ln} item")
-
-
-    async def open_browser(self, headless: bool = False):
-        """Создаёт браузер Playwright, закрывается автоматически."""
-        try:
-            playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(headless=headless)
-            page = await browser.new_page()
-            await page.set_extra_http_headers(self.headers)
-            self.logger.info(f"Playwright browser was opened.")
-            return playwright, browser, page
-        except Exception as e:
-            self.logger.error(f"Playwright browser was not open: {e}")
-            return None, None, None
-
-
-    async def search_titles(self, page, anime_name: str, max_titles: int) -> List[str]:
-        """Возвращает ссылки на карточки аниме (не более `max_titles`)."""
-        try:
-            search_url = f"{self.base_url}/index.php?do=search&story={anime_name}"
-            await page.goto(search_url)
-            await page.wait_for_selector("div.content", timeout=120000)
-
-            html = await page.content()
-            soup = BeautifulSoup(html, "html.parser")
-            content_div = soup.find("div", class_="content")
-            if not content_div:
+    async def search_titles(self, anime_name: str, max_titles: int = 5) -> List[str]:
+        url = f"{self.base_url}/index.php?do=search&story={anime_name}"
+        async with httpx.AsyncClient(headers=self.headers, timeout=30) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            container = soup.find("div", class_="content")
+            if not container:
                 return []
 
-            links = []
-            for poster in content_div.select(".poster"):
-                a = poster.select_one("a.poster__link")
-                if a and poster.select_one("div.vysser"):
-                    links.append(urljoin(self.base_url, a["href"]))
-
-            self._logging_length(links[:max_titles])
-            return links[:max_titles]
-        except Exception as e:
-            self.logger.error(f"search_titles not found titles. Error: {e}")
-            return []
-
-
-    async def collect_episode_files(self, page, title_url: str) -> List[str]:
-        """Собирает ссылки на файлы всех эпизодов конкретного тайтла."""
-        try:
-            await page.goto(title_url)
-            html = await page.content()
-            soup = BeautifulSoup(html, "html.parser")
-
-            episode_links = [
-                urljoin(title_url, a["data-vlnk"])
-                for a in soup.find_all("a", attrs={"data-vlnk": True})
+            links = [
+                urljoin(self.base_url, a["href"])
+                for a in container.select("a.poster__link")
             ]
+            self._log_len("search_titles", links[:max_titles])
+            return links[:max_titles]
 
-            files: List[str] = []
-            async with httpx.AsyncClient(timeout=30) as client:
-                for ep_url in episode_links:
-                    resp = await client.get(ep_url)
-                    file_url = extract_file_from_html(resp.text, ep_url)
-                    if file_url:
-                        files.append(safe_str(file_url))
+    async def get_vlnks_from_title(self, soup) -> List[str]:
+        """
+        Возвращает список всех значений атрибута data‑vlnk,
+        найденных в HTML‑странице `title_url`.
+        """
+        a_tags = soup.find_all("a", attrs={"data-vlnk": True})
+        vlnks = [tag["data-vlnk"] for tag in a_tags]
 
-            self._logging_length(files)
-            return files
-        except Exception as e:
-            self.logger.error(f"collect_episode_files not found m3u8. Error: {e}")
+        if not vlnks:
+            self.logger.warning(f"data‑vlnk not found. ")
+
+        return vlnks
+
+    async def get_episode_file(self, vlnk_url: str) -> Optional[str]:
+        async with httpx.AsyncClient(headers=self.headers, timeout=30) as client:
+            resp = await client.get(vlnk_url)
+            resp.raise_for_status()
+            return extract_file_from_html(resp.text, vlnk_url)
+
+    async def collect_episode_files(self, html: str) -> List[str]:
+        """
+        Возвращает список всех найденных файлов‑потоков
+        (массив строк, уже готовых к использованию).
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        vlnk_list = await self.get_vlnks_from_title(soup)
+
+        if not vlnk_list:
             return []
 
+        async def fetch_one(vlnk: str) -> Optional[str]:
+            return await self.get_episode_file(vlnk)
+
+        semaphore = asyncio.Semaphore(5)
+
+        async def limited_fetch(vlnk: str) -> Optional[str]:
+            async with semaphore:
+                return await fetch_one(vlnk)
+
+        results = await asyncio.gather(*[limited_fetch(v) for v in vlnk_list])
+        files = [safe_str(url) for url in results if url]
+        self.logger.info(f"collect_episode_files: {len(files)} files")
+        return files
 

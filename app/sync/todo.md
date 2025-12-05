@@ -1,5 +1,6 @@
-### 8.33 New sync DB 
+# Player DB Sync Merge Utility 0.0.0.1
 
+### 8.33 New sync DB 
 #### A. Транспорт и безопасность
 - [x] Сквозное шифрование (X25519 + HKDF + NaCl SecretBox), направленные ключи, SAS, TOFU-хранилище (атомично, с fsync).
 - [x] Чанковая передача с ACK, итоговый SHA-256, атомарная запись на приёмнике (`.tmp` → `os.replace`).
@@ -41,10 +42,8 @@
 - [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
 - [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
 
-### 8.34 New sync DB «Через интернет» без релея — два пути
-
-#### Вариант 1 — **без релея, без «магии»** (самый простой и надёжный)
-#### Этап 1 — Internet (TCP + STUN/UPnP)
+### 8.34 New sync DB «Через интернет»
+#### Internet (TCP + STUN/UPnP)
 - [x] использовать текущий TCP протокол
 - [x] Режим «Internet» в GUI (переключатель Receive)
 - [x]  STUN-детектор внешнего IP (pystun3), отображение адреса и порта
@@ -54,8 +53,7 @@
 - [x] Реализация TCPTransport
 - [ ] Ограничение источников по IP / rate-limit
 
-#### Вариант 2 — **NAT traversal без ручного проброса** (без релея; STUN допустим)
-#### Этап 2 — WebRTC (DataChannel)
+#### WebRTC (DataChannel)
 - [x] WebRTCTransport — ядро (offer/answer, ICE, DataChannel) есть.
 - [x] GUI: офлайн-сигналинг (Offer/Answer) есть.
 - [x] Индикатор ICE есть (states в логах и label).
@@ -69,9 +67,20 @@
 - [x] Add **Приёмник (WebRTCReceiverCore + GUI):** 
 - [+] Добить мелкую косметику (например, текст заголовков/подсказок под каждый режим)
 - [x] Fix Delete snapshot
-- [x] после отправки мы не сбрасываем состояние подсказок
-- [ ] после Приемки мы не сбрасываем состояние подсказок
 - [x] WebRTC. Fix send more than 1 time  
+- [x] после отправки мы не сбрасываем состояние подсказок
+- [x] после Приемки мы не сбрасываем состояние подсказок
+- [x] после Приемки не очищаем блоки с Offer/Answer
+
+# Player DB Sync Merge Utility 0.0.0.2
+
+### 8.35 Refactoring
+- [ ] Split logic im moduls (managers) from db_sync_gui
+- [ ] 
+
+# Player DB Sync Merge Utility 0.0.0.3
+
+### 8.36 New features
 - [ ] если нажать clear и попробовать отправить бд еще раз то офер не сформируется, то и с ответом
 - [ ] Cancel Send
 - [ ] Cancel Receive

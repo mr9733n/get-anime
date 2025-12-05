@@ -1052,7 +1052,31 @@ class App(tk.Tk):
         except Exception as e:
             self._log(f"[webrtc] clipboard error: {e}")
 
-    def _clear_text(self, text_widget: tk.Text) -> None:
+    def _clear_text(self, text_widget):
+        """
+        Универсальный Clear для текстовых полей.
+        Для WebRTC-полей (Offer/Answer) временно запрещаем очистку
+        во время активной отправки/приёмки, чтобы не ломать handshake.
+        """
+        # Определяем, относится ли виджет к WebRTC Offer/Answer
+        is_webrtc_widget = False
+        for name in ("webrtc_offer", "webrtc_answer",
+                     "webrtc_offer_recv", "webrtc_answer_recv"):
+            w = getattr(self, name, None)
+            if w is text_widget:
+                is_webrtc_widget = True
+                break
+
+        if is_webrtc_widget:
+            # Если идёт отправка по WebRTC — не даём чистить поля
+            current_sender = getattr(self, "_current_webrtc_sender", None)
+            rx_file = getattr(self, "webrtc_rx_file", None)
+
+            if current_sender is not None or rx_file is not None:
+                # Без pop-up, просто запись в лог, чтобы не раздражать
+                self._log("[webrtc] Clear is disabled while WebRTC transfer is active")
+                return
+
         text_widget.delete("1.0", "end")
         self._log("[webrtc] text cleared")
 
@@ -1910,11 +1934,31 @@ class App(tk.Tk):
             self._sas_event["ev"].set()
 
     def _on_receive_done(self, path: str):
-        self.after(0, lambda: (
-            self._log(f"Файл сохранён: {path}"),
+        def gui_done():
+            self._log(f"Файл сохранён: {path}")
             messagebox.showinfo("Receive", f"Файл сохранён:\n{path}", parent=self)
-        ))
-        # + авто-остановка WebRTC-приёмника
+
+            # Всегда пробуем подчистить WebRTC-поля приёмника
+            for attr in ("webrtc_offer_recv", "webrtc_answer_recv"):
+                w = getattr(self, attr, None)
+                if w is not None:
+                    try:
+                        w.delete("1.0", "end")
+                    except Exception:
+                        pass
+
+            # И всегда ставим вменяемую подсказку
+            self.webrtc_hint_recv.set(
+                "Готово.\n"
+                "Чтобы принять ещё один файл:\n"
+                "• Для WebRTC: выбери режим WebRTC, нажми 'Start receive', вставь новый Offer и нажми "
+                "'Apply offer / create answer'.\n"
+                "• Для TCP: просто оставь приёмник запущенным или снова нажми 'Start / Stop'."
+            )
+
+        self.after(0, gui_done)
+
+        # + авто-остановка WebRTC-приёмника (только если реально WebRTC)
         if self.receiver_mode == "webrtc":
             self._log("[webrtc] auto-stop receiver after successful receive")
             self.receiver_running = False
@@ -1926,18 +1970,6 @@ class App(tk.Tk):
                 # закрываем peerconnection в фоне
                 self.asyncio_thread.call(self.webrtc_rx_core.close())
                 self.webrtc_rx_core = None
-
-            # сброс подсказок
-            self.webrtc_hint_recv.set(
-                "Готово.\n"
-                "Чтобы принять ещё один файл:\n"
-                "1. Нажми 'Start receive' в режиме WebRTC.\n"
-                "2. Вставь новый Offer и снова нажми 'Apply offer / create answer'."
-            )
-
-            # по желанию можно подчистить поля Offer/Answer:
-            self.webrtc_offer.delete("1.0", "end")
-            self.webrtc_answer.delete("1.0", "end")
 
     # ---------- shutdown ----------
     def on_close(self):

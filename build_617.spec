@@ -21,7 +21,7 @@ from PyInstaller.building.build_main import Analysis
 from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
 
 
-# Compatibility shim: PyInstaller 5.x removed 'Version'. Build VSVersionInfo from simple kwargs.
+# Compatibility shim: PyInstaller 6.x removed 'Version'. Build VSVersionInfo from simple kwargs.
 def Version(*, file_version, product_version, company_name, file_description, internal_name, legal_copyright, original_filename, product_name):
     def _tuple4(v):
         parts = [int(p) for p in str(v).split('.') if p.isdigit()]

@@ -1,5 +1,7 @@
 # transports.py
 from __future__ import annotations
+
+import os, json
 from abc import ABC, abstractmethod
 from typing import Optional, Callable
 
@@ -88,8 +90,6 @@ class WebRTCSenderTransport(SenderTransportBase):
         self._chunk_size = max(1, int(chunk_size))
 
     async def send_db(self, db_path: str) -> None:
-        import os, json
-
         try:
             if self._log:
                 self._log("[webrtc] creating offer…")

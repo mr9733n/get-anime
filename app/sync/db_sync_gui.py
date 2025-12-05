@@ -34,8 +34,11 @@ except Exception:
 
 from db_transfer import DBReceiver, DBSender, TOFU_FILE, save_tofu
 
-MDNS_SERVICE_TYPE = "_playersync._tcp.local."
+APP_WINDOW_SIZE = "780x620"
+
+MDNS_SERVICE_TYPE = ".playersync._tcp.local."
 CFG_PATH = Path.home() / ".player_db_gui.json"
+LOG_PATH = Path.home() / ".player_db_gui.log"
 
 
 def load_gui_cfg():
@@ -69,12 +72,47 @@ class AsyncioThread:
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
     def stop(self):
+        """
+        Аккуратно гасим event loop:
+          - собираем все pending-таски
+          - отменяем их
+          - ждём их завершения
+          - только потом останавливаем loop
+        """
         try:
             if self.loop.is_running():
-                self.loop.call_soon_threadsafe(self.loop.stop)
+                async def _shutdown():
+                    try:
+                        tasks = [t for t in asyncio.all_tasks(loop=self.loop) if not t.done()]
+                    except TypeError:
+                        # для старых версий asyncio без аргумента loop
+                        tasks = [t for t in asyncio.all_tasks() if not t.done()]
+
+                    for t in tasks:
+                        t.cancel()
+                    if tasks:
+                        try:
+                            await asyncio.gather(*tasks, return_exceptions=True)
+                        except Exception:
+                            # всё проглатываем, нам важно только,
+                            # чтобы таски успокоились
+                            pass
+                    self.loop.stop()
+
+                # запускаем shutdown в том же loop-потоке и ждём его
+                fut = asyncio.run_coroutine_threadsafe(_shutdown(), self.loop)
+                try:
+                    fut.result(timeout=2)
+                except Exception:
+                    # если что-то пошло не так — всё равно падаем дальше,
+                    # но уже попытались аккуратно погасить
+                    pass
         except Exception:
             pass
-        self.thread.join(timeout=1.5)
+        try:
+            self.thread.join(timeout=1.5)
+        except RecursionError:
+            pass
 
 
 class App(tk.Tk):
@@ -85,7 +123,7 @@ class App(tk.Tk):
         else:
             self.title("AnimePlayer DB Sync and Merge")
 
-        self.geometry("780x600")
+        self.geometry(APP_WINDOW_SIZE)
         self['padx'] = 8
         self['pady'] = 8
         self._zc = None
@@ -1139,7 +1177,6 @@ class App(tk.Tk):
         self._log(f"Internet check: trying {host}:{port} …")
 
         async def probe():
-            import asyncio
             try:
                 rdr, wtr = await asyncio.wait_for(
                     asyncio.open_connection(host, port),
@@ -1183,6 +1220,28 @@ class App(tk.Tk):
 
         fut.add_done_callback(done_cb)
 
+    def _webrtc_cancel_send(self):
+        self._log("[webrtc] send cancelled by user")
+        # если мы храним текущий transport
+        tr = getattr(self, "_current_webrtc_sender", None)
+        if tr:
+            self.asyncio_thread.call(tr.close())
+            self._current_webrtc_sender = None
+
+        self.webrtc_ice_status.set("idle")
+        self.webrtc_hint_send.set("Отправка отменена. Можно начать заново.")
+
+    def _webrtc_cancel_receive(self):
+        self._log("[webrtc] receive cancelled by user")
+        if self.webrtc_rx_core:
+            self.asyncio_thread.call(self.webrtc_rx_core.close())
+            self.webrtc_rx_core = None
+        self.receiver_running = False
+        self._set_recv_led(False)
+        self.recv_status.set("Server: Stopped")
+        self.webrtc_ice_status.set("idle")
+        self.webrtc_hint_recv.set("Приём отменён. Нажми 'Start receive', чтобы начать заново.")
+
     def _on_webrtc_message(self, data: bytes):
         """
         Обработчик сообщений по WebRTC DataChannel (receiver side).
@@ -1191,11 +1250,9 @@ class App(tk.Tk):
           1) первое сообщение — JSON header {"kind":"header","name":"...","size":...}
           2) далее — сырые чанки байт файла
         """
-        import json, os
-        from pathlib import Path
-
         # 1) Если метаданных ещё нет — ожидаем header
         if self.webrtc_rx_meta is None:
+            self.webrtc_rx_got_any = True
             try:
                 text = data.decode("utf-8")
                 obj = json.loads(text)
@@ -1410,19 +1467,43 @@ class App(tk.Tk):
             var.set(f"≈ {mbps:.2f} MiB/s")
 
     def _delete_snapshot(self):
-        from pathlib import Path
-        snap = Path("db_snapshot.sqlite")
-        if not snap.exists():
-            messagebox.showinfo("Snapshot", "Снапшот не найден (db_snapshot.sqlite).", parent=self)
-            self._log("Snapshot: db_snapshot.sqlite not found")
+        base = Path("db_snapshot.sqlite")
+        gz = Path("db_snapshot.sqlite.gz")
+
+        targets = [p for p in (base, gz) if p.exists()]
+        if not targets:
+            messagebox.showinfo(
+                "Snapshot",
+                "Снапшот не найден (db_snapshot.sqlite / db_snapshot.sqlite.gz).",
+                parent=self,
+            )
+            self._log("Snapshot: db_snapshot.sqlite(.gz) not found")
             return
-        try:
-            snap.unlink()
-            messagebox.showinfo("Snapshot", "Снапшот удалён (db_snapshot.sqlite).", parent=self)
-            self._log("Snapshot: db_snapshot.sqlite deleted")
-        except Exception as e:
-            messagebox.showerror("Snapshot", f"Не удалось удалить снапшот: {e}", parent=self)
-            self._log(f"Snapshot: error deleting db_snapshot.sqlite: {e}")
+
+        errors: list[str] = []
+        for p in targets:
+            try:
+                p.unlink()
+                self._log(f"Snapshot: deleted {p}")
+            except Exception as e:
+                msg = f"{p}: {e}"
+                errors.append(msg)
+                self._log(f"Snapshot: failed to delete {msg}")
+
+        if errors:
+            # что-то удалить не удалось
+            messagebox.showerror(
+                "Snapshot",
+                "Не удалось удалить часть файлов снапшота:\n" + "\n".join(errors),
+                parent=self,
+            )
+        else:
+            # всё удалили успешно
+            messagebox.showinfo(
+                "Snapshot",
+                "Снапшот удалён (db_snapshot.sqlite(+.gz)).",
+                parent=self,
+            )
 
     def _start_mdns_browse(self):
         if self._zc:
@@ -1684,6 +1765,18 @@ class App(tk.Tk):
                 messagebox.showerror("Ошибка", str(err), parent=self)
             else:
                 self._log(f"Отправка завершена ({mode})")
+                if mode == "webrtc":
+                    # аккуратное завершение сценария отправки
+                    self.webrtc_hint_send.set(
+                        "Готово.\n"
+                        "Если нужно отправить ещё одну базу:\n"
+                        "1. Выбери новый файл.\n"
+                        "2. Убедись, что приёмник снова запущен в режиме WebRTC.\n"
+                        "3. Повтори шаги с Offer/Answer."
+                    )
+                    # по желанию можно подчистить поля Offer/Answer:
+                    self.webrtc_offer.delete("1.0", "end")
+                    self.webrtc_answer.delete("1.0", "end")
                 addr = f"{host}"
                 recent = [addr] + [x for x in self.cfg.get("recent", []) if x != addr]
                 self.cfg["recent"] = recent[:8]
@@ -1821,6 +1914,30 @@ class App(tk.Tk):
             self._log(f"Файл сохранён: {path}"),
             messagebox.showinfo("Receive", f"Файл сохранён:\n{path}", parent=self)
         ))
+        # + авто-остановка WebRTC-приёмника
+        if self.receiver_mode == "webrtc":
+            self._log("[webrtc] auto-stop receiver after successful receive")
+            self.receiver_running = False
+            self._set_recv_led(False)
+            self.recv_status.set("Server: Stopped")
+            self.webrtc_ice_status.set("idle")
+
+            if self.webrtc_rx_core:
+                # закрываем peerconnection в фоне
+                self.asyncio_thread.call(self.webrtc_rx_core.close())
+                self.webrtc_rx_core = None
+
+            # сброс подсказок
+            self.webrtc_hint_recv.set(
+                "Готово.\n"
+                "Чтобы принять ещё один файл:\n"
+                "1. Нажми 'Start receive' в режиме WebRTC.\n"
+                "2. Вставь новый Offer и снова нажми 'Apply offer / create answer'."
+            )
+
+            # по желанию можно подчистить поля Offer/Answer:
+            self.webrtc_offer.delete("1.0", "end")
+            self.webrtc_answer.delete("1.0", "end")
 
     # ---------- shutdown ----------
     def on_close(self):
@@ -1873,6 +1990,18 @@ class App(tk.Tk):
                 if self._zc:
                     self._zc.close()
             except Exception:
+                pass
+
+            # 5) Автоматически сохраняем лог в файл
+            try:
+                data = self.txt.get("1.0", "end-1c")
+                LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                tmp = LOG_PATH.with_suffix(f"_{ts}.tmp")
+                tmp.write_text(data, encoding="utf-8")
+                os.replace(tmp, LOG_PATH)
+            except Exception:
+                # на shutdown не шумим, это best-effort
                 pass
         finally:
             self.asyncio_thread.stop()

@@ -425,7 +425,6 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Кнопка «Проверить доступность» (таймаут, диагностика)
 - [x] Абстрактный TransportBase
 - [x] Реализация TCPTransport
-- [ ] Ограничение источников по IP / rate-limit
 
 #### WebRTC (DataChannel)
 - [x] WebRTCTransport — ядро (offer/answer, ICE, DataChannel) есть.
@@ -445,6 +444,12 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] после отправки мы не сбрасываем состояние подсказок
 - [x] после Приемки мы не сбрасываем состояние подсказок
 - [x] после Приемки не очищаем блоки с Offer/Answer
+
+### 8.34 Small fixes
+- [x] Fixes in *.spec files
+- [x] Fix get_titles_animedia 
+- [x] Fix playwright executable doesn't exist at
+
 
 ### 8.35 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui
@@ -474,6 +479,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
       - дизейблить блок Internet TCP mode (серым),
       - по возможности отключать несвязанные элементы (скорость/лимит порта),
       - в хинтах явно показывать, что используется офлайн-сигналинг.
+- [ ] Internet (TCP + STUN/UPnP) Ограничение источников по IP / rate-limit
 
 
  ## 9. Check maybe obsolete

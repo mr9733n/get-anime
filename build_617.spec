@@ -12,6 +12,7 @@ import shutil
 import hashlib
 import tempfile
 import compileall
+import playwright
 
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,12 @@ from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, co
 from PyInstaller.building.build_main import Analysis
 from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
 
+APP_DIR = "app"
+APP_DIR_NAME = "qt"
+APP_DIR_NAME1 = "tinker_v1"
+BUILD_FILE = "main.py"
+BUILD_FILE1 = "vlc_player.py"
+BUILD_FILE2 = "app.py"
 
 # Compatibility shim: PyInstaller 6.x removed 'Version'. Build VSVersionInfo from simple kwargs.
 def Version(*, file_version, product_version, company_name, file_description, internal_name, legal_copyright, original_filename, product_name):
@@ -151,10 +158,10 @@ datas = [
     (os.path.join(project_dir, 'templates/'), 'templates'),
     (os.path.join(project_dir, 'config/logging.conf'), 'config'),
     (os.path.join(project_dir, 'db/*'), 'db'),
-    (os.path.join(project_dir, 'app/qt'), 'app/qt'),
-    (os.path.join(project_dir, 'core/'), 'core'),
-    (os.path.join(project_dir, 'utils/'), 'utils'),
-    (os.path.join(project_dir, 'utils/animedia/'), 'utils/animedia'),
+    #(os.path.join(project_dir, 'app/qt'), 'app/qt'),
+    #(os.path.join(project_dir, 'core/'), 'core'),
+    #(os.path.join(project_dir, 'utils/'), 'utils'),
+    #(os.path.join(project_dir, 'utils/animedia/'), 'utils/animedia'),
     (os.path.join(project_dir, 'libs/'), 'libs'),
     (os.path.join(project_dir, 'app/qt/__pycache__'), 'app/qt/__pycache__'),  # Add compiled .pyc files
     (os.path.join(project_dir, 'core/__pycache__'), 'core/__pycache__'),      # Add compiled .pyc files
@@ -177,7 +184,7 @@ vlc_player_name = "AnimePlayerVlc"
 
 # Analyze VLC player script
 v = Analysis(
-    ['app/qt/vlc_player.py'],
+    [f'{APP_DIR}/{APP_DIR_NAME}/{BUILD_FILE1}'],
     pathex=[
         project_dir,
         PACKAGES_FOLDER,
@@ -302,6 +309,18 @@ try:
 except Exception as e:
     print(f"❌ Error updating app.py with VLC player hash: {e}")
 
+# ---
+# AnimePlayer Main
+playwright_dir = Path(playwright.__file__).parent
+browsers_dir = playwright_dir / "driver" / "package" / ".local-browsers"
+
+if browsers_dir.exists():
+    datas.append((
+        str(browsers_dir),
+        "playwright/driver/package/.local-browsers"
+    ))
+
+
 block = {
     "FileVersion": "0.3.8.32",
     "ProductVersion": "0.3.8",
@@ -325,7 +344,7 @@ version_resource = Version(
 )
 
 a = Analysis(
-    ['main.py'],
+    [BUILD_FILE],
     pathex=[
         project_dir,
 		PACKAGES_FOLDER,
@@ -441,7 +460,7 @@ version_resource = Version(
 )
 
 a = Analysis(
-    ['app/tinker_v1/app.py'],
+    [f'{APP_DIR}/{APP_DIR_NAME1}/{BUILD_FILE2}'],
     pathex=['.'],
     binaries=[],
     datas=[('config/config.ini', 'config'), (os.path.join(project_dir, 'favicon.ico'), '.'),],
@@ -549,6 +568,7 @@ files_to_delete += [
 
 for target_folder in target_folders:
     delete_files(target_folder, files_to_delete)
+
 dest_dir1 = os.path.join(dist_dir, 'AnimePlayer')
 dest_dir3 = os.path.join(dist_dir, 'AnimePlayerLite')
 
@@ -576,9 +596,7 @@ folders_mapping = {
 
 def move_folders(mapping: dict[str, tuple[str, list[str]]]):
     """
-    mapping: {
-        source_root: (dest_root, [ "app", "config", ... ])
-    }
+    mapping: { source_root: (dest_root, [ "app", "config", ... ]) }
     """
     for src_root, (dest_root, patterns) in mapping.items():
         for name in patterns:
@@ -598,6 +616,30 @@ def move_folders(mapping: dict[str, tuple[str, list[str]]]):
         print(f"✅ Done for {src_root} → {dest_root}")
 
 move_folders(folders_mapping)
+
+def copy_file(src: str, dst_dir: str):
+    src_path = Path(src)
+    if not src_path.exists() or not src_path.is_file():
+        print(f"⚠ Skip copy: source file not found → {src_path}")
+        return
+
+    dst_dir_path = Path(dst_dir)
+    dst_dir_path.mkdir(parents=True, exist_ok=True)
+    dst_path = dst_dir_path / src_path.name
+    shutil.copy2(src_path, dst_path)
+    print(f"📄 Copied file: {src_path} → {dst_path}")
+
+files_to_copy = {
+    "files": [
+        os.path.join(compiled_dir1, "anime_player_app_roadmap.md"),
+        os.path.join(compiled_dir1, "LICENSE.md"),
+        os.path.join(compiled_dir1, "sql_commands.md"),
+        os.path.join(compiled_dir1, "README.md"),
+    ],
+}
+
+for file in files_to_copy["files"]:
+    copy_file(file, dest_dir1)
 
 backup_folder = os.path.join(os.path.expanduser("~"), "Desktop", "db")
 post_build_db = os.path.join(os.getcwd(), "dist", "AnimePlayer", "db", "anime_player.db")

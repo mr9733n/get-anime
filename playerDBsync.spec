@@ -14,9 +14,14 @@ from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, co
 from PyInstaller.building.build_main import Analysis
 from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
 
-
+APP_DIR = "app"
+APP_DIR_NAME = "sync"
+BUILD_FILE = "db_sync_gui.py"
 BUILD_ONEFILE = True
 BUILD_USE_ENV = False
+EXCLUDE_DIRS = {"incoming"}
+EXCLUDE_FILE_NAMES = {"todo.md", "requirements.txt"}
+EXCLUDE_PREFIXES = ("db_snapshot",)
 
 # Compatibility shim: PyInstaller 6.x removed 'Version'. Build VSVersionInfo from simple kwargs.
 def Version(*, file_version, product_version, company_name, file_description, internal_name, legal_copyright, original_filename, product_name):
@@ -68,10 +73,33 @@ else:
 
 print(f"📂 Site-packages folder: {PACKAGES_FOLDER}")
 
-project_dir = os.getcwd()
-block_cipher = None
+def collect_app_datas(dir: str):
+    project_dir = Path(dir)
+    sync_root = project_dir / APP_DIR / APP_DIR_NAME
+
+    result = []
+
+    for path in sync_root.rglob("*"):
+        if any(part in EXCLUDE_DIRS for part in path.parts):
+            continue
+        if path.is_dir():
+            continue
+        name = path.name
+        if name in EXCLUDE_FILE_NAMES:
+            continue
+        if any(name.startswith(prefix) for prefix in EXCLUDE_PREFIXES):
+            continue
+        rel_inside_sync = path.relative_to(sync_root)
+        rel_parent = rel_inside_sync.parent
+        if rel_parent == Path("."):
+            dest = APP_DIR
+        else:
+            dest = os.path.join(APP_DIR, str(rel_parent))
+        result.append((str(path), dest))
+    return result
 
 # Pre-build
+project_dir = os.getcwd()
 # .env for future implementation send via inet
 env_path = Path(project_dir) / '.env'
 temp_env_dir = Path(tempfile.mkdtemp(prefix="build_env_"))
@@ -110,6 +138,7 @@ if BUILD_USE_ENV:
             os.environ["PROD_KEY"] = prod_key
         print(f"✅ Temporary .env file created and modified: {build_env_path}")
 
+block_cipher = None
 # ----
 # AnimePlayerDBSync_Full.spec
 block = {
@@ -159,14 +188,14 @@ if os.path.isdir(tcl86) and os.path.isdir(tk86):
 
 datas +=[(str(Path(av.__file__).parent), "av")]
 datas +=[(str(Path(pylibsrtp.__file__).parent), "pylibsrtp")]
-datas += [(os.path.join(project_dir, "app", "sync"), "app")]
+datas += collect_app_datas(project_dir)
 datas += [(os.path.join(project_dir, "favicon.ico"), ".")]
 if BUILD_USE_ENV:
     datas += [(str(build_env_path), ".")]
 
 icon_path = os.path.join(project_dir, "favicon.ico")
 
-a = Analysis(['app/sync/db_sync_gui.py'],
+a = Analysis([f"{APP_DIR}/{APP_DIR_NAME}/{BUILD_FILE}"],
              pathex=[
                  project_dir,
                  PACKAGES_FOLDER,
@@ -199,6 +228,7 @@ pyz = PYZ(a.pure, a.zipped_data,
 
 if BUILD_ONEFILE:
     exe = EXE(
+        pyz,
         a.scripts,
         a.binaries,
         a.zipfiles,
@@ -288,12 +318,12 @@ if os.path.isdir(tcl86) and os.path.isdir(tk86):
     datas += [(tcl86, "tcl/tcl8.6")]
     datas += [(tk86,  "tcl/tk8.6")]
 
-datas += [(os.path.join(project_dir, "app", "sync"), "app")]
+datas += collect_app_datas(project_dir)
 datas += [(os.path.join(project_dir, "favicon.ico"), ".")]
 
 icon_path = os.path.join(project_dir, "favicon.ico")
 
-a = Analysis(['app/sync/db_sync_gui.py'],
+a = Analysis([f"{APP_DIR}/{APP_DIR_NAME}/{BUILD_FILE}"],
              pathex=[
                  project_dir,
                  PACKAGES_FOLDER,

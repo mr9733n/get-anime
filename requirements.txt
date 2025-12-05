@@ -1,24 +1,26 @@
-aiohttp>=3.13.2
 attrs~=25.4.0
-beautifulsoup4~=4.14.3
+typing_extensions~=4.15.0
+SQLAlchemy~=2.0.44
 greenlet~=3.2.4
 jinja2~=3.1.6
-Pillow>=12.0.0
-
-pyinstaller~=6.17.0
-pydantic~=2.12.5
-pytest~=8.3.5
-python-dotenv~=1.1.0
 python-vlc~=3.0.21203
 PyQt5~=5.15.11
-pyzbar~=0.1.9
-pyzipper~=0.3.6
-qrcode~=8.2
+Pillow>=12.0.0
+pyinstaller~=6.17.0
+pydantic~=2.12.5
 requests>=2.32.3
-requests_toolbelt~=1.0.0
-SQLAlchemy~=2.0.44
-tqdm~=4.67.1
-typing_extensions~=4.15.0
-
+aiohttp>=3.13.2
 httpx~=0.28.1
 playwright~=1.56.0
+beautifulsoup4~=4.14.3
+
+# Not using now
+pytest~=8.3.5
+python-dotenv~=1.1.0
+qrcode~=8.2
+
+# Not needed for last build
+# requests_toolbelt~=1.0.0
+# tqdm~=4.67.1
+# pyzbar~=0.1.9
+# pyzipper~=0.3.6

@@ -55,12 +55,18 @@ Note: This application is for personal use only and should not be used to infrin
 
 ## Setup and Usage
 
+Clone repository:
+```bash
+git clone https://github.com/mr9733n/get-anime.git
+```
+
 Installing Dependencies:
 
 Before running the application, make sure you have Python 3 and VLC Player installed. You will also need to install the necessary dependencies:
 Install the necessary libraries using pip:
 
 ```bash
+cd get-anime
 pip install -r requirements.txt
 ```
 
@@ -77,9 +83,18 @@ python main.py
 ```
 
 ## Build the application:
+- old version build_513.spec
+- new version build_617.spec
+- requirements.txt was updated
+
+None: If you want use AniMedia wrapper, you need to run before build:
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH="0"
+python -m playwright install chromium
+```
 
 ```bash
-pyinstaller build.spec --noconfirm
+pyinstaller build_617.spec --noconfirm
 ```
 
 ## Utilities: 

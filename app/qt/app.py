@@ -33,7 +33,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "7d280cabad9f2063749b8ac832b21951a70dc3380927403a078180b120a333d5"
+VLC_PLAYER_HASH = "e100a8ad178b23ddd4e09268932c83fe0401d3bfbdecd5df6d1bc8c709c4d76d"
 PROVIDER_ANILIBERTY = "AniLiberty"
 PROVIDER_ANIMEDIA = "AniMedia"
 APP_WIDTH = 1000
@@ -1192,7 +1192,7 @@ class AnimePlayerAppVer3(QWidget):
                 return
             self.logger.debug(f"keywords: {search_text}")
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if title_ids:
+            if title_ids and providers == [PROVIDER_ANIMEDIA]:
                 self._handle_found_titles(title_ids, search_text)
             else:
                 if self.headless == 'true':

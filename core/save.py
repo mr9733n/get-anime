@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker, aliased
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
-    Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio
+    Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio, Provider, TitleProviderMap
 
 
 class SaveManager:
@@ -302,53 +302,78 @@ class SaveManager:
             score_external=score_external,
         )
 
-    def save_title(self, title_data):
+    @staticmethod
+    def normalize_provider_code(raw: str) -> str:
+        return (
+            raw.strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+
+    def save_title(self, provider_code: str, external_id: int | str, title_fields: dict) -> int:
+        """
+        Сохраняет тайтл и связь (provider, external_id -> title_id).
+        Возвращает внутренний title_id.
+        """
         with self.Session as session:
-            title_id = title_data['title_id']
-            self.logger.info(f"save_title started for {title_id}")
             try:
-                # Check if the title data is a dictionary
-                if not isinstance(title_data, dict):
-                    raise ValueError("The title data must be a dictionary.")
+                external_id_str = str(external_id)
+                provider_code = self.normalize_provider_code(provider_code)
 
-                # Check key field types
-                if not isinstance(title_id, int):
-                    raise ValueError("Invalid type for 'title_id'. Expected int.")
+                # 1. находим/создаём провайдера
+                provider = (
+                    session.query(Provider)
+                    .filter_by(code=provider_code)
+                    .one_or_none()
+                )
+                if provider is None:
+                    provider = Provider(code=provider_code, name=provider_code)
+                    session.add(provider)
+                    session.flush()  # provider_id
 
-                # Convert timestamps if they exist
-                if 'updated' in title_data:
-                    title_data['updated'] = datetime.fromtimestamp(title_data['updated'], tz=timezone.utc)
-                if 'last_change' in title_data:
-                    title_data['last_change'] = datetime.fromtimestamp(title_data['last_change'], tz=timezone.utc)
-
-                # Check for an existing title by title_id or code
-                existing_title = session.query(Title).filter(
-                    or_(
-                        Title.title_id == title_id,
-                        Title.code == title_data['code']
+                # 2. ищем маппинг
+                link = (
+                    session.query(TitleProviderMap)
+                    .filter_by(
+                        provider_id=provider.provider_id,
+                        external_title_id=external_id_str,
                     )
-                ).first()
+                    .one_or_none()
+                )
 
-                if existing_title:
-                    # Update existing title if data has changed
+                if link is not None:
+                    # есть существующий title — обновляем
+                    title = link.title
                     is_updated = False
-                    for key, value in title_data.items():
-                        if getattr(existing_title, key, None) != value:
-                            setattr(existing_title, key, value)
+                    for key, value in title_fields.items():
+                        if hasattr(title, key) and getattr(title, key) != value:
+                            setattr(title, key, value)
                             is_updated = True
-
                     if is_updated:
                         session.commit()
-                        self.logger.debug(f"Updated title_id: {title_id}")
+                        self.logger.debug(f"Updated title_id: {title.title_id} for {provider_code}:{external_id}")
                 else:
-                    # Add a new title
-                    new_title = Title(**title_data)
-                    session.add(new_title)
+                    # создаём новый title
+                    title = Title(**title_fields)
+                    session.add(title)
+                    session.flush()  # получаем title.title_id
+
+                    link = TitleProviderMap(
+                        title_id=title.title_id,
+                        provider_id=provider.provider_id,
+                        external_title_id=external_id_str,
+                    )
+                    session.add(link)
                     session.commit()
-                    self.logger.debug(f"Successfully saved title_id: {title_id}")
+                    self.logger.debug(f"Created title_id: {title.title_id} for {provider_code}:{external_id}")
+
+                return title.title_id
+
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Error saving title to database: {e}")
+                self.logger.error(f"Error saving title with mapping: {e}")
+                raise
 
     def save_franchise(self, franchise_data):
         with self.Session as session:

@@ -6,9 +6,6 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
 
-#
-ID_OFFSET = 10000
-ORIGINAL_ID_FIELD = "animedia_id"
 
 
 def safe_str(value: bytes | str) -> str:
@@ -313,10 +310,6 @@ def _extract_id_from_url(url: str) -> int:
         return 0
 
 
-def _make_new_id(original_id: int) -> int:
-    return ID_OFFSET + original_id
-
-
 def map_status(status_str: str | None) -> Dict[str, Any]:
     """
     Приводит строковый статус к старому формату:
@@ -337,7 +330,7 @@ def map_status(status_str: str | None) -> Dict[str, Any]:
     return {"code": 2, "string": "Завершён"}
 
 
-def replace_spaces(text: str) -> str:
+def replace_spaces(text: str) -> str | None:
     """
     Привести строку к безопасному имени файла:
     • пробелы → «-»;
@@ -355,8 +348,11 @@ def replace_spaces(text: str) -> str:
     txt = txt.replace("_", "-")
     txt = re.sub(r"-{2,}", "-", txt)
     txt = txt.strip("-")
-    return text
+    return txt.lower()
 
+def replace_brackets(text: str) -> str | None:
+    txt = str(text).replace("«", "").replace('»', "")
+    return txt
 
 def build_base_dict(
     *,
@@ -366,23 +362,22 @@ def build_base_dict(
     episodes: Dict[str, Dict[str, str | None]],
     status: Dict[str, Any],
     sanitized_code: str,
+    sanitized_name_ru: str,
 ) -> Dict[str, Any]:
     """Собирает общий словарь‑результат без дублирования кода."""
 
     original_id = _extract_id_from_url(url)
-    new_id = _make_new_id(_extract_id_from_url(url))
     updated_ts = meta.get("updated") or 0
     for ep_data in episodes.values():
         ep_data["created_timestamp"] = updated_ts
 
     return {
-        "id": new_id,
-        ORIGINAL_ID_FIELD: original_id,
+        "external_id": original_id,
         "provider": "AniMedia",
         "code": sanitized_code,
         "announce": meta.get("announce", ""),
         "names": {
-            "ru": meta.get("name_ru") or "",
+            "ru": sanitized_name_ru,
             "en": meta.get("name_en") or "",
             "alternative": meta.get("alternative") or ""
         },

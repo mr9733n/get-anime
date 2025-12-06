@@ -8,7 +8,7 @@ from core.save import SaveManager
 from core.process import ProcessManager
 from core.get import GetManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
-from core.tables import Base, DaysOfWeek, History
+from core.tables import Base, DaysOfWeek, History, Title
 from app.qt.app_state_manager import AppStateManager
 
 class DatabaseManager:
@@ -89,8 +89,8 @@ class DatabaseManager:
     def save_studio_to_db(self, title_id, studio_name):
         return self.save_manager.save_studio_to_db(title_id, studio_name)
 
-    def save_title(self, title_data):
-        return self.save_manager.save_title(title_data)
+    def save_title(self, provider_code: str, external_id: int | str, title_fields: dict):
+        return self.save_manager.save_title(provider_code, external_id, title_fields)
 
     def save_franchise(self, franchise_data):
         return self.save_manager.save_franchise(franchise_data)
@@ -248,3 +248,74 @@ class DatabaseManager:
     def get_total_titles_count(self, show_mode=None):
         """Titles count"""
         return self.get_manager.get_total_titles_count(show_mode)
+
+    def get_titles_search_query(self, query) -> list[dict]:
+        return self.get_manager.get_titles_search_query(query)
+
+    def get_title_by_external_id(self, provider_code: str, external_id: int | str):
+        return self.get_manager.get_title_by_external_id(provider_code, external_id)
+
+    def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
+        return self.get_manager.get_title_ids_by_provider(provider_code)
+
+    def delete_titles(self, title_ids_input) -> dict:
+        """
+        Удаляет один или несколько тайтлов.
+        Принимает:
+            - строку вида "123, 456,789"
+            - список строк/чисел ["123", "456"]
+            - одно число 123
+
+        Возвращает:
+            {
+                "deleted": [список удалённых title_id],
+                "not_found": [список id, которых нет в БД],
+            }
+        """
+        if isinstance(title_ids_input, str):
+            parts = title_ids_input.split(",")
+            title_ids = [int(p.strip()) for p in parts if p.strip().isdigit()]
+        elif isinstance(title_ids_input, (list, tuple)):
+            title_ids = []
+            for x in title_ids_input:
+                if isinstance(x, int):
+                    title_ids.append(x)
+                elif isinstance(x, str) and x.strip().isdigit():
+                    title_ids.append(int(x))
+        elif isinstance(title_ids_input, int):
+            title_ids = [title_ids_input]
+        else:
+            raise ValueError(f"Unsupported type for title_ids_input: {type(title_ids_input)}")
+
+        if not title_ids:
+            return {"deleted": [], "not_found": []}
+
+        deleted = []
+        not_found = []
+
+        with self.Session as session:
+            titles = (
+                session.query(Title)
+                .filter(Title.title_id.in_(title_ids))
+                .all()
+            )
+
+            found_ids = {t.title_id for t in titles}
+            not_found = [tid for tid in title_ids if tid not in found_ids]
+
+            try:
+                for t in titles:
+                    session.delete(t)
+
+                session.commit()
+                deleted = list(found_ids)
+
+            except Exception as e:
+                session.rollback()
+                self.logger.error(f"Error deleting titles {title_ids}: {e}")
+                raise
+
+        return {
+            "deleted": deleted,
+            "not_found": not_found,
+        }

@@ -14,6 +14,7 @@ from utils.animedia.animedia_utils import (
     extract_video_host,
     map_status,
     replace_spaces,
+    replace_brackets,
     build_base_dict,
 )
 
@@ -39,6 +40,7 @@ class AnimediaAdapter:
         meta = parse_title_page(html, self.client.base_url)
 
         sanitized_code = replace_spaces(meta.get("name_en"))
+        sanitized_name_ru = replace_brackets(meta.get("name_ru"))
         status_obj = map_status(meta.get("status"))
 
         # ---------- 3️⃣ Сбор файлов эпизодов ----------
@@ -60,6 +62,7 @@ class AnimediaAdapter:
             episodes=episodes,
             status=status_obj,
             sanitized_code=sanitized_code,
+            sanitized_name_ru=sanitized_name_ru,
         )
 
     async def get_by_title(self, anime_name: str, max_titles: int = 5) -> List[Dict[str, Any]]:

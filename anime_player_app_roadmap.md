@@ -455,9 +455,12 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Windows fatal exception: access violation 2025-12-03 02:18:29 | CRITICAL | __main__.log_exception | Unexpected exception TypeError: invalid argument to sipBadCatcherResult()
 - [x] Pretty code
 - [x] Add new tables for providers
-- [ ] Fix saving titles
-- [ ] Fix get titles by keywords
-- [ ] Add get titles by provider & external_id
+- [x] Fix saving titles
+- [x] Delete titles
+- [x] Fix get titles by keywords
+- [x] Add get titles for search query
+- [x] Add get titles by provider & external_id
+- [x] Fix Update titles
 - [ ] Filter by provider
 - [ ] show production studio
 - [ ] Create adapter for season / We have to many same seasons with different name

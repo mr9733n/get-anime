@@ -285,7 +285,7 @@ class APIAdapter:
     def _adapt_structure(self, release):
         """Адаптирует базовую структуру релиза."""
         adapted = {
-            'id': release.get('id'),
+            'external_id': release.get('id'),
             'code': release.get('alias', ''),
             'provider': 'AniLiberty',
             'names': {

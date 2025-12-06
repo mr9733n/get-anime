@@ -291,3 +291,82 @@ ALTER TABLE episodes ADD COLUMN hls_sd_animedia TEXT DEFAULT NULL;
 ALTER TABLE episodes DROP COLUMN hls_hd_animedia;
 ALTER TABLE episodes DROP COLUMN hls_sd_animedia;
 ```
+
+17. Remove UNIQ for studio name
+```sql
+BEGIN TRANSACTION;
+
+CREATE TABLE production_studios_new (
+    title_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    last_updated DATETIME,
+    PRIMARY KEY (title_id),
+    FOREIGN KEY(title_id) REFERENCES titles (title_id)
+);
+
+INSERT INTO production_studios_new (title_id, name, last_updated)
+SELECT title_id, name, last_updated FROM production_studios;
+
+DROP TABLE production_studios;
+
+ALTER TABLE production_studios_new RENAME TO production_studios;
+
+COMMIT;
+```
+
+18. Fix providers
+```sql
+-- providers
+CREATE TABLE providers (
+    provider_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    code          TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL
+);
+
+-- title_provider_map
+CREATE TABLE title_provider_map (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_id         INTEGER NOT NULL,
+    provider_id      INTEGER NOT NULL,
+    external_title_id TEXT NOT NULL,
+    FOREIGN KEY (title_id) REFERENCES titles(title_id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX uq_title_provider_external
+ON title_provider_map (provider_id, external_title_id);
+
+```
+ 
+19. Migration for Fix providers
+```sql
+INSERT INTO providers (code, name)
+SELECT DISTINCT LOWER(provider) AS code,
+       provider                  AS name
+FROM titles
+WHERE provider IS NOT NULL;
+```
+
+20. Move title_id to title_provider_map
+```sql
+INSERT INTO title_provider_map (title_id, provider_id, external_title_id)
+SELECT
+    t.title_id,
+    p.provider_id,
+    CASE
+        WHEN t.provider = 'animedia' AND t.animedia_id IS NOT NULL
+            THEN CAST(t.animedia_id AS TEXT)
+        ELSE CAST(t.title_id AS TEXT)
+    END AS external_title_id
+FROM titles t
+JOIN providers p ON p.code = t.provider;
+
+```
+
+21. Set to lower
+```sql
+UPDATE providers
+SET code = LOWER(code)
+WHERE code IS NOT NULL;
+```
+

@@ -1,6 +1,6 @@
 # tables.py
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, LargeBinary, ForeignKey, Text, \
-    SmallInteger, PrimaryKeyConstraint, Float
+    SmallInteger, PrimaryKeyConstraint, Float, UniqueConstraint
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from sqlalchemy.ext.declarative import declarative_base
@@ -48,21 +48,44 @@ class Title(Base):
     alternative_player = Column(String)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
-    franchises = relationship("FranchiseRelease", back_populates="title", cascade="all, delete-orphan")
-    genres = relationship("TitleGenreRelation", back_populates="title")
-    team_members = relationship("TitleTeamRelation", back_populates="title")
-    episodes = relationship("Episode", back_populates="title")
-    torrents = relationship("Torrent", back_populates="title")
-    posters = relationship("Poster", back_populates="title")
-    schedules = relationship("Schedule", back_populates="title")
-    ratings = relationship("Rating", back_populates="title")
-    history = relationship("History", back_populates="title")
-    production_studio = relationship("ProductionStudio", uselist=False, back_populates="title")
+    franchises = relationship("FranchiseRelease",back_populates="title",cascade="all, delete-orphan",)
+    genres = relationship("TitleGenreRelation",back_populates="title",cascade="all, delete-orphan",)
+    team_members = relationship("TitleTeamRelation",back_populates="title",cascade="all, delete-orphan",)
+    episodes = relationship("Episode",back_populates="title",cascade="all, delete-orphan",)
+    torrents = relationship("Torrent",back_populates="title",cascade="all, delete-orphan",)
+    posters = relationship("Poster",back_populates="title",cascade="all, delete-orphan",)
+    schedules = relationship("Schedule",back_populates="title",cascade="all, delete-orphan",)
+    ratings = relationship("Rating",back_populates="title",cascade="all, delete-orphan",)
+    history = relationship("History",back_populates="title",cascade="all, delete-orphan",)
+    production_studio = relationship("ProductionStudio",uselist=False,back_populates="title",cascade="all, delete-orphan",)
+    provider_links = relationship("TitleProviderMap",back_populates="title",cascade="all, delete-orphan",)
+
+class Provider(Base):
+    __tablename__ = "providers"
+    provider_id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True)  # 'shikimori', 'animedia', ...
+    name = Column(String)
+
+    titles_map = relationship("TitleProviderMap", back_populates="provider")
+
+class TitleProviderMap(Base):
+    __tablename__ = "title_provider_map"
+    id = Column(Integer, primary_key=True)
+    title_id = Column(Integer, ForeignKey("titles.title_id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.provider_id"), nullable=False)
+    external_title_id = Column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "external_title_id"),
+    )
+
+    title = relationship("Title", back_populates="provider_links")
+    provider = relationship("Provider", back_populates="titles_map")
 
 class ProductionStudio(Base):
     __tablename__ = 'production_studios'
     title_id = Column(Integer, ForeignKey('titles.title_id'), primary_key=True)
-    name = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False) # unique=True,
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     title = relationship("Title", back_populates="production_studio")

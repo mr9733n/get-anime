@@ -6,6 +6,7 @@ import json
 import logging
 import platform
 import subprocess
+from dataclasses import dataclass
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Any, Dict, Union
@@ -42,6 +43,16 @@ APP_X_POS = 100
 APP_Y_POS = 100
 
 
+@dataclass
+class TitleRef:
+    title_id: int
+    name_ru: str | None
+    name_en: str | None
+    provider: str | None
+    provider_name: str | None
+    external_id: str | None
+
+
 class APIClientError(Exception):
     """Исключение для ошибок при работе с API."""
     def __init__(self, message):
@@ -54,7 +65,6 @@ class AnimePlayerAppVer3(QWidget):
     def __init__(self, db_manager, version, template_name, prod_key=None):
         super().__init__()
         self.logger = logging.getLogger(__name__)
-
         self.prod_key = prod_key
         if prod_key is not None:
             unique_key = str(prod_key) + '-APA'
@@ -84,7 +94,7 @@ class AnimePlayerAppVer3(QWidget):
         self.title_search_entry = None
         self.current_titles = None
         self.selected_quality = None
-
+        self._last_search_text = None
         self.discovered_links = []
         self.sanitized_titles = []
         self.title_names = []
@@ -767,11 +777,12 @@ class AnimePlayerAppVer3(QWidget):
     def _save_titles_list(self, titles_list):
         try:
             for title_data in titles_list:
-                title_id = title_data.get('id', {})
+                external_id = title_data.get('external_id', {})
                 self.logger.debug(
-                f"[XXX] Saving title_id from API: {title_id}")
-            self.invoke_database_save(titles_list)
+                f"[XXX] Saving external_id from API: {external_id}")
+            title_ids = self.invoke_database_save(titles_list)
             self.current_data = titles_list
+            return title_ids
         except Exception as e:
             self.logger.error(f"Ошибка при save titles расписания: {e}")
 
@@ -801,20 +812,18 @@ class AnimePlayerAppVer3(QWidget):
                 titles_list.extend(titles)
 
             self.logger.debug(f"Total titles (light): {len(titles_list)}")
-            # Берём ID для параллельной догрузки всего нужного «одним махом»
-            ids = [t.get('id') for t in titles_list if t.get('id') is not None]
+            ids = [t.get('external_id') for t in titles_list if t.get('external_id') is not None]
             if ids:
                 full_list = self.api_adapter.get_releases_full(ids, max_workers=4)
                 if full_list:
                     self.logger.debug(f"Full bundles fetched: {len(full_list)} (parallel)")
-                    self._save_titles_list(full_list)   # сохраняем уже «толстые» данные
+                    new_title_ids = self._save_titles_list(full_list)
                 else:
-                    # fallback: если вдруг не удалось — сохраняем как есть (лёгкие)
-                    self._save_titles_list(titles_list)
+                    # fallback:
+                    new_title_ids = self._save_titles_list(titles_list)
             else:
-                self._save_titles_list(titles_list)
+                new_title_ids = self._save_titles_list(titles_list)
 
-            new_title_ids = set(ids)
             return True, new_title_ids
         except Exception as e:
             self.logger.error(f"Error while fetching and processing schedule: {e}")
@@ -889,21 +898,47 @@ class AnimePlayerAppVer3(QWidget):
         """
         return self.ui_generator.create_title_browser(title, show_mode=show_mode)
 
-    def invoke_database_save(self, title_list):
-        # TODO: fix this. need to count as dict
+    def invoke_database_save(self, title_list: list[dict]) -> list[int]:
+        """
+        Сохраняет тайтлы + эпизоды + торренты.
+        Возвращает список ВНУТРЕННИХ title_id из БД.
+        """
         self.logger.debug(f"Processing title data: {len(title_list)}")
+        internal_ids: list[int] = []
+
         processes = {
             self.db_manager.process_episodes: "episodes",
             self.db_manager.process_torrents: "torrents",
-            self.db_manager.process_titles: "titles",
         }
-        for title_data in title_list:
+
+        for raw_title_data in title_list:
+            # 1. сначала обрабатываем тайтл
+            title_ok, title_id = self.db_manager.process_titles(raw_title_data)
+
+            if not title_ok or title_id is None:
+                self.logger.warning(
+                    f"Failed to process title (external_id={raw_title_data.get('external_id')}, "
+                    f"provider={raw_title_data.get('provider')})"
+                )
+                continue
+
+            internal_ids.append(title_id)
+
+            # 2. сохраняем эпизоды/торренты, уже зная внутренний title_id
+            payload = {"title_id": title_id, **raw_title_data}
+
             for process_func, process_name in processes.items():
-                result = process_func(title_data)
-                if result:
-                    self.logger.debug(f"Successfully saved {process_name} table. STATUS: {result}")
-                else:
-                    self.logger.warning(f"Failed to process {process_name}")
+                try:
+                    result = process_func(payload)
+                    if result:
+                        self.logger.debug(
+                            f"Successfully saved {process_name} table for title_id={title_id}. STATUS: {result}")
+                    else:
+                        self.logger.warning(f"Failed to process {process_name} for title_id={title_id}")
+                except Exception as e:
+                    self.logger.error(f"Exception while processing {process_name} for title_id={title_id}: {e}")
+
+        return internal_ids
 
     def get_random_title(self):
         try:
@@ -930,9 +965,7 @@ class AnimePlayerAppVer3(QWidget):
                 self.show_error_notification("Error", "No titles found in the response.")
                 return
 
-            title_data = title_list[0]
-            title_id = title_data.get('id')
-            self.invoke_database_save(title_list)
+            title_id = self.invoke_database_save(title_list)
             if title_id is None:
                 self.logger.error("Title ID not found in response.")
                 self.show_error_notification("Error", "Title ID not found in response.")
@@ -1005,42 +1038,112 @@ class AnimePlayerAppVer3(QWidget):
                         parsed_data.append({"day": day, "title_id": title_id})
         return parsed_data
 
+    def _resolve_titles_for_query(self, search_text: str) -> list[TitleRef]:
+        """Ищет тайтлы в БД и приводит результат к единому виду."""
+        titles_list = self.db_manager.get_titles_search_query(search_text)
+        results: list[TitleRef] = []
+
+        for t in titles_list:
+            title_id = t.get("title_id")
+            name_ru = t.get("name_ru")
+            name_en = t.get("name_en")
+
+            providers = t.get("providers", []) or []
+
+            if providers:
+                primary = providers[0]
+                provider = primary.get("provider")
+                provider_name = primary.get("name")
+                external_id = primary.get("external_id")
+            else:
+                provider = None
+                external_id = None
+
+            self.logger.info(
+                f"Found title: {title_id}, {name_ru}, {name_en}, {provider}, {provider_name}, {external_id}"
+            )
+
+            if title_id is None:
+                continue  # на всякий случай
+
+            results.append(
+                TitleRef(
+                    title_id=title_id,
+                    name_ru=name_ru,
+                    name_en=name_en,
+                    provider=provider,
+                    provider_name=provider_name,
+                    external_id=external_id,
+                )
+            )
+
+        return results
+
     def get_update_title(self):
         """Обновляет информацию о тайтле в базе данных."""
         try:
             self.ui_manager.show_loader("Updating title info...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+            self.ui_manager.set_buttons_enabled(False)
 
-            search_text = self.title_search_entry.text()
+            search_text = self.title_search_entry.text().strip()
 
             if not search_text:
-                if self.current_title_id is None:
+                # если в поле пусто — пытаемся использовать текущий выбранный тайтл
+                if self.current_title_ids:
+                    # current_title_ids уже список внутренних id
+                    search_text = ",".join(str(tid) for tid in self.current_title_ids)
+                elif self.current_title_id is not None:
+                    search_text = str(self.current_title_id)
+                else:
                     self.logger.warning("Unable to update title(s): missing title ID(s)")
                     self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
                     return False
 
-                search_text = str(self.current_title_id)
-                if self.current_title_ids:
-                    search_text = str(self.current_title_ids)
-                self.logger.debug(f"Used current title_id: {search_text} for update")
+                self.logger.debug(f"Used current title_id(s): {search_text} for update")
             else:
                 self.title_search_entry.clear()
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
-            title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if providers == [PROVIDER_ANILIBERTY]:
-                self._handle_get_titles_from_api(search_text)
-            elif providers == [PROVIDER_ANIMEDIA]:
-                title_list = self.db_manager.get_titles_from_db(title_ids=title_ids)
-                self.logger.info(f"Updating titles: {(', '.join(str(t) for t in title_ids))}")
-                for title_data in title_list:
-                    search_text = getattr(title_data, "name_en", None)
+
+            titles = self._resolve_titles_for_query(search_text)
+
+            if not titles:
+                self.logger.warning(f"No titles found in DB for update by query: {search_text}")
+                self.show_error_notification("Update", "No titles found for update.")
+                return False
+
+            for tref in titles:
+                self.logger.info(
+                    f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
+                    f"{tref.provider}, {tref.external_id}"
+                )
+
+                if tref.provider_name == PROVIDER_ANILIBERTY:
+                    query_name = tref.name_en or tref.name_ru or str(tref.external_id)
+                    title_ids = self._handle_get_titles_from_api(query_name)
+                    self._handle_found_titles(title_ids, query_name)
+
+                elif tref.provider_name == PROVIDER_ANIMEDIA:
                     adapter = AnimediaAdapter(self.base_am_url)
-                    self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
+                    query_name = tref.name_en or tref.name_ru
+
+                    self._last_search_text = query_name
+                    self._animedia_worker = AsyncWorker(
+                        adapter.get_by_title,
+                        query_name,
+                        max_titles=5,
+                    )
                     self._animedia_worker.finished.connect(self._on_animedia_result)
                     self._animedia_worker.error.connect(self._on_animedia_error)
                     self._animedia_worker.start()
+
+                else:
+                    self.logger.warning(
+                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
+                    )
+
             return True
+
         except Exception as e:
             self.logger.error(f"Error on update title: {e}")
             return False
@@ -1054,22 +1157,48 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.show_loader("Updating title info...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
-            search_text = self.title_search_entry.text()
+            search_text = self.title_search_entry.text().strip()
 
             if not search_text:
-                if self.current_title_id is None:
+                if self.current_title_ids:
+                    search_text = ",".join(str(tid) for tid in self.current_title_ids)
+                elif self.current_title_id is not None:
+                    search_text = str(self.current_title_id)
+                else:
                     self.logger.warning("Unable to update title(s): missing title ID(s)")
                     self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
                     return False
 
-                search_text = str(self.current_title_id)
-                self.logger.debug(f"Used current title_id: {search_text} for update")
+                self.logger.debug(f"Used current title_id(s): {search_text} for update")
             else:
                 self.title_search_entry.clear()
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
-            self._handle_get_titles_from_api(search_text)
 
+            titles = self._resolve_titles_for_query(search_text)
+
+            if not titles:
+                self.logger.warning(f"No titles found in DB for update by query: {search_text}")
+                self.show_error_notification("Update", "No titles found for update.")
+                return False
+
+            for tref in titles:
+                self.logger.info(
+                    f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
+                    f"{tref.provider}, {tref.external_id}"
+                )
+
+                if tref.provider == PROVIDER_ANILIBERTY:
+                    query_name = tref.name_en or tref.name_ru or str(tref.external_id)
+                    title_ids = self._handle_get_titles_from_api(query_name)
+                    self._handle_found_titles(title_ids, query_name)
+
+                else:
+                    self.logger.warning(
+                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
+                    )
+
+            return True
         except Exception as e:
             self.logger.error(f"Error on update title: {e}")
             return False
@@ -1083,28 +1212,56 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.show_loader("Updating title info...")
             self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
 
-            search_text = self.title_search_entry.text()
+            search_text = self.title_search_entry.text().strip()
 
             if not search_text:
-                if self.current_title_id is None:
+                if self.current_title_ids:
+                    search_text = ",".join(str(tid) for tid in self.current_title_ids)
+                elif self.current_title_id is not None:
+                    search_text = str(self.current_title_id)
+                else:
                     self.logger.warning("Unable to update title(s): missing title ID(s)")
                     self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
                     return False
 
-                title_list = self.db_manager.get_titles_from_db(title_id=self.current_title_id)
-                title_data = title_list[0]
-                search_text = getattr(title_data, "name_en", None)
-
-                self.logger.debug(f"Used current title_id: {self.current_title_id} for update")
+                self.logger.debug(f"Used current title_id(s): {search_text} for update")
             else:
                 self.title_search_entry.clear()
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
-            adapter = AnimediaAdapter(self.base_am_url)
-            self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-            self._animedia_worker.finished.connect(self._on_animedia_result)
-            self._animedia_worker.error.connect(self._on_animedia_error)
-            self._animedia_worker.start()
+
+            titles = self._resolve_titles_for_query(search_text)
+
+            if not titles:
+                self.logger.warning(f"No titles found in DB for update by query: {search_text}")
+                self.show_error_notification("Update", "No titles found for update.")
+                return False
+
+            for tref in titles:
+                self.logger.info(
+                    f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
+                    f"{tref.provider}, {tref.external_id}"
+                )
+
+                if tref.provider == PROVIDER_ANIMEDIA:
+                    adapter = AnimediaAdapter(self.base_am_url)
+                    query_name = tref.name_en or tref.name_ru
+
+                    self._last_search_text = query_name
+                    self._animedia_worker = AsyncWorker(
+                        adapter.get_by_title,
+                        query_name,
+                        max_titles=5,
+                    )
+                    self._animedia_worker.finished.connect(self._on_animedia_result)
+                    self._animedia_worker.error.connect(self._on_animedia_error)
+                    self._animedia_worker.start()
+
+                else:
+                    self.logger.warning(
+                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
+                    )
+
             return True
 
         except Exception as e:
@@ -1124,21 +1281,38 @@ class AnimePlayerAppVer3(QWidget):
                 return
             self.logger.debug(f"keywords: {search_text}")
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
+
             if title_ids:
+                self.logger.info(f"Found {len(title_ids)} titles in local DB for '{search_text}'")
                 self._handle_found_titles(title_ids, search_text)
-            elif title_ids and providers == [PROVIDER_ANILIBERTY]:
-                self._handle_get_titles_from_api(search_text)
-            elif title_ids and providers == [PROVIDER_ANIMEDIA]:
+                return True
+
+
+            self.logger.info(f"With the keywords: {search_text} was not find any title_id.")
+            try:
+                self.logger.info(f"...Try to load from provider1")
+                if title_ids:
+                    self.logger.info(f"Provider1 returned {len(title_ids)} titles")
+                    self._handle_found_titles(title_ids, search_text)
+                    return True
+            except Exception as e:
+                self.logger.warning(f"Provider1 error: {e}")
+            try:
+                self.logger.info(f"...Try to load from Animedia (async)")
                 adapter = AnimediaAdapter(self.base_am_url)
+                self._last_search_text = search_text
                 self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
                 self._animedia_worker.finished.connect(self._on_animedia_result)
                 self._animedia_worker.error.connect(self._on_animedia_error)
                 self._animedia_worker.start()
-            return True
+                return True
+            except Exception as e:
+                self.logger.error(f"Error starting Animedia worker: {e}")
+                return False
 
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title: {e}")
-            return False, None
+            return False
         finally:
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
@@ -1154,10 +1328,10 @@ class AnimePlayerAppVer3(QWidget):
                 return
             self.logger.debug(f"keywords: {search_text}")
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if title_ids:
-                self._handle_found_titles(title_ids, search_text)
-            else:
-                self._handle_get_titles_from_api(search_text)
+            if not title_ids:
+                title_ids = self._handle_get_titles_from_api(search_text)
+
+            self._handle_found_titles(title_ids, search_text)
 
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title_anilibria: {e}")
@@ -1215,13 +1389,17 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Unexpected error in _on_animedia_error: {msg}")
             self.show_error_notification("Error", f"Unexpected error. Check logs for details {msg}")
 
-    def _on_animedia_result(self, data: list):
+    def _on_animedia_result(self, data: list) -> list[int] | None:
         """
         `data` – список словарей, который вернул `get_by_title`.
         Здесь можно сохранить в БД, отобразить в UI и т.п.
         """
         try:
-            self.logger.info(f"Получено {len(data)} записей от Animedia")
+            if not data:
+                self.show_error_notification("AniMedia", "No titles found on Animedia.")
+                return
+
+            self.logger.info(f"Animedia returned {len(data)} items")
 
             if isinstance(data, dict) and 'error' in data:
                 self.logger.error(data['error'])
@@ -1231,7 +1409,7 @@ class AnimePlayerAppVer3(QWidget):
             # Проверяем тип данных в ответе
             if isinstance(data, dict) and 'list' in data:
                 title_list = data['list']
-            elif isinstance(data, dict) and 'id' in data:
+            elif isinstance(data, dict) and 'external_id' in data:
                 # Если это одиночный тайтл, оборачиваем его в список
                 title_list = [data]
             elif isinstance(data, list):
@@ -1246,20 +1424,23 @@ class AnimePlayerAppVer3(QWidget):
                 self.show_error_notification("Error", "No titles found in the response.")
                 return
 
-
             self.logger.debug(f"Processing title data: {title_list}")
-            self.invoke_database_save(title_list)
-            title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
-
-            # Сохраняем текущие данные
+            title_ids = self.invoke_database_save(title_list)
             self.current_data = data
-            self._handle_found_titles(title_ids, search_text="")
+
+            if not title_ids:
+                self.logger.error("No title_ids returned after saving Animedia titles")
+                self.show_error_notification("AniMedia", "Failed to save titles to database.")
+                return
+
+            search_text = getattr(self, "_last_search_text", "")
+            self._handle_found_titles(title_ids, search_text)
 
         except Exception as e:
-            self.logger.error(f"Error while fetching title: {e}")
+            self.logger.error(f"Error while fetching title AM: {e}")
             self.show_error_notification("Error", "Unexpected error. Check logs for details.")
 
-    def _handle_get_titles_from_api(self, search_text):
+    def _handle_get_titles_from_api(self, search_text) -> list[int] | None:
         try:
             keywords = search_text.split(',')
             keywords = [kw.strip() for kw in keywords]
@@ -1281,7 +1462,7 @@ class AnimePlayerAppVer3(QWidget):
             # Проверяем тип данных в ответе
             if isinstance(data, dict) and 'list' in data:
                 title_list = data['list']
-            elif isinstance(data, dict) and 'id' in data:
+            elif isinstance(data, dict) and 'external_id' in data:
                 # Если это одиночный тайтл, оборачиваем его в список
                 title_list = [data]
             elif isinstance(data, list):
@@ -1297,17 +1478,15 @@ class AnimePlayerAppVer3(QWidget):
                 return
 
             self.logger.debug(f"Processing title data: {title_list}")
-            self.invoke_database_save(title_list)
-            title_ids = [title_data.get('id') for title_data in title_list if title_data.get('id') is not None]
-            self._handle_found_titles(title_ids, search_text)
-            # Сохраняем текущие данные
-            self.current_data = data
+            title_ids = self.invoke_database_save(title_list)
 
+            self.current_data = data
+            return title_ids
         except APIClientError as api_error:
             self.logger.error(f"API Client Error: {api_error}")
             self.show_error_notification("API Error", str(api_error))  # Показываем ошибку пользователю
         except Exception as e:
-            self.logger.error(f"Error while fetching title: {e}")
+            self.logger.error(f"Error while fetching title from AL: {e}")
             self.show_error_notification("Error", "Unexpected error. Check logs for details.")
 
     def save_playlist_wrapper(self):

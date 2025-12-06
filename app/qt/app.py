@@ -101,11 +101,9 @@ class AnimePlayerAppVer3(QWidget):
         self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
 
         """Loads the configuration settings needed by the application."""
-        self.stream_video_url = self.config_manager.get_setting('Settings', 'stream_video_url')
-        # self.stream_video_url = None
+        self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
-        self.headless = self.config_manager.get_setting('Settings', 'headless')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
         self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
@@ -1037,14 +1035,11 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.info(f"Updating titles: {(', '.join(str(t) for t in title_ids))}")
                 for title_data in title_list:
                     search_text = getattr(title_data, "name_en", None)
-                    if self.headless == 'true':
-                        adapter = AnimediaAdapter(self.base_am_url, headless=True)
-                    else:
-                        adapter = AnimediaAdapter(self.base_am_url)
+                    adapter = AnimediaAdapter(self.base_am_url)
                     self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
                     self._animedia_worker.finished.connect(self._on_animedia_result)
-                    self._animedia_worker.error.connect(self._on_animedia_update_error)
-                    self._animedia_worker.run()
+                    self._animedia_worker.error.connect(self._on_animedia_error)
+                    self._animedia_worker.start()
             return True
         except Exception as e:
             self.logger.error(f"Error on update title: {e}")
@@ -1105,16 +1100,11 @@ class AnimePlayerAppVer3(QWidget):
                 self.title_search_entry.clear()
 
             self.logger.info(f"Updating title. Keywords: {search_text}")
-
-            if self.headless == 'true':
-                adapter = AnimediaAdapter(self.base_am_url, headless=True)
-            else:
-                adapter = AnimediaAdapter(self.base_am_url)
+            adapter = AnimediaAdapter(self.base_am_url)
             self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-            # подключаем сигналы
             self._animedia_worker.finished.connect(self._on_animedia_result)
-            self._animedia_worker.error.connect(self._on_animedia_update_error)
-            self._animedia_worker.run()
+            self._animedia_worker.error.connect(self._on_animedia_error)
+            self._animedia_worker.start()
             return True
 
         except Exception as e:
@@ -1139,17 +1129,12 @@ class AnimePlayerAppVer3(QWidget):
             elif title_ids and providers == [PROVIDER_ANILIBERTY]:
                 self._handle_get_titles_from_api(search_text)
             elif title_ids and providers == [PROVIDER_ANIMEDIA]:
-                if self.headless == 'true':
-                    adapter = AnimediaAdapter(self.base_am_url, headless=True)
-                else:
-                    adapter = AnimediaAdapter(self.base_am_url)
+                adapter = AnimediaAdapter(self.base_am_url)
                 self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-                # подключаем сигналы
                 self._animedia_worker.finished.connect(self._on_animedia_result)
-                self._animedia_worker.error.connect(self._on_animedia_update_error)
-                self._animedia_worker.run()
+                self._animedia_worker.error.connect(self._on_animedia_error)
+                self._animedia_worker.start()
             return True
-
 
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title: {e}")
@@ -1195,15 +1180,11 @@ class AnimePlayerAppVer3(QWidget):
             if title_ids and providers == [PROVIDER_ANIMEDIA]:
                 self._handle_found_titles(title_ids, search_text)
             else:
-                if self.headless == 'true':
-                    adapter = AnimediaAdapter(self.base_am_url, headless=True)
-                else:
-                    adapter = AnimediaAdapter(self.base_am_url)
+                adapter = AnimediaAdapter(self.base_am_url)
                 self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-                # подключаем сигналы
                 self._animedia_worker.finished.connect(self._on_animedia_result)
-                self._animedia_worker.error.connect(self._on_animedia_update_error)
-                self._animedia_worker.run()
+                self._animedia_worker.error.connect(self._on_animedia_error)
+                self._animedia_worker.start()
             return True
 
         except Exception as e:
@@ -1223,12 +1204,16 @@ class AnimePlayerAppVer3(QWidget):
             self.current_title_ids = title_ids
             self.display_titles(title_ids)
 
-    def _on_animedia_update_error(self, msg: str):
-        self.ui_manager.hide_loader()
-        self.ui_manager.set_buttons_enabled(True)
+    def _on_animedia_error(self, message: str):
+        try:
+            self.logger.error(f"AniMedia worker error: {message}")
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
+            self.show_error_notification("AniMedia error", message)
 
-        self.logger.error(f"AniMedia worker error: {msg}")
-        self.show_error_notification("AniMedia error", msg)
+        except Exception as msg:
+            self.logger.error(f"Unexpected error in _on_animedia_error: {msg}")
+            self.show_error_notification("Error", f"Unexpected error. Check logs for details {msg}")
 
     def _on_animedia_result(self, data: list):
         """
@@ -1270,9 +1255,6 @@ class AnimePlayerAppVer3(QWidget):
             self.current_data = data
             self._handle_found_titles(title_ids, search_text="")
 
-        except APIClientError as api_error:
-            self.logger.error(f"API Client Error: {api_error}")
-            self.show_error_notification("API Error", str(api_error))  # Показываем ошибку пользователю
         except Exception as e:
             self.logger.error(f"Error while fetching title: {e}")
             self.show_error_notification("Error", "Unexpected error. Check logs for details.")

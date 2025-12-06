@@ -869,8 +869,6 @@ class SaveManager:
             # ВАЖНО: покрытие чистим ВСЕГДА (решает кейс «1–4» накрывает «1–3» немедленно)
             with self.Session as session, session.begin():
                 _prune_covered_ranges(session, p['title_id'])
-
-                # Остальные — по желанию, мягче для «в производстве»
                 if not p.get('is_in_production'):
                     _prune_triplet(session, p['title_id'])
                     _prune_res_codec(session, p['title_id'])
@@ -886,30 +884,21 @@ class SaveManager:
     def remove_schedule_day(self, title_ids, day_of_week):
         with self.Session as session:
             try:
-                # Преобразуем title_ids, если это множество
                 if isinstance(title_ids, set):
                     title_ids = list(title_ids)
-
-                # Проверяем корректность входных данных
                 if not title_ids or not isinstance(title_ids, list):
                     raise ValueError(f"Invalid title_ids: {title_ids}")
 
                 self.logger.debug(f"Querying schedules with title_ids: {title_ids} and day_of_week: {day_of_week}")
 
-                # Проверяем, что находится в таблице
                 all_schedules = session.query(Schedule).all()
                 self.logger.debug(f"All schedules in table: {all_schedules}")
-
-                # Выполняем фильтрацию
                 schedules_to_update = (
                     session.query(Schedule)
                     .filter(Schedule.title_id.in_(title_ids), Schedule.day_of_week == day_of_week)
                 )
-
                 result = schedules_to_update.all()
                 self.logger.debug(f"Filtered schedules: {result}")
-
-                # Если записи найдены, удаляем их
                 if result:
                     deleted_count = (
                         session.query(Schedule)
@@ -929,33 +918,26 @@ class SaveManager:
 
     def save_studio_to_db(self, title_ids, studio_name):
         """Функция для добавления новой студии в базу данных для нескольких тайтлов."""
-        with self.Session as session:  # Исправлено: создание новой сессии
+        with self.Session as session:
             try:
-                # Проверка, что массив title_ids не пуст
                 if not title_ids:
                     self.logger.error("Ошибка: Массив title_ids пуст.")
                     return
 
-                # Проход по массиву title_ids
                 for title_id in title_ids:
-                    # Проверяем, существует ли title_id в таблице Title
                     existing_title = session.query(Title).filter_by(title_id=title_id).first()
                     if not existing_title:
                         self.logger.error(f"Ошибка: title_id '{title_id}' не найден в таблице Title.")
                         continue
 
-                    # Проверяем, существует ли уже запись студии для этого title_id
                     existing_studio = session.query(ProductionStudio).filter_by(title_id=title_id).first()
                     if existing_studio:
-                        self.logger.error(f"Ошибка: Студия для title_id '{title_id}' уже существует.")
+                        self.logger.warning(f"Студия '{studio_name}' для title_id '{title_id}' уже существует.")
                         continue
 
-                    # Создаем новую студию и сохраняем в базу данных
                     new_studio = ProductionStudio(title_id=title_id, name=studio_name)
                     session.add(new_studio)
                     self.logger.debug(f"Новая студия добавлена: {studio_name} для title_id: {title_id}")
-
-                # Коммитим все изменения
                 session.commit()
 
             except Exception as e:

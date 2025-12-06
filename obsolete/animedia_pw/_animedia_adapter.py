@@ -3,8 +3,8 @@ import asyncio
 import logging
 
 from typing import Any, Dict, List
-from utils.animedia.animedia_client import AnimediaClient, block_unwanted
-from utils.animedia.animedia_utils import (
+from _animedia_client import AnimediaClient, block_unwanted
+from animedia_utils import (
     parse_title_page,
     uniq,
     sort_by_episode,

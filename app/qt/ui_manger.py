@@ -148,7 +148,13 @@ class UIManager:
         def sync_width():
             menu.setFixedWidth(btn.width())
 
-        btn.showEvent = lambda e: (sync_width(), QToolButton.showEvent(btn, e))
+        def on_show_event(e):
+            # 1) сначала синхронизируем ширину меню
+            sync_width()
+            # 2) потом даём базовому классу отработать стандартную логику
+            QToolButton.showEvent(btn, e)
+
+        btn.showEvent = on_show_event
 
         if default_callback_key and default_callback_key in callbacks:
             btn.clicked.connect(callbacks[default_callback_key])

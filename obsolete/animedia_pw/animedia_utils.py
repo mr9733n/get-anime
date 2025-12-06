@@ -6,8 +6,8 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
 
-#
-ID_OFFSET = 10000
+
+ID_OFFSET = 30000
 ORIGINAL_ID_FIELD = "animedia_id"
 
 

@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 
-from utils.animedia.animedia_adapter import AnimediaAdapter
+from _animedia_adapter import AnimediaAdapter
 
 
 async def demo():

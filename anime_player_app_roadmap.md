@@ -450,17 +450,23 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix get_titles_animedia 
 - [x] Fix playwright executable doesn't exist at
 
+### 8.35 Fixes Anime Player APP 0.3.8.35
+- [x] Removed playwright framework
+- [x] Windows fatal exception: access violation 2025-12-03 02:18:29 | CRITICAL | __main__.log_exception | Unexpected exception TypeError: invalid argument to sipBadCatcherResult()
+- [x] Pretty code
+- [x] Add new tables for providers
+- [ ] Fix saving titles
+- [ ] Fix get titles by keywords
+- [ ] Add get titles by provider & external_id
+- [ ] Filter by provider
+- [ ] show production studio
+- [ ] Create adapter for season / We have to many same seasons with different name
+- [ ] need to fix watch status for title_id when set status first time
+
 
 ### 8.35 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui
 - [ ] 
-
-### 8.35 Fixes Anime Player APP 0.3.8.35
-- [ ] Filter by provider
-- [ ] show production studio
-- [ ] Create adapter for season / We have to many same seasons with different name
-- [ ] Windows fatal exception: access violation 2025-12-03 02:18:29 | CRITICAL | __main__.log_exception | Unexpected exception TypeError: invalid argument to sipBadCatcherResult()
-- [ ] need to fix watch status for title_id when set status first time
 
 ### 8.36 New features Player DB Sync Utility 0.0.0.3
 - [ ] если нажать clear и попробовать отправить бд еще раз то офер не сформируется, то и с ответом

@@ -461,11 +461,13 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add get titles for search query
 - [x] Add get titles by provider & external_id
 - [x] Fix Update titles
+- [x] Add get_studio_by_title_id, get_provider_by_title_id
+- [x] Show production studio 
+- [x] 
 - [ ] Filter by provider
-- [ ] show production studio
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time
-
+- [ ] ...
 
 ### 8.35 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui

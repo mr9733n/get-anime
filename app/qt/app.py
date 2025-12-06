@@ -22,12 +22,12 @@ from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 from static.layout_metadata import all_layout_metadata
 # AniLiberty api client
-from utils.api_client import APIClient
-from utils.api_adapter import APIAdapter
-# AniMedia playwright client
-from utils.config_manager import ConfigManager
+from utils.anilibria.api_client import APIClient
+from utils.anilibria.api_adapter import APIAdapter
+# AniMedia client
 from utils.animedia.qt_async_worker import AsyncWorker
 from utils.animedia.animedia_adapter import AnimediaAdapter
+from utils.config_manager import ConfigManager
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
@@ -35,8 +35,8 @@ from utils.library_loader import verify_library
 
 
 VLC_PLAYER_HASH = "e100a8ad178b23ddd4e09268932c83fe0401d3bfbdecd5df6d1bc8c709c4d76d"
-PROVIDER_ANILIBERTY = "AniLiberty"
-PROVIDER_ANIMEDIA = "AniMedia"
+PROVIDER_ANILIBERTY = "aniliberty"
+PROVIDER_ANIMEDIA = "animedia"
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
@@ -1079,18 +1079,21 @@ class AnimePlayerAppVer3(QWidget):
 
         return results
 
-    def get_update_title(self):
-        """Обновляет информацию о тайтле в базе данных."""
+    def _update_titles(self, provider_filter: str | None) -> bool:
+        """
+        Общая логика обновления тайтлов.
+        :param provider_filter:
+            None               → авто (по полю provider у тайтла)
+            PROVIDER_ANILIBERTY → только AniLiberty
+            PROVIDER_ANIMEDIA   → только AniMedia
+        """
         try:
             self.ui_manager.show_loader("Updating title info...")
             self.ui_manager.set_buttons_enabled(False)
 
             search_text = self.title_search_entry.text().strip()
-
             if not search_text:
-                # если в поле пусто — пытаемся использовать текущий выбранный тайтл
                 if self.current_title_ids:
-                    # current_title_ids уже список внутренних id
                     search_text = ",".join(str(tid) for tid in self.current_title_ids)
                 elif self.current_title_id is not None:
                     search_text = str(self.current_title_id)
@@ -1098,15 +1101,12 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.warning("Unable to update title(s): missing title ID(s)")
                     self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
                     return False
-
                 self.logger.debug(f"Used current title_id(s): {search_text} for update")
             else:
                 self.title_search_entry.clear()
 
-            self.logger.info(f"Updating title. Keywords: {search_text}")
-
+            self.logger.info(f"Updating title(s). Keywords: {search_text}")
             titles = self._resolve_titles_for_query(search_text)
-
             if not titles:
                 self.logger.warning(f"No titles found in DB for update by query: {search_text}")
                 self.show_error_notification("Update", "No titles found for update.")
@@ -1117,16 +1117,23 @@ class AnimePlayerAppVer3(QWidget):
                     f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
                     f"{tref.provider}, {tref.external_id}"
                 )
-
-                if tref.provider_name == PROVIDER_ANILIBERTY:
-                    query_name = tref.name_en or tref.name_ru or str(tref.external_id)
+                if provider_filter is not None and tref.provider != provider_filter:
+                    self.logger.info(
+                        f"Skip title_id={tref.title_id}: provider={tref.provider}, filter={provider_filter}"
+                    )
+                    continue
+                if tref.provider == PROVIDER_ANILIBERTY or provider_filter == PROVIDER_ANILIBERTY:
+                    query_name = tref.name_en or tref.name_ru or str(tref.external_id or tref.title_id)
+                    self.logger.info(f"Updating via AniLiberty API: query={query_name}")
                     title_ids = self._handle_get_titles_from_api(query_name)
-                    self._handle_found_titles(title_ids, query_name)
-
-                elif tref.provider_name == PROVIDER_ANIMEDIA:
+                    if title_ids:
+                        self._handle_found_titles(title_ids, query_name)
+                    continue
+                if tref.provider == PROVIDER_ANIMEDIA or provider_filter == PROVIDER_ANIMEDIA:
                     adapter = AnimediaAdapter(self.base_am_url)
-                    query_name = tref.name_en or tref.name_ru
+                    query_name = tref.name_en or tref.name_ru or str(tref.external_id or tref.title_id)
 
+                    self.logger.info(f"Updating via AniMedia: query={query_name}")
                     self._last_search_text = query_name
                     self._animedia_worker = AsyncWorker(
                         adapter.get_by_title,
@@ -1136,237 +1143,129 @@ class AnimePlayerAppVer3(QWidget):
                     self._animedia_worker.finished.connect(self._on_animedia_result)
                     self._animedia_worker.error.connect(self._on_animedia_error)
                     self._animedia_worker.start()
+                    continue
 
-                else:
-                    self.logger.warning(
-                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
-                    )
+                self.logger.warning(
+                    f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider} "
+                    f"(filter={provider_filter})"
+                )
 
             return True
 
         except Exception as e:
-            self.logger.error(f"Error on update title: {e}")
+            self.logger.error(f"Error on update title(s): {e}")
             return False
         finally:
+            # TODO: для асинхронного пути Animedia надо делать внутри рутин
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
+
+    def get_update_title(self):
+        """Обновление с авто-определением провайдера."""
+        return self._update_titles(provider_filter=None)
 
     def get_update_title_aniliberty(self):
-        """Обновляет информацию о тайтле в базе данных."""
-        try:
-            self.ui_manager.show_loader("Updating title info...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
-
-            search_text = self.title_search_entry.text().strip()
-
-            if not search_text:
-                if self.current_title_ids:
-                    search_text = ",".join(str(tid) for tid in self.current_title_ids)
-                elif self.current_title_id is not None:
-                    search_text = str(self.current_title_id)
-                else:
-                    self.logger.warning("Unable to update title(s): missing title ID(s)")
-                    self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
-                    return False
-
-                self.logger.debug(f"Used current title_id(s): {search_text} for update")
-            else:
-                self.title_search_entry.clear()
-
-            self.logger.info(f"Updating title. Keywords: {search_text}")
-
-            titles = self._resolve_titles_for_query(search_text)
-
-            if not titles:
-                self.logger.warning(f"No titles found in DB for update by query: {search_text}")
-                self.show_error_notification("Update", "No titles found for update.")
-                return False
-
-            for tref in titles:
-                self.logger.info(
-                    f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
-                    f"{tref.provider}, {tref.external_id}"
-                )
-
-                if tref.provider == PROVIDER_ANILIBERTY:
-                    query_name = tref.name_en or tref.name_ru or str(tref.external_id)
-                    title_ids = self._handle_get_titles_from_api(query_name)
-                    self._handle_found_titles(title_ids, query_name)
-
-                else:
-                    self.logger.warning(
-                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
-                    )
-
-            return True
-        except Exception as e:
-            self.logger.error(f"Error on update title: {e}")
-            return False
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
+        """Обновление только через AniLiberty."""
+        return self._update_titles(provider_filter=PROVIDER_ANILIBERTY)
 
     def get_update_title_animedia(self):
-        """Обновляет информацию о тайтле в базе данных."""
-        try:
-            self.ui_manager.show_loader("Updating title info...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
+        """Обновление только через AniMedia."""
+        return self._update_titles(provider_filter=PROVIDER_ANIMEDIA)
 
-            search_text = self.title_search_entry.text().strip()
-
-            if not search_text:
-                if self.current_title_ids:
-                    search_text = ",".join(str(tid) for tid in self.current_title_ids)
-                elif self.current_title_id is not None:
-                    search_text = str(self.current_title_id)
-                else:
-                    self.logger.warning("Unable to update title(s): missing title ID(s)")
-                    self.show_error_notification("Error", "Unable to update title(s): missing title ID(s)")
-                    return False
-
-                self.logger.debug(f"Used current title_id(s): {search_text} for update")
-            else:
-                self.title_search_entry.clear()
-
-            self.logger.info(f"Updating title. Keywords: {search_text}")
-
-            titles = self._resolve_titles_for_query(search_text)
-
-            if not titles:
-                self.logger.warning(f"No titles found in DB for update by query: {search_text}")
-                self.show_error_notification("Update", "No titles found for update.")
-                return False
-
-            for tref in titles:
-                self.logger.info(
-                    f"Updating title: {tref.title_id}, {tref.name_ru}, {tref.name_en}, "
-                    f"{tref.provider}, {tref.external_id}"
-                )
-
-                if tref.provider == PROVIDER_ANIMEDIA:
-                    adapter = AnimediaAdapter(self.base_am_url)
-                    query_name = tref.name_en or tref.name_ru
-
-                    self._last_search_text = query_name
-                    self._animedia_worker = AsyncWorker(
-                        adapter.get_by_title,
-                        query_name,
-                        max_titles=5,
-                    )
-                    self._animedia_worker.finished.connect(self._on_animedia_result)
-                    self._animedia_worker.error.connect(self._on_animedia_error)
-                    self._animedia_worker.start()
-
-                else:
-                    self.logger.warning(
-                        f"Unknown or missing provider for title_id={tref.title_id}: {tref.provider}"
-                    )
-
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error on update title: {e}")
-            return False
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
-    def get_search_by_title(self):
+    def _search_by_title(self, provider_filter: str | None) -> bool:
+        """
+        Общая логика поиска тайтлов по названию.
+        :param provider_filter:
+            None                → авто: ищем в БД у всех, fallback AniLiberty + Animedia
+            PROVIDER_ANILIBERTY → фокус на AniLiberty (БД + AniLiberty)
+            PROVIDER_ANIMEDIA   → фокус на Animedia (БД + Animedia)
+        """
         try:
             self.ui_manager.show_loader("Fetching by title...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
-            search_text = self.title_search_entry.text()
+            self.ui_manager.set_buttons_enabled(False)
+
+            search_text = self.title_search_entry.text().strip()
             self.title_search_entry.clear()
             if not search_text:
-                return
+                return False
+
             self.logger.debug(f"keywords: {search_text}")
             title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
 
-            if title_ids:
-                self.logger.info(f"Found {len(title_ids)} titles in local DB for '{search_text}'")
+            def providers_match_filter() -> bool:
+                if provider_filter is None:
+                    return True
+                non_empty = [p for p in providers if p]
+                if not non_empty:
+                    return False
+                return all(p == provider_filter for p in non_empty)
+
+            if title_ids and providers_match_filter():
+                self.logger.info(
+                    f"Found {len(title_ids)} titles in local DB for '{search_text}' "
+                    f"(filter={provider_filter})"
+                )
                 self._handle_found_titles(title_ids, search_text)
                 return True
 
+            self.logger.info(
+                f"No suitable titles in local DB for '{search_text}' (filter={provider_filter})."
+            )
 
-            self.logger.info(f"With the keywords: {search_text} was not find any title_id.")
-            try:
-                self.logger.info(f"...Try to load from provider1")
-                if title_ids:
-                    self.logger.info(f"Provider1 returned {len(title_ids)} titles")
-                    self._handle_found_titles(title_ids, search_text)
+            if provider_filter in (None, PROVIDER_ANILIBERTY):
+                try:
+                    self.logger.info("...Try to load from AniLiberty provider")
+                    title_ids = self._handle_get_titles_from_api(search_text)
+                    if title_ids:
+                        self.logger.info(
+                            f"AniLiberty returned {len(title_ids)} titles for '{search_text}'"
+                        )
+                        self._handle_found_titles(title_ids, search_text)
+                        return True
+                except Exception as e:
+                    self.logger.warning(f"AniLiberty provider error: {e}")
+
+            if provider_filter in (None, PROVIDER_ANIMEDIA):
+                try:
+                    self.logger.info("...Try to load from Animedia (async)")
+                    adapter = AnimediaAdapter(self.base_am_url)
+                    self._last_search_text = search_text
+                    self._animedia_worker = AsyncWorker(
+                        adapter.get_by_title,
+                        search_text,
+                        max_titles=5,
+                    )
+                    self._animedia_worker.finished.connect(self._on_animedia_result)
+                    self._animedia_worker.error.connect(self._on_animedia_error)
+                    self._animedia_worker.start()
                     return True
-            except Exception as e:
-                self.logger.warning(f"Provider1 error: {e}")
-            try:
-                self.logger.info(f"...Try to load from Animedia (async)")
-                adapter = AnimediaAdapter(self.base_am_url)
-                self._last_search_text = search_text
-                self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-                self._animedia_worker.finished.connect(self._on_animedia_result)
-                self._animedia_worker.error.connect(self._on_animedia_error)
-                self._animedia_worker.start()
-                return True
-            except Exception as e:
-                self.logger.error(f"Error starting Animedia worker: {e}")
-                return False
+                except Exception as e:
+                    self.logger.error(f"Error starting Animedia worker: {e}")
+                    return False
+
+            self.logger.warning(f"No titles found anywhere for '{search_text}'")
+            self.show_error_notification("Search", "No titles found.")
+            return False
 
         except Exception as e:
             self.logger.error(f"Error while fetching get_search_by_title: {e}")
             return False
         finally:
+            # TODO: для асинхронного пути Animedia надо делать внутри рутин
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
+
+    def get_search_by_title(self):
+        """Поиск тайтла: локальная БД → AniLiberty → Animedia."""
+        return self._search_by_title(provider_filter=None)
 
     def get_search_by_title_aniliberty(self):
-        try:
-            self.ui_manager.show_loader("Fetching by title...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
-
-            search_text = self.title_search_entry.text()
-            self.title_search_entry.clear()
-            if not search_text:
-                return
-            self.logger.debug(f"keywords: {search_text}")
-            title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if not title_ids:
-                title_ids = self._handle_get_titles_from_api(search_text)
-
-            self._handle_found_titles(title_ids, search_text)
-
-        except Exception as e:
-            self.logger.error(f"Error while fetching get_search_by_title_anilibria: {e}")
-            return False, None
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
+        """Поиск тайтла: локальная БД → AniLiberty."""
+        return self._search_by_title(provider_filter=PROVIDER_ANILIBERTY)
 
     def get_search_by_title_animedia(self):
-        try:
-            self.ui_manager.show_loader("Fetching by title...")
-            self.ui_manager.set_buttons_enabled(False)  # Блокируем кнопки
-
-            search_text = self.title_search_entry.text()
-            self.title_search_entry.clear()
-            if not search_text:
-                return
-            self.logger.debug(f"keywords: {search_text}")
-            title_ids, providers = self.db_manager.get_titles_by_keywords(search_text)
-            if title_ids and providers == [PROVIDER_ANIMEDIA]:
-                self._handle_found_titles(title_ids, search_text)
-            else:
-                adapter = AnimediaAdapter(self.base_am_url)
-                self._animedia_worker = AsyncWorker(adapter.get_by_title, search_text, max_titles=5)
-                self._animedia_worker.finished.connect(self._on_animedia_result)
-                self._animedia_worker.error.connect(self._on_animedia_error)
-                self._animedia_worker.start()
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error while fetching get_search_by_title_animedia: {e}")
-            return False, None
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
+        """Поиск тайтла: локальная БД (где провайдер = Animedia) → Animedia (async)."""
+        return self._search_by_title(provider_filter=PROVIDER_ANIMEDIA)
 
     def _handle_found_titles(self, title_ids, search_text):
         if len(title_ids) == 1:

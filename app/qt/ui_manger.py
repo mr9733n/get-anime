@@ -1,6 +1,4 @@
 # ui_manager.py
-import pathlib
-
 from PyQt5.QtCore import QEventLoop, Qt
 from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
     QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu, QAction

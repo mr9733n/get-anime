@@ -258,6 +258,12 @@ class DatabaseManager:
     def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
         return self.get_manager.get_title_ids_by_provider(provider_code)
 
+    def get_provider_by_title_id(self, title_id: int) -> str | None:
+        return self.get_manager.get_provider_by_title_id(title_id)
+
+    def get_studio_by_title_id(self, title_id: int) -> str | None:
+        return self.get_manager.get_studio_by_title_id(title_id)
+
     def delete_titles(self, title_ids_input) -> dict:
         """
         Удаляет один или несколько тайтлов.
@@ -319,3 +325,4 @@ class DatabaseManager:
             "deleted": deleted,
             "not_found": not_found,
         }
+

@@ -1,4 +1,5 @@
 import os
+import sqlite3
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
@@ -10,13 +11,13 @@ from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Fran
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 db_dir1 = os.path.join(ROOT_DIR, 'db')
 DB_PATH1 = os.path.join(db_dir1, 'anime_player.db')
-database_url = f"sqlite:///{DB_PATH1}"
+TITLE_IDS = [10052]
 
 # Connect to the database
+database_url = f"sqlite:///{DB_PATH1}"
 engine = create_engine(database_url)
 Session = sessionmaker(bind=engine)()
-
-title_ids_to_delete = [10052]
+title_ids_to_delete = TITLE_IDS
 
 with Session as session:
     titles = (
@@ -45,3 +46,4 @@ with Session as session:
     session.commit()
 
 print("Удалено:", len(titles), "тайтлов")
+

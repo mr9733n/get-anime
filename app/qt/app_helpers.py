@@ -157,7 +157,8 @@ class TitleHtmlFactory:
     def _generate_one_title_html(self, title):
         """Генерирует HTML для отображения одного тайтла."""
         try:
-            provider = self.app.ui_generator.generate_provider_html(title.title_id)
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
+            studio_html = self.app.ui_generator.generate_studio_html(title.title_id)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -178,11 +179,12 @@ class TitleHtmlFactory:
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
-                provider_html=provider,
+                provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,
                 announce_html=announce_html,
                 status_html=status_html,
+                studio_html=studio_html,
                 team_html=team_html,
                 description_html=description_html,
                 genres_html=genres_html,
@@ -220,6 +222,7 @@ class TitleHtmlFactory:
         """Генерирует HTML по умолчанию."""
         try:
             self.logger.debug(f"Начинаем генерацию HTML по умолчанию для title_id: {title.title_id}")
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -241,6 +244,7 @@ class TitleHtmlFactory:
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
+                provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,
                 show_more_html=show_more_html,

@@ -15,7 +15,6 @@ MAX_IMAGE_SIZE_KB = 5000
 
 class PosterManager:
     def __init__(self, save_callback=None):
-
         self.logger = logging.getLogger(__name__)
         self.poster_links = []
         self.save_callback = save_callback

@@ -11,9 +11,7 @@ Base = declarative_base()
 class Title(Base):
     __tablename__ = 'titles'
     title_id = Column(Integer, primary_key=True)
-    animedia_id = Column(Integer)
-    provider = Column(String, nullable=False)
-    code = Column(String, unique=True)
+    code = Column(String)
     name_ru = Column(String, nullable=False)
     name_en = Column(String)
     alternative_name = Column(String)
@@ -75,9 +73,7 @@ class TitleProviderMap(Base):
     provider_id = Column(Integer, ForeignKey("providers.provider_id"), nullable=False)
     external_title_id = Column(String, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("provider_id", "external_title_id"),
-    )
+    __table_args__ = (UniqueConstraint("provider_id", "external_title_id"),)
 
     title = relationship("Title", back_populates="provider_links")
     provider = relationship("Provider", back_populates="titles_map")
@@ -100,9 +96,8 @@ class Schedule(Base):
     day_of_week = Column(Integer, ForeignKey('days_of_week.day_of_week'), nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
-    __table_args__ = (
-        PrimaryKeyConstraint('day_of_week', 'title_id'),
-    )
+
+    __table_args__ = (PrimaryKeyConstraint('day_of_week', 'title_id'),)
 
     title = relationship("Title", back_populates="schedules")
     day = relationship("DaysOfWeek")
@@ -130,7 +125,6 @@ class History(Base):
 
 class Rating(Base):
     __tablename__ = 'ratings'
-
     rating_id = Column(Integer, primary_key=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     rating_name = Column(String, default='CMERS', nullable=False)
@@ -144,7 +138,6 @@ class Rating(Base):
 # Таблица связей между Title и Franchise
 class FranchiseRelease(Base):
     __tablename__ = 'franchise_releases'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     franchise_id = Column(Integer, ForeignKey('franchises.id'), nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
@@ -211,8 +204,6 @@ class Episode(Base):
     __tablename__ = 'episodes'
     episode_id = Column(Integer, primary_key=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'))
-    # TODO: maybe need provider table ?
-    provider = Column(String)
     episode_number = Column(Integer, nullable=False)
     name = Column(String)
     uuid = Column(String, unique=True)
@@ -226,12 +217,6 @@ class Episode(Base):
 
     title = relationship("Title", back_populates="episodes")
     history = relationship("History", back_populates="episode")
-
-    @validates('created_timestamp', 'last_updated')
-    def validate_timestamp(self, key, value):
-        if isinstance(value, (int, float)):
-            return datetime.utcfromtimestamp(value)
-        return value
 
 class Torrent(Base):
     __tablename__ = 'torrents'
@@ -286,7 +271,6 @@ class Template(Base):
 
 class AppState(Base):
     __tablename__ = 'app_state'
-
     key = Column(String, primary_key=True)
     value = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))

@@ -4,9 +4,8 @@ import json
 import logging
 import re
 import uuid
-from itertools import count
-from typing import Optional
 
+from typing import Optional
 from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker, aliased
@@ -557,7 +556,6 @@ class SaveManager:
         # обязательные поля для поиска
         title_id = data["title_id"]
         episode_no = data["episode_number"]
-        provider = data["provider"]
         episode_uuid = data["uuid"]
 
         with self.Session as session:
@@ -565,7 +563,7 @@ class SaveManager:
                 # ищем по естественному ключу, а не по uuid
                 ep = (
                     session.query(Episode)
-                    .filter_by(title_id=title_id, episode_number=episode_no, provider=provider)
+                    .filter_by(title_id=title_id, episode_number=episode_no)
                     .first()
                 )
 
@@ -605,11 +603,11 @@ class SaveManager:
                     if updated:
                         session.commit()
                         self.logger.debug(
-                            f"Updated episode {episode_no} (provider={provider}) for title_id={title_id}"
+                            f"Updated episode {episode_no} for title_id={title_id}"
                         )
                     else:
                         self.logger.debug(
-                            f"No changes for episode {episode_no} (provider={provider})"
+                            f"No changes for episode {episode_no}"
                         )
 
                 # ---------- если записи нет ----------
@@ -625,7 +623,7 @@ class SaveManager:
                     session.add(new_ep)
                     session.commit()
                     self.logger.debug(
-                        f"Inserted new episode {episode_no} (provider={provider}) for title_id={title_id}"
+                        f"Inserted new episode {episode_no} for title_id={title_id}"
                     )
 
             except Exception as exc:

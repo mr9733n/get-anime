@@ -79,12 +79,26 @@ class UIGenerator:
         """Generates HTML to display provider"""
         try:
             # TODO: Add filtering here
-            _, providers = self.db_manager.get_titles_by_keywords(str(title_id))
-            p = ', '.join(str(p) for p in providers)
-            p_html = f'{self.blank_spase}{p}{self.blank_spase}'
-            return p_html
+            provider = self.db_manager.get_provider_by_title_id(title_id)
+            html = f'{self.blank_spase}{provider}{self.blank_spase}'
+            return html
         except Exception as e:
             error_message = f"Error in generate_provider_html: {str(e)}"
+            self.logger.error(error_message)
+            return ""
+
+    def generate_studio_html(self, title_id):
+        """Generates HTML to display studio"""
+        try:
+            # TODO: Add filtering here
+            studio = self.db_manager.get_studio_by_title_id(title_id)
+            if studio:
+                html = f'<p>Студия: {studio}{self.blank_spase}</p>'
+            else:
+                html = f''
+            return html
+        except Exception as e:
+            error_message = f"Error in generate_studio_html: {str(e)}"
             self.logger.error(error_message)
             return ""
 

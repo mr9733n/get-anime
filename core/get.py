@@ -8,7 +8,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
-    Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider
+    Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio
 
 
 class GetManager:
@@ -754,3 +754,33 @@ class GetManager:
             )
         return [r[0] for r in rows]
 
+    def get_provider_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает имя провайдера (code) для данного title_id.
+           Если провайдеров несколько — возвращает первый.
+        """
+        with self.Session as session:
+            link = (
+                session.query(TitleProviderMap)
+                .options(joinedload(TitleProviderMap.provider))
+                .filter(TitleProviderMap.title_id == title_id)
+                .first()
+            )
+
+            if not link or not link.provider:
+                return None
+
+            return link.provider.name
+
+    def get_studio_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает название студии по title_id, либо None, если студии нет."""
+        with self.Session as session:
+            studio = (
+                session.query(ProductionStudio)
+                .filter(ProductionStudio.title_id == title_id)
+                .one_or_none()
+            )
+
+            if studio is None:
+                return None
+
+            return studio.name

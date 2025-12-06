@@ -1,6 +1,7 @@
 # api_adapter.py - УМНЫЙ адаптер для API v1 (OPTIMIZED)
 import logging
 import threading
+
 from datetime import datetime, timezone
 
 

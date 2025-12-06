@@ -10,10 +10,9 @@ class ProcessManager:
         self.logger = logging.getLogger(__name__)
         self.save_manager = save_manager
 
-
     def process_external_data(self, title_id: int, title_data: dict):
         try:
-            studio_name = title_data.get('studio')
+            studio_name = title_data.get('studio_name')
             rating_name = title_data.get('rating_name')
             rating_score = title_data.get('rating_score')
 
@@ -152,7 +151,6 @@ class ProcessManager:
 
                         episode_data = {
                             'title_id': title_data.get('title_id', None), # internal id
-                            'provider': title_data.get('provider', None),
                             'episode_number': episode.get('episode'),
                             'name': episode.get('name', f'Серия {episode.get("episode")}'),
                             'uuid': episode.get('uuid'),

@@ -34,7 +34,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "12221c59e77cced5a56321753b405177bf041018b91355344a2faedb5ff997e2"
+VLC_PLAYER_HASH = "ab124ddc6dc6f73ae360e0f3d2f546f1831b682d0d4af47f4e5583167db1aed1"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 APP_WIDTH = 1000
@@ -95,6 +95,7 @@ class AnimePlayerAppVer3(QWidget):
         self.current_titles = None
         self.selected_quality = None
         self._last_search_text = None
+        self.stream_video_url = None
         self.discovered_links = []
         self.sanitized_titles = []
         self.title_names = []
@@ -111,7 +112,6 @@ class AnimePlayerAppVer3(QWidget):
         self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
 
         """Loads the configuration settings needed by the application."""
-        self.stream_video_url = None
         self.base_url = self.config_manager.get_setting('Settings', 'base_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
         self.api_version = self.config_manager.get_setting('Settings', 'api_version')
@@ -789,10 +789,8 @@ class AnimePlayerAppVer3(QWidget):
     def fetch_and_process_schedule(self, day_of_week):
         """
         Получает и обрабатывает расписание с сервера.
-
         Args:
             day_of_week (int): День недели.
-
         Returns:
             tuple: (bool, set) Успешность операции и набор title_ids.
         """
@@ -832,7 +830,6 @@ class AnimePlayerAppVer3(QWidget):
     def check_and_update_schedule(self, day_of_week, current_titles):
         """
         Проверяет наличие обновлений в расписании и обновляет базу данных.
-
         Args:
             day_of_week (int): День недели.
             current_titles (set): Текущий набор title_ids.
@@ -987,10 +984,8 @@ class AnimePlayerAppVer3(QWidget):
         Получает расписание с сервера API.
         Args:
             day (int): День недели для запроса.
-
         Returns:
             list: Данные расписания.
-
         Raises:
             APIClientError: Если произошла ошибка при запросе или обработке данных.
         """

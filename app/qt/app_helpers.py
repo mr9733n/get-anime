@@ -80,7 +80,7 @@ class TitleDataFactory:
             data_fetcher_name = show_mode_metadata[show_mode].get("data_fetcher")
 
             # Определяем списочные режимы с пагинацией
-            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list']
+            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list', 'titles_provider_list']
 
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()

@@ -78,10 +78,11 @@ class UIGenerator:
     def generate_provider_html(self, title_id):
         """Generates HTML to display provider"""
         try:
-            # TODO: Add filtering here
             provider = self.db_manager.get_provider_by_title_id(title_id)
-            html = f'{self.blank_spase}{provider}{self.blank_spase}'
-            return html
+            provider_link = provider.lower()
+            html = f'<span class="decorate_name">{provider}<span>'
+            html_link = f'{self.blank_spase}<a href="filter_by_provider/{provider_link}" title="Filter by Provider">{html}</a>{self.blank_spase}'
+            return html_link
         except Exception as e:
             error_message = f"Error in generate_provider_html: {str(e)}"
             self.logger.error(error_message)

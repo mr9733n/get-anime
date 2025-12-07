@@ -469,7 +469,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix playing video
 - [x] Removed playwright from Animedia demo app
 - [x] Removed playwright from .spec
-- [ ] Filter by provider
+- [x] Filter by provider
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] ...

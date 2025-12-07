@@ -34,7 +34,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "e100a8ad178b23ddd4e09268932c83fe0401d3bfbdecd5df6d1bc8c709c4d76d"
+VLC_PLAYER_HASH = "12221c59e77cced5a56321753b405177bf041018b91355344a2faedb5ff997e2"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 APP_WIDTH = 1000
@@ -140,7 +140,7 @@ class AnimePlayerAppVer3(QWidget):
         self.api_client = APIClient(self.base_url, self.api_version)
         self.api_adapter = APIAdapter(
             self.api_client,
-            stream_video_host=self.stream_video_url,
+            #stream_video_host=self.stream_video_url,
             api_version=self.api_version
         )
 
@@ -1401,21 +1401,22 @@ class AnimePlayerAppVer3(QWidget):
         for title_id, playlist in self.playlists.items():
             sanitized_title = playlist['sanitized_title']
             discovered_links = playlist['links']
+            self.stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
             if discovered_links:
                 filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links, self.stream_video_url)
                 self.logger.debug(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
             else:
                 self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-        # Теперь сохраняем общий комбинированный плейлист
+
         combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[:100] + ".m3u"
         combined_links = []
-        # Собираем все ссылки из всех плейлистов
+
         for playlist_info in self.playlists.values():
             combined_links.extend(playlist_info['links'])
-        # Сохраняем комбинированный плейлист
+
         if combined_links:
             if os.path.exists(os.path.join("playlists", combined_playlist_filename)):
-                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"  # Добавляем временной штамп для уникальности
+                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"
 
             filename = self.playlist_manager.save_playlist(combined_playlist_filename, combined_links,
                                                            self.stream_video_url)
@@ -1595,23 +1596,16 @@ class AnimePlayerAppVer3(QWidget):
                 open_link = link
                 self.logger.debug("Using full URL from link")
             else:
-                # Получаем host из БД (или fallback из конфига)
-                host = self.stream_video_url
-
                 if title_id:
-                    titles = self.db_manager.get_titles_from_db(title_id=title_id)
-                    if titles and titles[0] and titles[0].host_for_player:
-                        host = titles[0].host_for_player
-                        self.logger.debug(f"Using host from DB: {host}")
-                    else:
-                        self.logger.debug(f"Using fallback host: {host}")
+                    self.stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
+                    self.logger.debug(f"Using host from DB: {self.stream_video_url}")
 
                 # Убеждаемся, что путь начинается с /
                 if not link.startswith('/'):
                     link = '/' + link
 
                 # Строим полный URL
-                open_link = f"https://{host}{link}"
+                open_link = f"https://{self.stream_video_url}{link}"
 
             # Воспроизводим
             if self.use_libvlc == "true":

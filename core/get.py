@@ -784,3 +784,17 @@ class GetManager:
                 return None
 
             return studio.name
+
+    def get_player_host_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает host_for_player по title_id."""
+        with self.Session as session:
+            title = (
+                session.query(Title)
+                .filter(Title.title_id == title_id)
+                .one_or_none()
+            )
+
+            if not title:
+                return None
+
+            return title.host_for_player

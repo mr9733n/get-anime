@@ -15,11 +15,11 @@ class APIAdapter:
     3. Правильная структура для process.py
     """
 
-    def __init__(self, api_client, stream_video_host="cache.libria.fun", api_version="v1"):
+    def __init__(self, api_client, api_version="v1"):
         self.api_version = api_version
         self.logger = logging.getLogger(__name__)
         self.client = api_client
-        self.stream_video_host = stream_video_host
+        self.stream_video_host =  None # "cache.libria.fun"
         self._title_locks = {}
         self._title_locks_guard = threading.Lock()
 
@@ -251,10 +251,15 @@ class APIAdapter:
             adapted = self._adapt_structure(release)
 
             # 2. Эпизоды - ПРИОРИТЕТ вложенным данным
+            player: dict = {}
             if fetch_episodes:
                 episodes = self._fetch_episodes(release, release_id, allow_network=allow_network)
                 if episodes:
-                    adapted['player']['list'] = episodes
+                    player['list'] = episodes
+
+            # 2.1 ИСПРАВЛЕНО: заполняем из api
+            player['host'] = self.stream_video_host
+            adapted['player'] = player
 
             # 3. Торренты - ПРИОРИТЕТ вложенным данным
             if fetch_torrents:
@@ -339,7 +344,7 @@ class APIAdapter:
             },
 
             'player': {
-                'host': self.stream_video_host,  # ИСПРАВЛЕНО: заполняем из конфига
+                'host': None,
                 'alternative_player': release.get('external_player', ''),
                 'list': {}
             },
@@ -530,43 +535,40 @@ class APIAdapter:
 
         return adapted
 
-    def _normalize_episode_url(self, url):
+    def _normalize_episode_url(self, url: str) -> str:
         """
-        Нормализует URL эпизода для совместимости со старым форматом.
-
-        API v1 возвращает:
-        https://cache.libria.fun/videos/media/ts/10037/1/1080/hash.m3u8?params
-
-        Старый формат хранил:
-        /videos/media/ts/10037/1/1080/hash.m3u8
-
-        Args:
-            url: полный URL от API v1
-
-        Returns:
-            str: нормализованный путь без протокола, домена и параметров
+        Приводит URL к «старому» формату и сохраняет общий хост
+        (без схемы) в ``self._common_host``. Возвращает только путь.
         """
         if not url:
-            return ''
+            return ""
 
         try:
-            # Убираем query параметры (?countryIso=...)
-            url_without_params = url.split('?')[0]
+            url_without_params = url.split("?", 1)[0]
 
-            # Убираем протокол и домен (https://cache.libria.fun)
-            # Оставляем только путь (/videos/media/ts/...)
-            if '://' in url_without_params:
-                path = url_without_params.split('://', 1)[1]  # убираем https://
-                if '/' in path:
-                    path = '/' + path.split('/', 1)[1]  # убираем домен, оставляем /videos/...
-                    return path
+            if url_without_params.startswith("/"):
+                return url_without_params
 
-            # Если это уже нормализованный путь - возвращаем как есть
-            return url_without_params
+            scheme_split = url_without_params.split("://", 1)
+            if len(scheme_split) != 2:
+                return url_without_params
 
-        except Exception as e:
-            self.logger.warning(f"Failed to normalize URL '{url}': {e}")
-            # В случае ошибки возвращаем оригинал
+            host_and_path = scheme_split[1]
+
+            if "/" in host_and_path:
+                host, path = host_and_path.split("/", 1)
+                normalized_path = "/" + path
+            else:
+                host, normalized_path = host_and_path, ""
+
+            if self.stream_video_host is None:
+                self.stream_video_host = host
+            elif self.stream_video_host != host:
+                self.logger.warning(f"Different host detected: {host} (expected {self.stream_video_host})")
+
+            return normalized_path
+        except Exception as exc:
+            self.logger.warning(f"Failed to normalize URL '{url}': {exc}")
             return url
 
     # ============================================

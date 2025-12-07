@@ -311,15 +311,6 @@ except Exception as e:
 
 # ---
 # AnimePlayer Main
-playwright_dir = Path(playwright.__file__).parent
-browsers_dir = playwright_dir / "driver" / "package" / ".local-browsers"
-
-if browsers_dir.exists():
-    datas.append((
-        str(browsers_dir),
-        "playwright/driver/package/.local-browsers"
-    ))
-
 
 block = {
     "FileVersion": "0.3.8.32",
@@ -366,7 +357,6 @@ a = Analysis(
         'uuid',
         'jinja2',
         'beautifulsoup4',
-        'playwright',
         'python-vlc',
 		'sqlalchemy',
 		'sqlalchemy.orm',
@@ -374,8 +364,10 @@ a = Analysis(
 		'sqlalchemy.engine',
 		'sqlalchemy.sql',
         'app.qt.app',
+        'app.qt.app_handlers',
         'app.qt.app_helpers',
-        'app.qt.layout_metadata',
+        'static.layout_metadata',
+        'app.qt.app_state_manager',
         'app.qt.ui_manager',
         'app.qt.ui_generator',
         'app.qt.ui_s_generator',
@@ -385,13 +377,19 @@ a = Analysis(
         'core.process',
         'core.tables',
         'core.utils',
-        'utils.api_client',
+        'utils.anilibria.api_adapter',
+        'utils.anilibria.api_client',
+        'utils.animedia.animedia_adapter',
+        'utils.animedia.animedia_client',
+        'utils.animedia.animedia_utils',
+        'utils.animedia.qt_async_worker',
         'utils.config_manager',
+        'utils.library_loader',
         'utils.logging_handlers',
         'utils.playlist_manager',
         'utils.poster_manager',
+        'utils.runtime_manager',
         'utils.torrent_manager',
-        'utils.library_loader',
     ],
     hookspath=['.'],
     hooksconfig={},

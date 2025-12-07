@@ -463,7 +463,12 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix Update titles
 - [x] Add get_studio_by_title_id, get_provider_by_title_id
 - [x] Show production studio 
-- [x] 
+- [x] Fix saving host_for_player from AniLibria
+- [x] Add get_player_host_by_title_id
+- [x] Fix regress saving dates in titles
+- [x] Fix playing video
+- [x] Removed playwright from Animedia demo app
+- [x] Removed playwright from .spec
 - [ ] Filter by provider
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time

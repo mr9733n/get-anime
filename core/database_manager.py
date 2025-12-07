@@ -264,6 +264,9 @@ class DatabaseManager:
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_studio_by_title_id(title_id)
 
+    def get_player_host_by_title_id(self, title_id: int) -> str | None:
+        return self.get_manager.get_player_host_by_title_id(title_id)
+
     def delete_titles(self, title_ids_input) -> dict:
         """
         Удаляет один или несколько тайтлов.

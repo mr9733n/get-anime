@@ -26,12 +26,11 @@ hiddenimports = (
 
     collect_submodules('utils.animedia.animedia_adapter') +
     collect_submodules('utils.animedia.animedia_client') +
-    collect_submodules('app.animedia.animedia_utils') +
-    collect_submodules('app.animedia.demo') +
-    collect_submodules('app.animedia.qt_async_worker') +
+    collect_submodules('utils.animedia.animedia_utils') +
+    collect_submodules('utils.animedia.qt_async_worker') +
 
-    collect_submodules('utils.api_adapter') +
-    collect_submodules('utils.api_client') +
+    collect_submodules('utils.anilibria.api_adapter') +
+    collect_submodules('utils.anilibria.api_client') +
     collect_submodules('utils.config_manager') +
     collect_submodules('utils.library_loader') +
     collect_submodules('utils.logging_handlers') +

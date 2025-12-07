@@ -126,8 +126,8 @@ compileall.compile_dir(APP_DIR, force=True)
 block_cipher = None
 
 block = {
-    "FileVersion": "0.0.0.1",
-    "ProductVersion": "0.0.1",
+    "FileVersion": "0.0.0.2",
+    "ProductVersion": "0.0.2",
     "CompanyName": "666s.dev",
     "FileDescription": "AniMediaPlayerDemo",
     "InternalName": "AniMediaPlayerDemo",
@@ -147,14 +147,6 @@ version_resource = Version(
     product_name=block["ProductName"],
 )
 datas = []
-playwright_dir = Path(playwright.__file__).parent
-browsers_dir = playwright_dir / "driver" / "package" / ".local-browsers"
-
-if browsers_dir.exists():
-    datas.append((
-        str(browsers_dir),
-        "playwright/driver/package/.local-browsers"
-    ))
 datas += collect_app_datas(project_dir)
 datas += [(os.path.join(project_dir, 'app/_animedia/__pycache__'), 'app/__pycache__')]  # Add compiled .pyc files
 datas += [(os.path.join(project_dir, 'favicon.ico'), '.')]
@@ -166,10 +158,10 @@ d = Analysis([f"{APP_DIR}/{APP_DIR_NAME}/{BUILD_FILE}"],
         ],
     binaries=[],
     datas=datas,
-    hiddenimports=['beautifulsoup4', 'playwright', 'httpx', 'qasync'],
+    hiddenimports=['beautifulsoup4', 'httpx', 'qasync'],
     hookspath=[],
     runtime_hooks=[],
-    excludes=["cryptography", "numpy", "PyQt5"],
+    excludes=["cryptography", "numpy", "PyQt5", "PIL", "lxml"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

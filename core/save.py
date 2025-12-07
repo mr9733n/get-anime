@@ -317,6 +317,11 @@ class SaveManager:
         """
         with self.Session as session:
             try:
+                # Convert timestamps if they exist
+                if 'updated' in title_fields:
+                    title_fields['updated'] = datetime.fromtimestamp(title_fields['updated'], tz=timezone.utc)
+                if 'last_change' in title_fields:
+                    title_fields['last_change'] = datetime.fromtimestamp(title_fields['last_change'], tz=timezone.utc)
                 external_id_str = str(external_id)
                 provider_code = self.normalize_provider_code(provider_code)
 

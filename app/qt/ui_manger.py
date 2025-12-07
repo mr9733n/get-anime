@@ -1,7 +1,8 @@
 # ui_manager.py
 from PyQt6.QtCore import QEventLoop, Qt
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
-    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu, QAction
+    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu
 
 
 class UIManager:
@@ -125,7 +126,7 @@ class UIManager:
     ):
         btn = QToolButton(self.parent)
         btn.setText(text)
-        btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         btn.setAutoRaise(False)
         btn.setStyleSheet(self._make_style('tool_button', color_index))
 
@@ -141,7 +142,7 @@ class UIManager:
             menu.addAction(act)
 
         btn.setMenu(menu)
-        btn.setPopupMode(QToolButton.MenuButtonPopup)
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
         def sync_width():
             menu.setFixedWidth(btn.width())

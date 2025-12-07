@@ -6,11 +6,10 @@ import json
 import logging
 import platform
 import subprocess
+from dataclasses import dataclass
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Any, Dict, Union
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
-from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
 from PyQt6.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 

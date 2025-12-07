@@ -6,4 +6,4 @@
 - [ ] 2025-11-26 13:34:43 | ERROR | app.qt.app.get_update_title | Error on update title: type object 'Qt' has no attribute 'AlignJustify'
 - [ ] fix py qt signals
 - [ ] fix styles
-- [ ] 
+- [ ] 2025-12-07 17:51:26 | CRITICAL | __main__.log_exception | Unexpected exception: type object 'Qt' has no attribute 'AlignTop'

@@ -362,6 +362,8 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix saving episode no. 0
 - [x] fix app lite version for api v1 
 - [x] optimizations for app lite
+- [x] added properties details on build  
+- [ ] Remove unused logic
 
 ### 8.33 AnimePlayerAPP Add AniMedia as second provider
 - [x] Add scraper for AniMedia

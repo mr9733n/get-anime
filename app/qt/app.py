@@ -112,9 +112,9 @@ class AnimePlayerAppVer3(QWidget):
         self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
 
         """Loads the configuration settings needed by the application."""
-        self.base_url = self.config_manager.get_setting('Settings', 'base_url')
+        self.base_al_url = self.config_manager.get_setting('Settings', 'base_al_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
-        self.api_version = self.config_manager.get_setting('Settings', 'api_version')
+        self.al_api_version = self.config_manager.get_setting('Settings', 'al_api_version')
         self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
         self.titles_list_batch_size = int(self.config_manager.get_setting('Settings', 'titles_list_batch_size'))
@@ -130,18 +130,17 @@ class AnimePlayerAppVer3(QWidget):
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
             torrent_client_path=self.torrent_client_path,
-            base_url=self.base_url  # Передаём base_url из конфига
+            base_url=self.base_al_url  # Передаём base_al_url из конфига
         )
         # Corrected debug logging of paths using setup values
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
         # Initialize other components
-        self.api_client = APIClient(self.base_url, self.api_version)
+        self.api_client = APIClient(self.base_al_url, self.al_api_version)
         self.api_adapter = APIAdapter(
             self.api_client,
-            #stream_video_host=self.stream_video_url,
-            api_version=self.api_version
+            api_version=self.al_api_version
         )
 
         self.playlist_manager = PlaylistManager()
@@ -1491,14 +1490,14 @@ class AnimePlayerAppVer3(QWidget):
         """
         Возвращает «нормализованный» URL постера.
         Если poster_link уже является полным URL, который уже содержит
-        base_url или base_am_url, он возвращается без добавления префикса.
+        base_al_url или base_am_url, он возвращается без добавления префикса.
         """
         try:
             standardized_url = None
             self.logger.debug(f"Processing poster link: {poster_link}")
             is_full_url = poster_link.startswith(("http://", "https://"))
             contains_base = any(
-                base in poster_link for base in (self.base_url, self.base_am_url)
+                base in poster_link for base in (self.base_al_url, self.base_am_url)
             )
             if is_full_url and contains_base:
                 standardized_url = self.standardize_url(poster_link)
@@ -1506,7 +1505,7 @@ class AnimePlayerAppVer3(QWidget):
                     f"Poster link already full URL → {standardized_url[-41:]}"
                 )
             elif poster_link.startswith("/"):
-                poster_url = f"{self.pre}{self.base_url}{poster_link}"
+                poster_url = f"{self.pre}{self.base_al_url}{poster_link}"
                 standardized_url = self.standardize_url(poster_url)
                 self.logger.debug(f"Constructed poster URL → {standardized_url[-41:]}")
 

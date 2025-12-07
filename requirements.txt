@@ -11,7 +11,6 @@ pydantic~=2.12.5
 requests>=2.32.3
 aiohttp>=3.13.2
 httpx~=0.28.1
-playwright~=1.56.0
 beautifulsoup4~=4.14.3
 
 # Not using now

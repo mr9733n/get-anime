@@ -34,7 +34,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "ab124ddc6dc6f73ae360e0f3d2f546f1831b682d0d4af47f4e5583167db1aed1"
+VLC_PLAYER_HASH = "b5ceacbaa136fc6cd5a452afc9cb6e156fe0df135c520c423275737639c093ee"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 APP_WIDTH = 1000

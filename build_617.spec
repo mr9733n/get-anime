@@ -624,6 +624,7 @@ def copy_file(src: str, dst_dir: str):
     dst_dir_path = Path(dst_dir)
     dst_dir_path.mkdir(parents=True, exist_ok=True)
     dst_path = dst_dir_path / src_path.name
+    compiled_dir4 = os.path.join(dist_dir, 'AnimePlayer', 'static', 'rus')
     shutil.copy2(src_path, dst_path)
     print(f"📄 Copied file: {src_path} → {dst_path}")
 

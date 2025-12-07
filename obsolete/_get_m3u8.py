@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
 
-BASE_URL = '
+BASE_URL = ''
 
 
 def get_file_from_script(page_url: str) -> str | None:

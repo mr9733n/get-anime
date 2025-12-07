@@ -99,7 +99,7 @@ h3:active, p:active, li:active {
 	background: rgba(0, 0, 0, 0.8);
 	color: #FFE55C;
 }
-.day_name {
+.decorate_name {
     background: rgba(0, 0, 0, 0.7);
     color: #FF1630;
     padding: 3px 12px;

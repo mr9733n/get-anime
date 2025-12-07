@@ -11,6 +11,7 @@
     </style>
 </head>
 <body>
+            {{ provider_html|safe }}
     <div class="reload">{{ reload_html|safe }}
         <span class="header_span">{{ rating_html|safe }}</span>
     </div>
@@ -20,6 +21,7 @@
         <div>
             {{ announce_html|safe }}
             {{ status_html|safe }}
+            {{ studio_html|safe }}
             {{ team_html|safe }}
             {{ description_html|safe }}
             {{ genres_html|safe }}

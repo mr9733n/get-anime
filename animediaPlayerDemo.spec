@@ -15,11 +15,19 @@ import compileall
 
 from datetime import datetime
 from pathlib import Path
+
+import playwright
 from PyInstaller.building.api import PYZ, COLLECT, EXE
 from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, collect_data_files
 from PyInstaller.building.build_main import Analysis
 from PyInstaller.utils.win32.versioninfo import VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable, StringStruct, VarFileInfo, VarStruct
 
+APP_DIR = "app"
+APP_DIR_NAME = "_animedia"
+BUILD_FILE = "demo.py"
+EXCLUDE_DIRS = {"playlists"}
+EXCLUDE_FILE_NAMES = {"requirements.txt",}
+EXCLUDE_PREFIXES = ("",)
 
 # Compatibility shim: PyInstaller 6.x removed 'Version'. Build VSVersionInfo from simple kwargs.
 def Version(*, file_version, product_version, company_name, file_description, internal_name, legal_copyright, original_filename, product_name):
@@ -57,8 +65,33 @@ def Version(*, file_version, product_version, company_name, file_description, in
         ]
     )
 
+def collect_app_datas(dir: str):
+    project_dir = Path(dir)
+    sync_root = project_dir / APP_DIR / APP_DIR_NAME
+
+    result = []
+
+    for path in sync_root.rglob("*"):
+        if any(part in EXCLUDE_DIRS for part in path.parts):
+            continue
+        if path.is_dir():
+            continue
+        name = path.name
+        if name in EXCLUDE_FILE_NAMES:
+            continue
+        if any(name.startswith(prefix) for prefix in EXCLUDE_PREFIXES):
+            continue
+        rel_inside_sync = path.relative_to(sync_root)
+        rel_parent = rel_inside_sync.parent
+        if rel_parent == Path("."):
+            dest = APP_DIR
+        else:
+            dest = os.path.join(APP_DIR, str(rel_parent))
+        result.append((str(path), dest))
+    return result
+
 # ---
-# main.spec
+# animedia_player_demo.spec
 
 def calculate_sha256(file_path):
     hash_function = hashlib.sha256()
@@ -88,22 +121,19 @@ print(f"📂 Site-packages folder: {PACKAGES_FOLDER}")
 project_dir = os.getcwd()
 
 # Compile the files in the 'app' directory
-compileall.compile_dir('app', force=True)
-
-# ---
-# animedia_player_demo.spec
+compileall.compile_dir(APP_DIR, force=True)
 
 block_cipher = None
 
 block = {
-    "FileVersion": "0.0.0.1",
-    "ProductVersion": "0.0.1",
+    "FileVersion": "0.0.0.2",
+    "ProductVersion": "0.0.2",
     "CompanyName": "666s.dev",
-    "FileDescription": "AnimediaPlayerDemo",
-    "InternalName": "AnimediaPlayerDemo",
+    "FileDescription": "AniMediaPlayerDemo",
+    "InternalName": "AniMediaPlayerDemo",
     "LegalCopyright": "© 2025 666s.dev",
-    "OriginalFilename": "AnimediaPlayerDemo.exe",
-    "ProductName": "AnimediaPlayerDemo",
+    "OriginalFilename": "AniMediaPlayerDemo.exe",
+    "ProductName": "AniMediaPlayerDemo",
 }
 
 version_resource = Version(
@@ -116,23 +146,22 @@ version_resource = Version(
     original_filename=block["OriginalFilename"],
     product_name=block["ProductName"],
 )
+datas = []
+datas += collect_app_datas(project_dir)
+datas += [(os.path.join(project_dir, 'app/_animedia/__pycache__'), 'app/__pycache__')]  # Add compiled .pyc files
+datas += [(os.path.join(project_dir, 'favicon.ico'), '.')]
 
-d = Analysis(
-    ['app/_animedia/demo.py'],
+d = Analysis([f"{APP_DIR}/{APP_DIR_NAME}/{BUILD_FILE}"],
     pathex=[
         project_dir,
         PACKAGES_FOLDER,
         ],
     binaries=[],
-    datas=[
-        ('app/_animedia', 'app'),
-        (os.path.join(project_dir, 'app/_animedia/__pycache__'), 'app/__pycache__'),  # Add compiled .pyc files
-        (os.path.join(project_dir, 'favicon.ico'), '.'),
-    ],
-    hiddenimports=['beautifulsoup4', 'playwright', 'httpx', 'qasync'],
+    datas=datas,
+    hiddenimports=['beautifulsoup4', 'httpx', 'qasync'],
     hookspath=[],
     runtime_hooks=[],
-    excludes=["cryptography", "numpy", "PyQt5"],
+    excludes=["cryptography", "numpy", "PyQt5", "PIL", "lxml"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -145,7 +174,7 @@ exe = EXE(
 	d.scripts,
 	[],
 	exclude_binaries=True,
-    name='AnimediaPlayerDemo',
+    name='AniMediaPlayerDemo',
 	icon='favicon.ico',
 	debug=False,
 	bootloader_ignore_signals=False,
@@ -161,11 +190,11 @@ coll = COLLECT(
 	d.zipfiles,
 	d.datas,
 	strip=False,
-	name='AnimediaPlayerDemo'
+	name='AniMediaPlayerDemo'
 )
 
 dist_dir = os.path.join(project_dir, 'dist')
-compiled_dir2 = os.path.join(dist_dir, 'AnimediaPlayerDemo', '_internal')
+compiled_dir2 = os.path.join(dist_dir, 'AniMediaPlayerDemo', '_internal')
 
 def delete_folders(target_dir, folder_patterns):
     for pattern in folder_patterns:
@@ -220,7 +249,7 @@ files_to_delete += [
 for target_folder in target_folders:
     delete_files(target_folder, files_to_delete)
 
-dest_dir1 = os.path.join(dist_dir, 'AnimediaPlayerDemo')
+dest_dir1 = os.path.join(dist_dir, 'AniMediaPlayerDemo')
 
 folders_mapping = {
     compiled_dir2: (

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import argparse, sqlite3, time, sys
 from contextlib import closing
+import argparse, sqlite3, time, sys
+
 
 NOW = int(time.time())
 
@@ -25,15 +26,12 @@ def coalesce(a, b):
     return a if a not in (None, "") else b
 
 def same(val1, val2):
-    # сравнение с учётом типов/NULL
     return (val1 == val2) or (val1 in ("", None) and val2 in ("", None))
 
 def ensure_franchise_in_dst(src, dst, title_id, franchise_id_str, franchise_name, last_updated, on_event=None):
-    # гарантируем, что titles есть (иначе FK упрётся)
     try:
         ensure_title_in_dst(src, dst, int(title_id), on_event=on_event)
     except RuntimeError:
-        # в источнике нет такого title — пусть вызывающий решит, что делать
         raise
 
     ex = fetch_one(dst, "SELECT id FROM franchises WHERE title_id=? AND franchise_id=?",
@@ -66,7 +64,6 @@ def resolve_dst_episode_id_by_uuid(dst, episode_uuid: str):
     return row["episode_id"] if row else None
 
 def resolve_dst_episode_id_by_src_id_via_uuid(src, dst, src_episode_id: int):
-    # src id -> src uuid -> dst id
     row = fetch_one(src, "SELECT uuid FROM episodes WHERE episode_id=?", (src_episode_id,))
     if not row or not row["uuid"]:
         return None
@@ -77,7 +74,6 @@ def resolve_dst_torrent_id_by_hash(dst, h: str):
     return row["torrent_id"] if row else None
 
 def fk_violations(con, table: str):
-    # PRAGMA foreign_key_check возвращает: (table, rowid, parent, fkid)
     try:
         rows = fetch_all(con, f"PRAGMA foreign_key_check({table})")
         return [tuple(r) for r in rows]
@@ -86,7 +82,6 @@ def fk_violations(con, table: str):
 
 def raise_fk_error(con, table: str, op: str, pk_cols, row_src: dict, inner: Exception):
     viol = fk_violations(con, table)
-    # вытащим значение PK для дебага
     pk_tuple = {c: row_src.get(c) for c in pk_cols}
     msg = [
         f"FK failed on {table} during {op}",
@@ -94,10 +89,8 @@ def raise_fk_error(con, table: str, op: str, pk_cols, row_src: dict, inner: Exce
         f"error={inner!r}",
     ]
     if viol:
-        # покажем до 5 нарушений, чтобы не зашумлять
         msg.append("foreign_key_check (first rows):")
         for v in viol[:5]:
-            # (child_table, child_rowid, parent_table, fkid)
             msg.append(f"  -> {v}")
     raise RuntimeError("\n".join(msg)) from inner
 
@@ -115,13 +108,11 @@ def upsert_generic(cur_dst, table, pk_cols, row_src: dict,
     fill_only_cols = set(fill_only_cols or [])
     set_cols = set_cols or {}
 
-    # найти существующую запись
     where = " AND ".join([f"{c} = ?" for c in pk_cols])
     row_dst = cur_dst.execute(f"SELECT * FROM {table} WHERE {where}",
                               tuple(row_src[c] for c in pk_cols)).fetchone()
 
     if row_dst is None:
-        # INSERT
         cols = list(row_src.keys())
         vals = [row_src[c] for c in cols]
         placeholders = ", ".join(["?"] * len(cols))
@@ -135,7 +126,6 @@ def upsert_generic(cur_dst, table, pk_cols, row_src: dict,
         if on_event: on_event(table, "insert")
         return "insert"
 
-    # UPDATE (собираем новые значения)
     row_dst = to_dict(row_dst)
     new_vals = dict(row_dst)
     changed = False
@@ -163,8 +153,6 @@ def upsert_generic(cur_dst, table, pk_cols, row_src: dict,
                 new_vals[col] = src_val
                 changed = True
             continue
-
-        # default: если src НЕ пуст — берём src, иначе оставляем
         if (src_val not in (None, "")) and not same(src_val, dst_val):
             new_vals[col] = src_val
             changed = True
@@ -196,11 +184,8 @@ def merge_genres(src, dst, stats, on_event=None):
         cur = dst.cursor()
         for r in rows:
             data = dict(r)
-            # ключ по name, т.к. id автогенерится и может отличаться
-            # если жанр с таким name уже есть — используем его id
             ex = fetch_one(dst, "SELECT genre_id FROM genres WHERE name = ?", (data["name"],))
             if ex:
-                # обновляем по name (минимально, name уникален)
                 op = upsert_generic(cur, "genres", ["genre_id"], {
                     "genre_id": ex["genre_id"],
                     "name": data["name"],
@@ -208,7 +193,6 @@ def merge_genres(src, dst, stats, on_event=None):
                 }, overwrite_cols={"name", "last_updated"}, on_event=on_event)
                 stats["genres"][op] += 1
             else:
-                # вставляем как есть: id может быть своим
                 op = upsert_generic(cur, "genres", ["genre_id"], data, overwrite_cols={"name", "last_updated"}, on_event=on_event)
                 stats["genres"][op] += 1
 
@@ -218,7 +202,6 @@ def merge_team_members(src, dst, stats, on_event=None):
         cur = dst.cursor()
         for r in rows:
             data = dict(r)
-            # устойчивый ключ: (name, role)
             ex = fetch_one(dst, "SELECT id FROM team_members WHERE name = ? AND role = ?", (data["name"], data["role"]))
             if ex:
                 op = upsert_generic(cur, "team_members", ["id"], {
@@ -230,14 +213,12 @@ def merge_team_members(src, dst, stats, on_event=None):
             stats["team_members"][op] += 1
 
 def merge_titles(src, dst, stats, on_event=None):
-    # возьмём все колонки, кроме blobs
     cols = [c[1] for c in fetch_all(src, "PRAGMA table_info(titles)")]
     rows = fetch_all(src, f"SELECT {', '.join(cols)} FROM titles")
     with dst:
         cur = dst.cursor()
         for r in rows:
             data = dict(r)
-            # локальную last_updated — на "сейчас"
             if "last_updated" in data:
                 data["last_updated"] = sqlite3.TimestampFromTicks(NOW)
             op = upsert_generic(cur, "titles", ["title_id"], data, overwrite_cols=set(cols) - {"last_updated"}, on_event=on_event)
@@ -273,19 +254,15 @@ def merge_episodes(src, dst, stats, on_event=None):
         for r in rows:
             data = dict(r)
             if not data.get("uuid"):
-                # fallback, если вдруг uuid пуст:
                 ex = fetch_one(dst, "SELECT uuid FROM episodes WHERE title_id=? AND episode_number=?",
                                (data.get("title_id"), data.get("episode_number")))
                 if ex: data["uuid"] = ex["uuid"]
-
-            # не допускаем изменения episode_id
             overwrite = set(cols) - {"uuid", "episode_id"}
             exists = fetch_one(dst, "SELECT 1 FROM episodes WHERE uuid=?", (data.get("uuid"),))
             payload = dict(data)
-            payload.pop("episode_id", None)  # и для INSERT, и для UPDATE
+            payload.pop("episode_id", None)
             op = upsert_generic(cur, "episodes", ["uuid"], payload,
                                 overwrite_cols=overwrite,
-                                # доп. гарантия: на UPDATE зафиксировать episode_id прежним (если вдруг кто-то передаст)
                                 set_cols={"episode_id": (lambda dst_val, src_val: dst_val)},
                                 on_event=on_event)
             stats["episodes"][op] += 1
@@ -299,13 +276,9 @@ def merge_torrents(src, dst, stats, on_event=None):
             data = dict(r)
             h = data.get("hash")
             if not h:
-                # если вдруг нет hash — можно сгенерить из набора полей (аккуратно),
-                # но лучше такие записи пропускать:
                 if on_event: on_event("torrents", "skip:no-hash")
                 continue
-
             ensure_title_in_dst(src, dst, int(data.get("title_id") or 0), on_event=on_event)
-
             overwrite = set(cols) - {"hash", "torrent_id"}
             payload = dict(data)
             payload.pop("torrent_id", None)
@@ -336,9 +309,6 @@ def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
                 continue
 
             if not hash_value and skip_flag: continue
-
-
-            # 1) гарантируем, что titles есть; если в src его нет — щадяще пропускаем
             try:
                 ensure_title_in_dst(src, dst, int(title_id), on_event=on_event)
             except RuntimeError:
@@ -348,11 +318,9 @@ def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
             hv = data.get("hash_value")
 
             if hv:
-                # 2) дедуп по (title_id, hash_value)
                 ex = fetch_one(dst, "SELECT poster_id FROM posters WHERE title_id=? AND hash_value=?",
                                (title_id, hv))
                 if ex:
-                    # освежаем мета/контент по найденному poster_id
                     payload = {
                         "poster_id": ex["poster_id"],
                         "title_id": title_id,
@@ -364,7 +332,6 @@ def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
                                         overwrite_cols={"title_id","poster_blob","hash_value","last_updated"},
                                         on_event=on_event)
                 else:
-                    # нет такого файла у этого тайтла — мягкая вставка без poster_id (чтобы не конфликтовать PK)
                     try:
                         cur.execute(
                             "INSERT INTO posters (title_id, poster_blob, hash_value, last_updated) VALUES (?,?,?,?)",
@@ -373,11 +340,8 @@ def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
                         op = "insert"
                         if on_event: on_event("posters", "insert")
                     except sqlite3.IntegrityError as e:
-                        # если вдруг (редко) FK/UNIQUE — поднимем понятную ошибку
                         raise_fk_error(dst, "posters", "INSERT", ["poster_id"], data, e)
             else:
-                # 3) нет хэша — сначала пробуем обновить, если poster_id совпал,
-                #    иначе мягко вставим без poster_id
                 pid = data.get("poster_id")
                 if pid and fetch_one(dst, "SELECT 1 FROM posters WHERE poster_id=?", (pid,)):
                     payload = {
@@ -400,11 +364,9 @@ def merge_posters(src, dst, stats, on_event=None, skip_flag=False):
                         if on_event: on_event("posters", "insert")
                     except sqlite3.IntegrityError as e:
                         raise_fk_error(dst, "posters", "INSERT", ["poster_id"], data, e)
-
             stats["posters"][op] += 1
 
 def merge_franchises(src, dst, stats, on_event=None):
-    # переносим/освежаем Franchise по (title_id, franchise_id)
     rows = fetch_all(src, "SELECT id, title_id, franchise_id, franchise_name, last_updated FROM franchises")
     with dst:
         cur = dst.cursor()
@@ -448,18 +410,16 @@ def merge_franchise_releases(src, dst, stats, on_event=None):
             data = dict(r)
             title_id = data["title_id"]
 
-            # 1) title + franchise в dst (title обязателен в src, иначе пропускаем)
             try:
                 dst_fr_id = ensure_franchise_in_dst(
                     src, dst,
-                    data["f_title_id"],           # у франшизы свой title_id (обычно тот же)
+                    data["f_title_id"],
                     data["f_fr_id"],
                     data["franchise_name"],
                     data["last_updated"],
                     on_event=on_event
                 )
             except RuntimeError:
-                # нет title в src — щадяще пропускаем релиз
                 if on_event: on_event("franchise_releases", f"skip_orphan_title:{title_id}")
                 continue
 
@@ -469,7 +429,6 @@ def merge_franchise_releases(src, dst, stats, on_event=None):
                 if on_event: on_event("franchise_releases", f"skip_orphan_title:{title_id}")
                 stats["franchise_releases"]["skip"] += 1
                 continue
-            # 2) ищем по естественному ключу в dst
             ex = fetch_one(dst, """
                 SELECT id FROM franchise_releases
                  WHERE franchise_id=? AND title_id=? AND COALESCE(code,'')=COALESCE(?, '')
@@ -477,7 +436,6 @@ def merge_franchise_releases(src, dst, stats, on_event=None):
             """, (dst_fr_id, title_id, data["code"], data["ordinal"]))
 
             if ex:
-                # UPDATE по id найденной строки
                 payload = {
                     "id": ex["id"],
                     "franchise_id": dst_fr_id,
@@ -494,7 +452,6 @@ def merge_franchise_releases(src, dst, stats, on_event=None):
                                                     "name_ru","name_en","name_alternative","last_updated"},
                                     on_event=on_event)
             else:
-                # INSERT без переноса id
                 try:
                     cur.execute("""
                         INSERT INTO franchise_releases
@@ -508,11 +465,9 @@ def merge_franchise_releases(src, dst, stats, on_event=None):
                 except sqlite3.IntegrityError as e:
                     raise_fk_error(dst, "franchise_releases", "INSERT",
                                    ["franchise_id","title_id","code","ordinal"], data, e)
-
             stats["franchise_releases"][op] += 1
 
 def merge_title_genre_relations(src, dst, stats, on_event=None):
-    # для каждой связи: матчим genre_id через name
     rows = fetch_all(src, """
         SELECT tgr.title_id, g.name as genre_name, tgr.last_updated
           FROM title_genre_relation tgr
@@ -524,7 +479,6 @@ def merge_title_genre_relations(src, dst, stats, on_event=None):
             title_id = r["title_id"]; genre_name = r["genre_name"]
             g = fetch_one(dst, "SELECT genre_id FROM genres WHERE name=?", (genre_name,))
             if not g:
-                # если жанра ещё нет — создадим
                 cur.execute("INSERT INTO genres (name, last_updated) VALUES (?, ?)", (genre_name, r["last_updated"]))
                 genre_id = cur.lastrowid
             else:
@@ -599,18 +553,14 @@ def merge_history(src, dst, stats, on_event=None):
         for r in rows:
             d = dict(r)
 
-            # episode_id: src -> uuid -> dst
             if d.get("episode_id") is not None:
                 new_ep = resolve_dst_episode_id_by_src_id_via_uuid(src, dst, d["episode_id"])
                 if new_ep is not None:
                     d["episode_id"] = new_ep
                 else:
-                    # нет такого эпизода в dst — можно пропустить или занести как orphan
                     if on_event: on_event("history", f"skip_orphan_episode:{r.get('episode_id')}")
                     continue
 
-            # torrent_id: чаще всего можно резолвить по hash (если хранится в history);
-            # если в history нет hash — берём его из src.torrents по torrent_id
             if d.get("torrent_id") is not None:
                 row = fetch_one(src, "SELECT hash FROM torrents WHERE torrent_id=?", (d["torrent_id"],))
                 if row and row["hash"]:
@@ -628,7 +578,6 @@ def merge_history(src, dst, stats, on_event=None):
                                     on_event=on_event)
                 stats["history"][op] += 1
                 continue
-
             op = upsert_generic(cur, "history", ["id"], d,
                                 overwrite_cols=set(d.keys())-{"id"},
                                 on_event=on_event)
@@ -644,10 +593,7 @@ def run_merge(
         verbose=False):
     with closing(open_db(src_path)) as src, closing(open_db(dst_path)) as dst:
         dst.execute("PRAGMA foreign_keys = ON;")
-        # если твоя версия SQLite поддерживает — отложит проверку до COMMIT:
         dst.execute("PRAGMA defer_foreign_keys = ON;")
-
-        # sanity
         if src_path == dst_path:
             raise SystemExit("source и destination совпадают")
         stats = {}
@@ -655,14 +601,11 @@ def run_merge(
                   "episodes","torrents","posters","franchises","franchise_releases",
                   "title_genre_relation","title_team_relation","ratings","history"]:
             ensure_table_stats(stats, t)
-
-        orphans = []  # сюда собираем сирот
+        orphans = []
 
         def record_event(table, op):
-            # внешний on_event + verbose — как раньше
             if on_event and verbose:
                 on_event(table, op)
-            # наши сироты
             if "skip_orphan" in op:
                 key = None
                 if ":" in op:
@@ -675,11 +618,9 @@ def run_merge(
 
         # def _noop_event(*args, **kwargs): pass
         # evt = on_event if verbose and on_event else _noop_event
-        # порядки важны (FK!)
         merge_days_of_week(src, dst, stats, on_event=record_event)
         merge_genres(src, dst, stats, on_event=record_event)
         merge_team_members(src, dst, stats, on_event=record_event)
-
         merge_titles(src, dst, stats, on_event=record_event)
         merge_production_studio(src, dst, stats, on_event=record_event)
         merge_schedule(src, dst, stats, on_event=record_event)
@@ -692,7 +633,6 @@ def run_merge(
         merge_title_team_relations(src, dst, stats, on_event=record_event)
         merge_ratings(src, dst, stats, on_event=record_event)
         merge_history(src, dst, stats, on_event=record_event)
-
         violate = fetch_all(dst, "PRAGMA foreign_key_check")
 
         if skip_orphans:
@@ -717,9 +657,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
     try:
         stats, viol, orphans = run_merge(args.source_db, args.destination_db, dry_run=args.dry_run, verbose=args.verbose)
-        # вывод сводки
         if viol:
-        # вывести в лог/GUI список нарушений
             print("\n=== VIOLATION SUMMARY (source → dest) ===")
             head = viol[:10]
             print(f"{len(viol)} violations, first 10:\n{head}")

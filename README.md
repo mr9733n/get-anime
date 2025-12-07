@@ -4,15 +4,33 @@ Note: This application is for personal use only and should not be used to infrin
 
 # AnimePlayerApp
 
-AnimePlayerApp is a Qt-based application for viewing and managing anime content. It creates a local database for storing links and posters, allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using the built-in player or VLC Media Player.
+#### AnimePlayerApp 
+- Qt-based application for viewing and managing anime content. It creates a local database for storing links and posters, allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using the built-in player or VLC Media Player.
     
-    - api v3 obsolete and deprecated
-    - tested with api v1
+    - anilibria api v3 obsolete and deprecated
+    - tested with aniliberty api v1
+    - animedia standart player parcer 
 
-AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime content. It allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using VLC Media Player.
+
+#### AniMediaPlayerDemo 
+- Qt-based application for viewing anime content. It allows user to search for anime by title, view m3u8 links for a selected anime, auto-save playlists, and auto-play them using VLC Media Player.
+
+    - tested animedia standart player parcer
+
+
+#### AnimePlayerAppLite 
+- Tkinter-based application for viewing and managing anime content. It allows users to view the anime schedule, search for anime by title, view detailed information about a selected anime, save playlists, and play them using VLC Media Player.
     
-    - supported api v1
-    - tested with api v1
+    - supported aniliberty api v1
+    - tested with aniliberty api v1
+
+
+#### PlayerDBSync
+- Tkinter-based utility application for managing local db. It allows users to copy db in local LAN, merge db. Utility work over p2p with encrypted connection, can find open port over mDNS, saves receiver after success transferred, saves TOFU, have logs.  
+
+    - tested db migration over LAN
+    - tested db merge
+
 
 [Screenshots](https://github.com/mr9733n/get-anime/tree/main/static/Readme.md)
 
@@ -21,6 +39,8 @@ AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime
 - View the anime schedule for different days of the week.
 - Update the schedule.
 - Search for anime by title.
+- Search anime by title in AniLiberty, AniMedia
+- Update saved titles 
 - Display detailed information about a selected anime, including description, status, genres, and release year.
 - Ability to specify viewing history.
 - Ability to mark a rating.
@@ -35,12 +55,18 @@ AnimePlayerAppLite is a Tkinter-based application for viewing and managing anime
 
 ## Setup and Usage
 
+Clone repository:
+```bash
+git clone https://github.com/mr9733n/get-anime.git
+```
+
 Installing Dependencies:
 
 Before running the application, make sure you have Python 3 and VLC Player installed. You will also need to install the necessary dependencies:
 Install the necessary libraries using pip:
 
 ```bash
+cd get-anime
 pip install -r requirements.txt
 ```
 
@@ -57,9 +83,18 @@ python main.py
 ```
 
 ## Build the application:
+- old version build_513.spec
+- new version build_617.spec
+- requirements.txt was updated
+
+None: If you want use AniMedia wrapper, you need to run before build:
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH="0"
+python -m playwright install chromium
+```
 
 ```bash
-pyinstaller build.spec --noconfirm
+pyinstaller build_617.spec --noconfirm
 ```
 
 ## Utilities: 

@@ -5,7 +5,7 @@ from jinja2 import Template
 from PyQt6.QtWidgets import QTextBrowser, QLabel, QWidget
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
-from app.qt.layout_metadata import show_mode_metadata
+from static.layout_metadata import show_mode_metadata
 
 
 class TitleDisplayFactory:
@@ -80,7 +80,7 @@ class TitleDataFactory:
             data_fetcher_name = show_mode_metadata[show_mode].get("data_fetcher")
 
             # Определяем списочные режимы с пагинацией
-            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list']
+            pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list', 'titles_provider_list']
 
             if data_fetcher_name == 'system':
                 return self.db_manager.get_statistics_from_db()
@@ -111,7 +111,7 @@ class TitleDataFactory:
                 else:
                     return []
 
-            # Если переданы конкретные title_ids, но не попали под списочные режимы
+                # Если переданы конкретные title_ids, но не попали под списочные режимы
             elif title_ids:
                 return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
 
@@ -157,6 +157,8 @@ class TitleHtmlFactory:
     def _generate_one_title_html(self, title):
         """Генерирует HTML для отображения одного тайтла."""
         try:
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
+            studio_html = self.app.ui_generator.generate_studio_html(title.title_id)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -177,10 +179,12 @@ class TitleHtmlFactory:
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
+                provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,
                 announce_html=announce_html,
                 status_html=status_html,
+                studio_html=studio_html,
                 team_html=team_html,
                 description_html=description_html,
                 genres_html=genres_html,
@@ -218,6 +222,7 @@ class TitleHtmlFactory:
         """Генерирует HTML по умолчанию."""
         try:
             self.logger.debug(f"Начинаем генерацию HTML по умолчанию для title_id: {title.title_id}")
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -239,6 +244,7 @@ class TitleHtmlFactory:
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
+                provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,
                 show_more_html=show_more_html,

@@ -12,7 +12,7 @@ def calculate_file_hash(file_path):
         with open(file_path, 'rb') as f:
             while chunk := f.read(8192):
                 hash_function.update(chunk)
-        return hash_function.hexdigest()
+        return hash_function.hexdigest().lower()
     except FileNotFoundError:
         raise FileNotFoundError(f"File not found: {file_path}")
     except Exception as e:
@@ -23,7 +23,7 @@ def verify_library(file_path, expected_hash):
     """Проверяет хэш библиотеки."""
     try:
         actual_hash =  calculate_file_hash(file_path)
-        if actual_hash != expected_hash:
+        if actual_hash != expected_hash.lower():
             logger.error(f"Expected: {expected_hash}")
             logger.error(f"Actual: {actual_hash}")
             logger.critical("!!!HASH WAS NOT EQUAL. CAN BE MALICIOUS!!!")

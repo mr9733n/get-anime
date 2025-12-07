@@ -2,8 +2,7 @@
 import ast
 import base64
 from urllib.parse import urlparse, parse_qs, unquote
-
-from PyQt5.QtCore import QTimer
+from PyQt6.QtCore import QTimer
 
 
 class LinkActionHandler:
@@ -35,6 +34,7 @@ class LinkActionHandler:
             'filter_by_team_member': self._handle_filter_by_team_member,
             'filter_by_year': self._handle_filter_by_year,
             'filter_by_status': self._handle_filter_by_status,
+            'filter_by_provider': self._handle_filter_by_provider,
             'reload_template': self._handle_reload_template,
             'reset_offset': self._handle_reset_offset,
             'reload_info': self._handle_display_info,
@@ -173,6 +173,17 @@ class LinkActionHandler:
                                                                title_ids=title_ids))
         else:
             self.logger.warning(f"No titles found with status: '{status_code}'")
+    def _handle_filter_by_provider(self, parts):
+        provider_code = parts[1]
+        self.logger.debug(f"Filtering by provider: {provider_code}")
+        title_ids = self.db_manager.get_title_ids_by_provider(provider_code)
+        self.logger.debug(f"Query returned {len(title_ids)} titles: {title_ids[:5] if title_ids else []}")
+        if title_ids:
+            QTimer.singleShot(100, lambda: self.display_titles(show_mode='titles_provider_list',
+                                                               batch_size=self.titles_list_batch_size,
+                                                               title_ids=title_ids))
+        else:
+            self.logger.warning(f"No titles found with provider: '{provider_code}'")
 
     def _handle_reload_template(self, parts):
         template_name = parts[1]
@@ -256,8 +267,8 @@ class LinkActionHandler:
     def _handle_set_rating(self, parts):
         if len(parts) >= 4:
             title_id = int(parts[1])
-            rating_name = parts[2]
-            rating_value = parts[3]
+            rating_name = str(parts[2])
+            rating_value = int(parts[3])
             self.logger.debug(f"Setting rating for title_id: {title_id}, rating: {rating_name}:{rating_value}")
             self.db_manager.save_ratings(title_id, rating_name=rating_name, rating_value=rating_value)
             QTimer.singleShot(100, lambda: self.display_info(title_id))

@@ -6,7 +6,7 @@ import re
 
 
 EXTENSIONS = ['.py', '.spec', '.java', '.js', '.html', '.css', '.c', '.cpp', '.rs', '.db', '.md']
-EXCLUDED_DIRS = ['venv', '.venv', 'node_modules', '.git', '__pycache__', 'build', 'dist', 'temp', 'obsolete']
+EXCLUDED_DIRS = ['venv', '.venv', '.venv313', 'node_modules', '.git', '__pycache__', 'build', 'dist', 'temp', 'obsolete', "db"]
 
 
 def count_lines(file_path):

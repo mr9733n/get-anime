@@ -1,7 +1,7 @@
 # ui_s_generator.py
 import logging
 
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
+from PyQt6.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
 from utils.runtime_manager import restart_application, LogWindow
 
 
@@ -79,6 +79,8 @@ class UISGenerator:
         self.add_studio_button = None
         self.title_ids_input = None
         self.studio_input = None
+        self.delete_title_input = None
+        self.delete_title_button = None
 
     def create_line_edit(self, placeholder_text, parent, max_width=150):
         """Создает QLineEdit с предустановленным стилем."""
@@ -227,21 +229,32 @@ class UISGenerator:
             self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
             self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db, max_width=100)
 
-            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
-
-            # TODO: Disabled for a wile
-            # bottom_layout.addStretch()
-
+            # TODO: Disabled for a while
+            bottom_layout.addStretch()
             bottom_layout.addWidget(self.template_selector)
             bottom_layout.addWidget(self.template_apply_button)
-
             bottom_layout.addWidget(self.studio_input)
             bottom_layout.addWidget(self.title_ids_input)
             bottom_layout.addWidget(self.add_studio_button)
+            bottom_layout.addStretch()
 
-            bottom_layout.addWidget(self.log_button)
+            bottom_layout2 = QHBoxLayout()
+            self.delete_title_input = self.create_line_edit(
+                "DELETE TITLE IDs (comma-separated)", container_widget, max_width=260
+            )
+            self.delete_title_button = self.create_button(
+                "DELETE", container_widget, self.delete_titles_from_db, max_width=100
+            )
+            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
+
+            bottom_layout2.addStretch()
+            bottom_layout2.addWidget(self.delete_title_input)
+            bottom_layout2.addWidget(self.delete_title_button)
+            bottom_layout2.addWidget(self.log_button)
+            bottom_layout2.addStretch()
 
             container_layout.addLayout(bottom_layout)
+            container_layout.addLayout(bottom_layout2)
 
             # Добавляем контейнерный виджет в основной layout
             system_layout.addWidget(container_widget)
@@ -366,3 +379,33 @@ class UISGenerator:
              </div>
          </div>
          '''
+
+    def delete_titles_from_db(self):
+        """Удаление одного или нескольких тайтлов по списку title_id через запятую."""
+        title_ids_str = self.delete_title_input.text().strip()
+
+        try:
+            if not title_ids_str:
+                self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
+                return
+
+            # просто пробрасываем строку в db_manager — он сам разберёт
+            if not hasattr(self.db_manager, "delete_titles"):
+                self.logger.error("db_manager.delete_titles не реализован.")
+                return
+
+            result = self.db_manager.delete_titles(title_ids_str)
+
+            deleted = result.get("deleted", [])
+            not_found = result.get("not_found", [])
+
+            if deleted:
+                self.logger.info(f"Удалены тайтлы: {deleted}")
+            if not_found:
+                self.logger.warning(f"Тайтлы не найдены в БД и не были удалены: {not_found}")
+
+            # можно очистить поле после успешного вызова
+            self.delete_title_input.clear()
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при удалении тайтлов: {e}")

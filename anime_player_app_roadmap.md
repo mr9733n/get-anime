@@ -471,15 +471,23 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Removed playwright from Animedia demo app
 - [x] Removed playwright from .spec
 - [x] Filter by provider
+
+### 8.36 Anime Player Add Sock proxy
+- [x] Add Net client
+- [x] Add workaround for net client
+- [ ] Add net client for each request
+- [ ] Add net client for vlc player
+- [ ] fix saving combined playlist with multiply providers
+- [ ] fix play video after was paused
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] ...
 
-### 8.35 Refactoring Player DB Sync Utility 0.0.0.2
+### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui
-- [ ] 
+- [ ] ...
 
-### 8.36 New features Player DB Sync Utility 0.0.0.3
+### 8.38 New features Player DB Sync Utility 0.0.0.3
 - [ ] если нажать clear и попробовать отправить бд еще раз то офер не сформируется, то и с ответом
 - [ ] Cancel Send
 - [ ] Cancel Receive

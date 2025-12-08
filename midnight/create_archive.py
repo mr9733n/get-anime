@@ -11,6 +11,7 @@ EXCLUSIONS = {"*.py", "logs", "*.db", "*.cpython-311.pyc", "*.cpython-313.pyc"}
 ARCHIVES = {
     "AnimePlayer": os.path.join(OUTPUT_DIR, "AnimePlayer"),
     "AnimePlayerLite": os.path.join(OUTPUT_DIR, "AnimePlayerLite"),
+    "AniMediaPlayerDemo": os.path.join(OUTPUT_DIR, "AniMediaPlayerDemo"),
 }
 
 def should_exclude(path: Path):

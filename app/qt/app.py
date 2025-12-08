@@ -28,6 +28,7 @@ from utils.anilibria.api_adapter import APIAdapter
 from utils.animedia.qt_async_worker import AsyncWorker
 from utils.animedia.animedia_adapter import AnimediaAdapter
 from utils.config_manager import ConfigManager
+from utils.net_client import NetClient
 from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
@@ -123,6 +124,13 @@ class AnimePlayerAppVer3(QWidget):
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
+        # ========== ДОБАВЬ ЗДЕСЬ ==========
+        # Инициализация сетевого клиента
+        network_config = self.config_manager.network
+        self.net_client = NetClient(network_config)
+        self.logger.debug(f"Network client initialized. Proxy enabled: {network_config.proxy_enabled}")
+        # ==================================
+
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
@@ -130,7 +138,8 @@ class AnimePlayerAppVer3(QWidget):
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
             torrent_client_path=self.torrent_client_path,
-            base_url=self.base_al_url  # Передаём base_al_url из конфига
+            base_url=self.base_al_url,  # Передаём base_al_url из конфига
+            net_client=self.net_client
         )
         # Corrected debug logging of paths using setup values
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
@@ -140,13 +149,15 @@ class AnimePlayerAppVer3(QWidget):
         self.api_client = APIClient(self.base_al_url, self.al_api_version)
         self.api_adapter = APIAdapter(
             self.api_client,
-            api_version=self.al_api_version
+            api_version=self.al_api_version,
+            net_client=self.net_client
         )
 
         self.playlist_manager = PlaylistManager()
         self.db_manager = db_manager
         self.poster_manager = PosterManager(
             save_callback=self.db_manager.save_poster,
+            net_client=self.net_client
         )
 
         self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
@@ -191,17 +202,10 @@ class AnimePlayerAppVer3(QWidget):
     def on_add_title_browser_to_layout(self, title_browser, row, column):
         self.posters_layout.addWidget(title_browser, row, column)
 
-    @staticmethod
-    def current_platform():
-        current_platform = platform.system()
-        return current_platform
-
     def setup_paths(self):
         """Sets up paths based on the current platform and returns them for use."""
-        current_platform = self.current_platform()
-        video_player_path = self.config_manager.get_video_player_path(current_platform)
-        torrent_client_path = self.config_manager.get_torrent_client_path(current_platform)
-
+        video_player_path = self.config_manager.get_video_player_path()
+        torrent_client_path = self.config_manager.get_torrent_client_path()
         # Return paths to be used in the class
         return video_player_path, torrent_client_path
 
@@ -1549,8 +1553,7 @@ class AnimePlayerAppVer3(QWidget):
         """Launch VLC player as a separate process."""
         if getattr(sys, 'frozen', False):
             # TODO: add other platforms
-            current_platform = self.current_platform()
-            vlc_player_executable_name = self.config_manager.get_vlc_player_executable_name(current_platform)
+            vlc_player_executable_name = self.config_manager.get_vlc_player_executable_name()
             vlc_player_executable = os.path.join(os.path.dirname(sys.executable), vlc_player_executable_name)
 
             if VLC_PLAYER_HASH:
@@ -1569,6 +1572,10 @@ class AnimePlayerAppVer3(QWidget):
                 cmd.extend(["--skip_data", skip_data])
             if self.prod_key is not None:
                 cmd.extend(["--prod_key", str(self.prod_key)])
+            # TODO: fix this
+            # if self.net_client:
+            #    cmd.extend(["--proxy", str(self.net_client)])
+
 
             subprocess.Popen(cmd, close_fds=True)
             self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")

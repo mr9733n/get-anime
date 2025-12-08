@@ -14,10 +14,11 @@ RETRY_DELAY = 10  # seconds
 MAX_IMAGE_SIZE_KB = 5000
 
 class PosterManager:
-    def __init__(self, save_callback=None):
+    def __init__(self, save_callback=None, net_client=None):
         self.logger = logging.getLogger(__name__)
         self.poster_links = []
         self.save_callback = save_callback
+        self.net_client = net_client
         self.save_queue = queue.Queue()
         self._save_thread = None
         self._download_thread = None

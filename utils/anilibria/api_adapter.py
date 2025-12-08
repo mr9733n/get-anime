@@ -15,13 +15,14 @@ class APIAdapter:
     3. Правильная структура для process.py
     """
 
-    def __init__(self, api_client, api_version="v1"):
+    def __init__(self, api_client, api_version="v1", net_client=None):
         self.api_version = api_version
         self.logger = logging.getLogger(__name__)
         self.client = api_client
         self.stream_video_host =  None # "cache.libria.fun"
         self._title_locks = {}
         self._title_locks_guard = threading.Lock()
+        self.net_client = net_client
 
     # ============================================
     # ПУБЛИЧНЫЕ МЕТОДЫ

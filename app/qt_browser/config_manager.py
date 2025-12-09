@@ -78,12 +78,3 @@ class ConfigManager:
             return self.get_setting('Settings', 'mac_video_player_path')
         else:
             return None
-
-    def get_torrent_client_path(self):
-        platform_name = self._platform_name
-        if platform_name == "Windows":
-            return self.get_setting('Settings', 'win_torrent_client_path')
-        elif platform_name == "Darwin":  # macOS
-            return self.get_setting('Settings', 'mac_torrent_client_path')
-        else:
-            return None

@@ -14,14 +14,16 @@ class APIClient:
     Только делает запросы - никакой бизнес-логики!
     """
 
-    def __init__(self, base_url, api_version):
+    def __init__(self, base_url, api_version, net_client=None):
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url
         self.api_version = api_version
+        self.net_client = net_client
+
         self.pre = "https://"
         self.utils_folder = "temp"
         os.makedirs(self.utils_folder, exist_ok=True)
-        self._http = httpx.Client(
+        self._http = self.net_client.create_httpx_client(
             base_url=f"{self.pre}{self.base_url}/api/{self.api_version}/",
             http2=False,
             timeout=httpx.Timeout(15.0, read=30.0, connect=10.0),

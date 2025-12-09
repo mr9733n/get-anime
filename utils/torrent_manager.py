@@ -33,7 +33,7 @@ class TorrentManager:
             self.logger.info(f"Downloading torrent from: {full_url}")
 
             # Скачиваем файл
-            response = requests.get(full_url, timeout=30)
+            response = self.net_client.get(full_url, timeout=30)
             response.raise_for_status()
 
             # Сохраняем

@@ -102,7 +102,7 @@ class PosterManager:
                     params = {'no_cache': 'true', 'timestamp': time.time()}
                     start_time = time.time()
                     self.logger.info(f"Запрос к URL: {link}")
-                    response = requests.get(link, headers=headers, stream=True, params=params)
+                    response = self.net_client.get(link, headers=headers, stream=True, params=params)
                     self.logger.info(f"Статус ответа: {response.status_code}")
                     response.raise_for_status()
                     end_time = time.time()

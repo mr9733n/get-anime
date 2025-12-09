@@ -113,6 +113,10 @@ class AnimePlayerAppVer3(QWidget):
         self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
 
         """Loads the configuration settings needed by the application."""
+        network_config = self.config_manager.network
+        self.net_client = NetClient(network_config)
+        self.logger.info(f"Network client initialized. Proxy enabled: {network_config.proxy_enabled}")
+
         self.base_al_url = self.config_manager.get_setting('Settings', 'base_al_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
         self.al_api_version = self.config_manager.get_setting('Settings', 'al_api_version')
@@ -123,13 +127,7 @@ class AnimePlayerAppVer3(QWidget):
         self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
-
-        # ========== ДОБАВЬ ЗДЕСЬ ==========
-        # Инициализация сетевого клиента
-        network_config = self.config_manager.network
-        self.net_client = NetClient(network_config)
-        self.logger.debug(f"Network client initialized. Proxy enabled: {network_config.proxy_enabled}")
-        # ==================================
+        self.proxy_url = self.config_manager.get_setting('Network', 'proxy_url')
 
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
@@ -146,11 +144,10 @@ class AnimePlayerAppVer3(QWidget):
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
         # Initialize other components
-        self.api_client = APIClient(self.base_al_url, self.al_api_version)
+        self.api_client = APIClient(self.base_al_url, self.al_api_version, net_client=self.net_client)
         self.api_adapter = APIAdapter(
             self.api_client,
             api_version=self.al_api_version,
-            net_client=self.net_client
         )
 
         self.playlist_manager = PlaylistManager()
@@ -1128,7 +1125,7 @@ class AnimePlayerAppVer3(QWidget):
                         self._handle_found_titles(title_ids, query_name)
                     continue
                 if tref.provider == PROVIDER_ANIMEDIA or provider_filter == PROVIDER_ANIMEDIA:
-                    adapter = AnimediaAdapter(self.base_am_url)
+                    adapter = AnimediaAdapter(self.base_am_url, self.net_client)
                     query_name = tref.name_en or tref.name_ru or str(tref.external_id or tref.title_id)
 
                     self.logger.info(f"Updating via AniMedia: query={query_name}")
@@ -1226,7 +1223,7 @@ class AnimePlayerAppVer3(QWidget):
             if provider_filter in (None, PROVIDER_ANIMEDIA):
                 try:
                     self.logger.info("...Try to load from Animedia (async)")
-                    adapter = AnimediaAdapter(self.base_am_url)
+                    adapter = AnimediaAdapter(self.base_am_url, self.net_client)
                     self._last_search_text = search_text
                     self._animedia_worker = AsyncWorker(
                         adapter.get_by_title,
@@ -1543,7 +1540,7 @@ class AnimePlayerAppVer3(QWidget):
         return url.strip().split('?')[0]
 
     def open_vlc_player(self, playlist_path, title_id, skip_data=None):
-        self.vlc_window = VLCPlayer(current_template=self.current_template)
+        self.vlc_window = VLCPlayer(current_template=self.current_template, proxy=self.proxy_url)
         self.logger.debug(f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}")
         self.vlc_window.load_playlist(playlist_path, title_id, skip_data)
         self.vlc_window.show()
@@ -1573,8 +1570,8 @@ class AnimePlayerAppVer3(QWidget):
             if self.prod_key is not None:
                 cmd.extend(["--prod_key", str(self.prod_key)])
             # TODO: fix this
-            # if self.net_client:
-            #    cmd.extend(["--proxy", str(self.net_client)])
+            if self.net_client:
+                cmd.extend(["--proxy", str(self.proxy_url)])
 
 
             subprocess.Popen(cmd, close_fds=True)

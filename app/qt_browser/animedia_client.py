@@ -1,31 +1,36 @@
-# utils/animedia/animedia_client.py
+# animedia_client.py
 import json
-from pathlib import Path
-from urllib.parse import urlparse
-
 import httpx
 import asyncio
 import logging
 
-from typing import List, Dict, Any, Final, Optional, Coroutine
-from bs4 import BeautifulSoup
 
-from utils.animedia.animedia_utils import (
+from bs4 import BeautifulSoup
+from pathlib import Path
+from urllib.parse import urlparse
+from typing import List, Dict, Any, Final, Optional, Coroutine
+
+from animedia_utils import (
     safe_str,
+    uniq,
     extract_file_from_html,
-    urljoin,
+    urljoin, sort_by_episode,
+    replace_spaces,
+    text_or_none,
 )
+
 
 BATCH_SIZE = 30
 CONCURRENCY = 8
 INTER_BATCH_DELAY = 1.5
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 
+
 class AnimediaClient:
     def __init__(self, base_url: str, net_client=None, cache_dir: str = "temp"):
-        self.net_client = net_client
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url.rstrip("/")
+        self.net_client = net_client
         if not self.base_url.startswith(("http://", "https://")):
             self.base_url = f"https://{self.base_url}"
         self._file_cache: Dict[str, str] = {}
@@ -41,7 +46,7 @@ class AnimediaClient:
         }
         self.cache_path = Path(cache_dir) / "animedia_vlnk.json"
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-
+        self.sanitized_name = None
         # загрузка кеша из файла, если он существует
         if self.cache_path.is_file():
             try:
@@ -69,6 +74,7 @@ class AnimediaClient:
             resp = await client.get(url)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
+
             container = soup.find("div", class_="content")
             if not container:
                 return []
@@ -156,6 +162,11 @@ class AnimediaClient:
     async def collect_episode_files(self, html: str) -> None | list[Any] | list[str]:
         try:
             soup = BeautifulSoup(html, "html.parser")
+
+            header = soup.select_one("header.pmovie__header")
+            name_en = text_or_none(header.select_one("div.pmovie__main-info"))
+            self.sanitized_name = replace_spaces(name_en)
+
             raw_vlnks = self._extract_vlnks(soup)
 
             vlnk_list = [self._ensure_absolute_url(v) for v in raw_vlnks]
@@ -167,11 +178,7 @@ class AnimediaClient:
 
             self.logger.info(f"Found {len(vlnk_list)} vlnk links – start fetching")
 
-            semaphore = asyncio.Semaphore(CONCURRENCY)
 
-            async def limited_fetch(vlnk: str) -> Optional[str]:
-                async with semaphore:
-                    return await self._fetch_file_from_vlnk(vlnk)
 
             results: List[str] = []
             try:
@@ -180,12 +187,10 @@ class AnimediaClient:
                     self.logger.debug(
                         f"Processing batch {i // BATCH_SIZE + 1} ({len(batch)} items)"
                     )
-                    batch_results = await asyncio.gather(
-                        *[limited_fetch(v) for v in batch],
-                        return_exceptions=False,
-                    )
-                    results.extend(safe_str(url) for url in batch_results if url)
-                    await asyncio.sleep(INTER_BATCH_DELAY)
+
+                    results.extend(safe_str(url) for url in vlnk_list if url)
+
+
                 self.logger.info(f"collect_episode_files: {len(results)} files collected")
                 return results
             finally:
@@ -193,4 +198,29 @@ class AnimediaClient:
                 self._save_cache()
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
+
+
+    async def search_anime_and_collect(
+        self,
+        anime_name: str,
+        max_titles: int = 5,
+    ) -> List[str]:
+        try:
+            title_urls = await self.search_titles(anime_name, max_titles)
+
+            for url in title_urls:
+                async with self.net_client.create_async_httpx_client(headers=self.headers, timeout=30, follow_redirects=True) as http:
+                    page_resp = await http.get(url)
+                    page_resp.raise_for_status()
+                    html = page_resp.text
+
+                # ---------- 3️⃣ Сбор файлов эпизодов ----------
+                raw_files = await self.collect_episode_files(html)
+                unique_files = uniq(raw_files)
+                sorted_links = sort_by_episode(unique_files)
+
+            return unique_files, self.sanitized_name
+        except Exception:
+            pass
+
 

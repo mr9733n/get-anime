@@ -475,8 +475,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 ### 8.36 Anime Player Add Sock proxy
 - [x] Add Net client
 - [x] Add workaround for net client
-- [ ] Add net client for each request
-- [ ] Add net client for vlc player
+- [x] Add net client for each request
+- [:(] Add net client for vlc player 
+- [x] Create demo app for blocked anime
+- [x] Create qt browser for vk, rutube player
 - [ ] fix saving combined playlist with multiply providers
 - [ ] fix play video after was paused
 - [ ] Create adapter for season / We have to many same seasons with different name

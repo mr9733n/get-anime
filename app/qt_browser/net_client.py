@@ -1,7 +1,7 @@
 # net_client.py
 import requests
 import httpx
-from utils.config_manager import NetworkConfig
+from config_manager import NetworkConfig
 
 
 class NetworkError(requests.exceptions.RequestException):

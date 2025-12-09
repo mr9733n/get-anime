@@ -40,7 +40,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default"):
+    def __init__(self, parent=None, current_template="default", proxy=None):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ class VLCPlayer(QWidget):
         self.skip_ending = None
         self.is_buffering = None
         self.title_id = None
+        self.proxy = proxy
 
         self.setWindowTitle("VLC Video Player Controls")
         self.setGeometry(100, 950, 850, 100)
@@ -59,9 +60,13 @@ class VLCPlayer(QWidget):
         self.setMinimumHeight(100)
         self.setMaximumHeight(200)
         self.video_window = None
-        self.instance = vlc.Instance()
-        self.instance = vlc.Instance('--network-caching=2000')
-
+        # self.instance = vlc.Instance()
+        args = ["--network-caching=2000"]
+        if self.proxy:
+            self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
+            args.append(f"--http-proxy={self.proxy}")
+        self.instance = vlc.Instance(*args)
+        self.logger.debug(f"VLC args: {args}")
         self.list_player = self.instance.media_list_player_new()
         self.media_list = self.instance.media_list_new()
         self.media_player = self.list_player.get_media_player()
@@ -756,6 +761,7 @@ if __name__ == "__main__":
     parser.add_argument('--title_id', type=int, help='Title ID')
     parser.add_argument('--skip_data', help='Base64 encoded skip data')
     parser.add_argument('--template', default="default", help='UI template name')
+    parser.add_argument('--proxy', help='Use SOCK proxy')
     parser.add_argument('--prod_key')
     args = parser.parse_args()
 
@@ -780,6 +786,8 @@ if __name__ == "__main__":
 
         player.show()
         player.timer.start()
+        if args.proxy:
+            player = VLCPlayer(proxy=args.proxy)
 
     else:
         message = "VLC player cannot be run without AnimePlayer application!"

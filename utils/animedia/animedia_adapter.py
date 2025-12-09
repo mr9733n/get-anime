@@ -25,13 +25,15 @@ MAX_CONCURRENT = 3
 class AnimediaAdapter:
     """Обёртка, которая собирает полную структуру тайтла."""
 
-    def __init__(self, base_url: str):
-        self.client = AnimediaClient(base_url)
+    def __init__(self, base_url: str, net_client=None):
+        self.net_client = net_client
         self.logger = logging.getLogger(__name__)
+        self.client = AnimediaClient(base_url, net_client)
+
 
     async def _process_one(self, url: str) -> Dict[str, Any]:
         # ---------- 1️⃣ Получаем HTML страницы ----------
-        async with httpx.AsyncClient(headers=self.client.headers, timeout=30) as http:
+        async with self.net_client.create_async_httpx_client(headers=self.client.headers, timeout=30, follow_redirects=True) as http:
             page_resp = await http.get(url)
             page_resp.raise_for_status()
             html = page_resp.text
@@ -68,7 +70,6 @@ class AnimediaAdapter:
     async def get_by_title(self, anime_name: str, max_titles: int = 5) -> List[Dict[str, Any]]:
         # 1️⃣ Поиск ссылок на тайтлы
         title_urls = await self.client.search_titles(anime_name, max_titles)
-
         semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
         async def limited_process(url: str) -> Dict[str, Any]:

@@ -19,8 +19,7 @@ from config_manager import ConfigManager
 
 logging.basicConfig(level=logging.INFO)
 
-VLC_PATH = r"python mini_browser.py --socks http://192.168.0.100:8866 --file"
-BASE_URL = "https://amedia.online"
+BASE_URL = "https://amd.online"
 MAX_TITLES = 5
 
 
@@ -61,20 +60,6 @@ class Main(QWidget):
         self.loader_bar.setVisible(show)
 
 
-    def save_playlist_wrapper(self, discovered_links, sanitized_title):
-        """
-        Wrapper function to handle saving the playlists.
-        Iterates through all discovered playlists and saves them.
-        """
-        if discovered_links:
-            filename = self.playlist_manager.save_playlist(sanitized_title, discovered_links)
-            print(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
-            return filename
-        else:
-            print(f"No links found for title {sanitized_title}, skipping saving.")
-            return None
-
-
     @asyncSlot()
     async def start_search(self):
         self.btn.setEnabled(False)
@@ -86,9 +71,11 @@ class Main(QWidget):
                 self.out.append("⚠️ Введите название аниме")
                 return
             links, title = await adapter.search_anime_and_collect(anime_name=anime_name, max_titles=MAX_TITLES)
-            self.out.append("\n".join(links))
-            playlist_filename = self.save_playlist_wrapper(links, title)
-            self.playlist_manager.play_playlist(playlist_filename, VLC_PATH)
+            playlist_filename, filtered_links = self.playlist_manager.save_playlist(title, links)
+            self.out.append("\n".join(filtered_links))
+
+            if playlist_filename:
+                self.playlist_manager.play_playlist(playlist_filename)
         except Exception as e:
             self.out.append(f"❌ {e}")
         finally:

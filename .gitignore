@@ -54,3 +54,4 @@ anime_player.db.zip
 /app/sync/__pycache__
 *.pyc
 /dist_517
+/app/qt_browser/playlists

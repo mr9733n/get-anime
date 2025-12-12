@@ -4,12 +4,10 @@ import httpx
 import asyncio
 import logging
 
-
 from bs4 import BeautifulSoup
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Final, Optional, Coroutine
-
 from animedia_utils import (
     safe_str,
     uniq,
@@ -18,7 +16,6 @@ from animedia_utils import (
     replace_spaces,
     text_or_none,
 )
-
 
 BATCH_SIZE = 30
 CONCURRENCY = 8
@@ -178,8 +175,6 @@ class AnimediaClient:
 
             self.logger.info(f"Found {len(vlnk_list)} vlnk links – start fetching")
 
-
-
             results: List[str] = []
             try:
                 for i in range(0, len(vlnk_list), BATCH_SIZE):
@@ -189,7 +184,6 @@ class AnimediaClient:
                     )
 
                     results.extend(safe_str(url) for url in vlnk_list if url)
-
 
                 self.logger.info(f"collect_episode_files: {len(results)} files collected")
                 return results
@@ -217,7 +211,7 @@ class AnimediaClient:
                 # ---------- 3️⃣ Сбор файлов эпизодов ----------
                 raw_files = await self.collect_episode_files(html)
                 unique_files = uniq(raw_files)
-                sorted_links = sort_by_episode(unique_files)
+                # sorted_links = sort_by_episode(unique_files)
 
             return unique_files, self.sanitized_name
         except Exception:

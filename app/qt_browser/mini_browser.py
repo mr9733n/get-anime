@@ -50,7 +50,8 @@ class BrowserWindow(QMainWindow):
         """Открыть первую вкладку из очереди."""
         self.open_next_tab()
 
-    def normalize_url(self, url: str) -> str:
+    @staticmethod
+    def normalize_url(url: str) -> str:
         url = url.strip()
         if not url:
             return "https://example.com"

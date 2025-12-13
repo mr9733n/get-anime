@@ -7,7 +7,6 @@ from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
 
 
-
 def safe_str(value: bytes | str) -> str:
     """Преобразует bytes в str, оставляя строки без изменений."""
     return value.decode("utf-8") if isinstance(value, (bytes, bytearray)) else value
@@ -143,7 +142,6 @@ def _parse_season_and_updated(li_tag) -> tuple[Optional[str], int]:
         return season_name, 0
 
     date_str = m.group(1)                     # "2 октября 2025"
-    # переводим русские названия месяцев в цифры
     months = {
         "января": "01", "февраля": "02", "марта": "03",
         "апреля": "04", "мая": "05", "июня": "06",

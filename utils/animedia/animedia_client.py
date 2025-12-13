@@ -1,15 +1,12 @@
 # utils/animedia/animedia_client.py
 import json
-from pathlib import Path
-from urllib.parse import urlparse
-
 import httpx
 import asyncio
 import logging
-
-from typing import List, Dict, Any, Final, Optional, Coroutine
+from pathlib import Path
+from urllib.parse import urlparse
+from typing import List, Dict, Any, Final, Optional, Coroutine, Tuple
 from bs4 import BeautifulSoup
-
 from utils.animedia.animedia_utils import (
     safe_str,
     extract_file_from_html,
@@ -42,7 +39,6 @@ class AnimediaClient:
         self.cache_path = Path(cache_dir) / "animedia_vlnk.json"
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # загрузка кеша из файла, если он существует
         if self.cache_path.is_file():
             try:
                 self._file_cache = json.loads(self.cache_path.read_text())
@@ -83,7 +79,6 @@ class AnimediaClient:
     @staticmethod
     def _extract_vlnks(soup: BeautifulSoup) -> List[str]:
         raw = [tag["data-vlnk"] for tag in soup.find_all("a", attrs={"data-vlnk": True})]
-        # Приводим к абсолютному виду (base_url будет передан в клиент)
         return raw
 
     def _ensure_absolute_url(self, url: str) -> Optional[str]:
@@ -104,17 +99,14 @@ class AnimediaClient:
         return any(path.endswith(ext) for ext in IMAGE_EXTS)
 
     async def _fetch_file_from_vlnk(self, vlnk_url: str) -> Optional[str]:
-        # 1️⃣ Приводим к абсолютному виду
         vlnk_url = self._ensure_absolute_url(vlnk_url)
         if vlnk_url is None:
             return None
 
-        # 2️⃣ Пропускаем заглушки‑картинки
         if self._is_image_placeholder(vlnk_url):
             self.logger.debug(f"Skipping image placeholder: {vlnk_url}")
             return None
 
-        # 3️⃣ Кеш‑проверка
         if vlnk_url in self._file_cache:
             return self._file_cache[vlnk_url]
 
@@ -157,7 +149,6 @@ class AnimediaClient:
         try:
             soup = BeautifulSoup(html, "html.parser")
             raw_vlnks = self._extract_vlnks(soup)
-
             vlnk_list = [self._ensure_absolute_url(v) for v in raw_vlnks]
             vlnk_list = [v for v in vlnk_list if v]
 
@@ -166,7 +157,6 @@ class AnimediaClient:
                 return []
 
             self.logger.info(f"Found {len(vlnk_list)} vlnk links – start fetching")
-
             semaphore = asyncio.Semaphore(CONCURRENCY)
 
             async def limited_fetch(vlnk: str) -> Optional[str]:
@@ -189,8 +179,71 @@ class AnimediaClient:
                 self.logger.info(f"collect_episode_files: {len(results)} files collected")
                 return results
             finally:
-                # гарантируем запись кеша
                 self._save_cache()
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
 
+    async def parse_page_for_new_titles(self, url: str, max_titles: int) -> List[str]:
+        async with self.net_client.create_async_httpx_client(
+            headers=self.headers, timeout=30, follow_redirects=True
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        container = soup.find("div", class_="content")
+        if not container:
+            return []
+
+        items = container.select("a.ftop-item")
+        results: List[str] = []
+
+        for a in items[:max_titles]:
+            title = (
+                a.select_one("div.ftop-item__title")
+                .get_text(strip=True)
+                if a.select_one("div.ftop-item__title")
+                else "—"
+            )
+            time = (
+                a.select_one("div.ftop-item__meta")
+                .get_text(strip=True)
+                if a.select_one("div.ftop-item__meta")
+                else "—"
+            )
+            ep_tag = a.select_one("div.animseri > span")
+            episode = ep_tag.get_text(strip=True) if ep_tag else None
+            parts = [title, time]
+            if episode:
+                parts.append(f"{episode} серия")
+            results.append(" – ".join(parts))
+
+        return results
+
+
+    def extract_pagination_for_new_titles(self, soup: BeautifulSoup) -> List[Tuple[int, str]]:
+        """Возвращает список (номер_страницы, url) для всех страниц пагинации."""
+        nav = soup.find("div", class_="ac-navigation")
+        if not nav:
+            return []
+
+        pages: List[Tuple[int, str]] = []
+        for a in nav.select("a[data-page]"):
+            page_num = int(a["data-page"])
+            # Если ссылки относительные, делаем их абсолютными
+            href = a.get("href", "")
+            if href.startswith("http"):
+                url = href
+            else:
+                url = f"{self.base_url.rstrip('/')}{href}"
+            pages.append((page_num, url))
+        return pages
+
+
+    async def get_new_titles(self) -> BeautifulSoup:
+        async with self.net_client.create_async_httpx_client(
+            headers=self.headers, timeout=30, follow_redirects=True
+        ) as client:
+            resp = await client.get(self.base_url)
+            resp.raise_for_status()
+        return BeautifulSoup(resp.text, "html.parser")

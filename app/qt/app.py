@@ -35,7 +35,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "b5ceacbaa136fc6cd5a452afc9cb6e156fe0df135c520c423275737639c093ee"
+VLC_PLAYER_HASH = "cfa613993d3b9a823dc2741f1d0a00caa3278d80cce3069d430d68a6e972206e"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 APP_WIDTH = 1000
@@ -1340,6 +1340,20 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
+    def get_animedia_new_titles(self):
+        adapter = AnimediaAdapter(self.base_am_url, self.net_client)
+        self._animedia_worker = AsyncWorker(
+            adapter.get_by_title,
+            max_titles=10,
+        )
+        self._animedia_worker.finished.connect(self._on_animedia_titles())
+        self._animedia_worker.error.connect(self._on_animedia_error)
+        self._animedia_worker.start()
+
+    def _on_animedia_titles(self):
+        # TODO: show new titles
+        ...
+
     def _handle_get_titles_from_api(self, search_text) -> list[int] | None:
         try:
             keywords = search_text.split(',')
@@ -1633,7 +1647,6 @@ class AnimePlayerAppVer3(QWidget):
             # TODO: fix this
             if self.net_client:
                 cmd.extend(["--proxy", str(self.proxy_url)])
-
 
             subprocess.Popen(cmd, close_fds=True)
             self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")

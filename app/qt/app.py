@@ -1282,6 +1282,9 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as msg:
             self.logger.error(f"Unexpected error in _on_animedia_error: {msg}")
             self.show_error_notification("Error", f"Unexpected error. Check logs for details {msg}")
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def _on_animedia_result(self, data: list) -> list[int] | None:
         """
@@ -1333,6 +1336,9 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as e:
             self.logger.error(f"Error while fetching title AM: {e}")
             self.show_error_notification("Error", "Unexpected error. Check logs for details.")
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
 
     def _handle_get_titles_from_api(self, search_text) -> list[int] | None:
         try:
@@ -1388,40 +1394,95 @@ class AnimePlayerAppVer3(QWidget):
         Wrapper function to handle saving the playlists.
         Iterates through all discovered playlists and saves them.
         """
-        self.playlist_filename = None
-        if not self.playlists:
-            self.logger.error("No playlists found to save.")
-            return
+        try:
+            self.playlist_filename = None
+            if not self.playlists:
+                self.logger.error("No playlists found to save.")
+                return
+
+            # 1) Сохраняем плейлисты по тайтлам (как было, только без self.stream_video_url)
+            for title_id, playlist in self.playlists.items():
+                sanitized_title = playlist.get("sanitized_title")
+                discovered_links = playlist.get("links") or []
+
+                stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
+                if discovered_links:
+                    filename = self.playlist_manager.save_playlist(
+                        [sanitized_title],
+                        discovered_links,
+                        stream_video_url
+                    )
+                    self.logger.debug(
+                        f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}."
+                    )
+                else:
+                    self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+
+            self.save_combined_playlist_wrapper()
+
+        except Exception:
+            self.logger.exception("Failed while saving playlists.")
+
+    # TODO: Refactor this
+    def save_combined_playlist_wrapper(self):
+        # 2) Формируем combined-контент с ПРАВИЛЬНЫМ host на каждую ссылку
+        combined_playlist_filename = (
+            "_".join([info["sanitized_title"] for info in self.playlists.values()])[:100] + ".m3u"
+        )
+
+        # гарантируем уникальность имени
+        combined_path = os.path.join("playlists", combined_playlist_filename)
+        if os.path.exists(combined_path):
+            base, ext = os.path.splitext(combined_playlist_filename)
+            combined_playlist_filename = f"{base}_{int(datetime.now().timestamp())}{ext}"
+            combined_path = os.path.join("playlists", combined_playlist_filename)
+
+        # строим полный текст плейлиста
+        lines = ["#EXTM3U"]
+        total = 0
 
         for title_id, playlist in self.playlists.items():
-            sanitized_title = playlist['sanitized_title']
-            discovered_links = playlist['links']
-            self.stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
-            if discovered_links:
-                filename = self.playlist_manager.save_playlist([sanitized_title], discovered_links, self.stream_video_url)
-                self.logger.debug(f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}.")
-            else:
-                self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
+            links = playlist.get("links") or []
+            if not links:
+                continue
 
-        combined_playlist_filename = "_".join([info['sanitized_title'] for info in self.playlists.values()])[:100] + ".m3u"
-        combined_links = []
+            host = self.db_manager.get_player_host_by_title_id(title_id) or ""
 
-        for playlist_info in self.playlists.values():
-            combined_links.extend(playlist_info['links'])
+            for link in links:
+                if not isinstance(link, str) or not link.endswith(".m3u8"):
+                    continue
 
-        if combined_links:
-            if os.path.exists(os.path.join("playlists", combined_playlist_filename)):
-                combined_playlist_filename = f"{combined_playlist_filename}_{int(datetime.now().timestamp())}"
+                full_url = f"{self.pre}{host}{link}"
+                lines.append(full_url)
+                total += 1
 
-            filename = self.playlist_manager.save_playlist(combined_playlist_filename, combined_links,
-                                                           self.stream_video_url)
-            if filename:
-                self.logger.debug(f"Combined playlist '{filename}' saved.")
-                self.playlist_filename = filename
-            else:
-                self.logger.error("Failed to save the combined playlist.")
-        else:
+        if total == 0:
             self.logger.error("No valid links found for saving the combined playlist.")
+            return
+
+        new_content = "\n".join(lines) + "\n"
+
+        # 3) Обновляем файл только если изменился (как в save_playlist)
+        if os.path.exists(combined_path):
+            try:
+                with open(combined_path, "r", encoding="utf-8") as f:
+                    existing_content = f.read()
+                if existing_content == new_content:
+                    self.logger.info(f"Combined playlist '{combined_playlist_filename}' is up-to-date.")
+                    self.playlist_filename = combined_playlist_filename
+                    return
+            except Exception as e:
+                self.logger.error(f"Failed to read existing combined playlist: {e}")
+
+        try:
+            os.makedirs(os.path.dirname(combined_path), exist_ok=True)
+            with open(combined_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            self.logger.info(f"Combined playlist '{combined_playlist_filename}' saved with {total} links.")
+            self.playlist_filename = combined_playlist_filename
+        except Exception as e:
+            self.logger.error(f"Failed to save the combined playlist: {e}")
 
     def save_torrent_wrapper(self, link, title_name, torrent_id):
         """

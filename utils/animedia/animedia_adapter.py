@@ -79,3 +79,4 @@ class AnimediaAdapter:
         results = await asyncio.gather(*[limited_process(u) for u in title_urls])
         self.logger.info(f"Found {len(results)} titles for '{anime_name}'")
         return results
+

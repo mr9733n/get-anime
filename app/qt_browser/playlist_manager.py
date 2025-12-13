@@ -27,7 +27,7 @@ class Playlist:
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     existing_content = file.read()
-                    new_content = "\n".join([link for link in filtered_links]) + "\n"
+                    new_content = "".join([link for link in filtered_links]) + "\n"
 
                     if existing_content == new_content:
                         self.logger.info(f"Playlist '{file_name}' is up-to-date. No changes needed.")

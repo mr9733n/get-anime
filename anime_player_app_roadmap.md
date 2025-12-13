@@ -479,7 +479,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [:(] Add net client for vlc player 
 - [x] Create demo app for blocked anime
 - [x] Create qt browser for vk, rutube player
-- [ ] fix saving combined playlist with multiply providers
+- [x] fixes for qt browser
+- [x] fix saving combined playlist with multiply providers
+- [ ] Add New episodes on AniMedia
+- [ ] on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
 - [ ] fix play video after was paused
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time

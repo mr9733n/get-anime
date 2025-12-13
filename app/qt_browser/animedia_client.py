@@ -98,7 +98,8 @@ class AnimediaClient:
         self.logger.warning(f"Invalid vlnk URL, skipping: {url!r}")
         return None
 
-    def _is_image_placeholder(self, url: str) -> bool:
+    @staticmethod
+    def _is_image_placeholder(url: str) -> bool:
         """
         Возвращает True, если URL выглядит как ссылка на изображение.
         """
@@ -211,7 +212,6 @@ class AnimediaClient:
                 # ---------- 3️⃣ Сбор файлов эпизодов ----------
                 raw_files = await self.collect_episode_files(html)
                 unique_files = uniq(raw_files)
-                # sorted_links = sort_by_episode(unique_files)
 
             return unique_files, self.sanitized_name
         except Exception:

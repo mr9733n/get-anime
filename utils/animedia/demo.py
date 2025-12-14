@@ -13,7 +13,7 @@ async def demo():
     network_config = config_manager.network
     net_client = NetClient(network_config)
     adapter = AnimediaAdapter("https://amd.online", net_client=net_client)
-    data = await adapter.get_all_titles(max_titles=5*10)
+    data = await adapter.get_all_titles(max_titles=100)
 
     # Statistics
     if data:

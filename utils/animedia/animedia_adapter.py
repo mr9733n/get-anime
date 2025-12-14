@@ -68,36 +68,50 @@ class AnimediaAdapter:
         self.logger.info(f"Found {len(results)} titles for '{anime_name}'")
         return results
 
+    @staticmethod
+    def _unique_preserve_order(seq: List[str]) -> List[str]:
+        seen: set[str] = set()
+        uniq: List[str] = []
+        for item in seq:
+            if item not in seen:
+                seen.add(item)
+                uniq.append(item)
+        return uniq
 
     async def get_all_titles(self, max_titles: int = 10) -> List[Dict[str, Any]]:
-        soup = await self.client.get_new_titles()
-        first_page_titles = await self.client.parse_page_for_new_titles(
-            self.client.base_url, max_titles
-        )
-        all_results = [{"page": 1, "titles": first_page_titles}]
-        collected = len(first_page_titles)
-
-        if collected >= max_titles:
-            return all_results
-
-        page_links = self.client.extract_pagination_for_new_titles(soup)
-
+        total_pages = await self.client.get_total_pages()
         semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
-        async def fetch(page_num: int, url: str) -> Tuple[int, List[str]]:
+        collected = 0
+        results: List[Dict[str, Any]] = []
+
+        first_html = await self.client.get_new_titles()  # обычный GET главной страницы
+        announce_titles = await self.client.parse_page_for_announce_titles(first_html, max_titles)
+        if announce_titles:
+            results.append({"page": 0, "titles": announce_titles})
+            collected += len(announce_titles)
+
+        async def fetch(page: int) -> Tuple[int, List[str]]:
             async with semaphore:
                 remaining = max_titles - collected
                 if remaining <= 0:
-                    return page_num, []
-                titles = await self.client.parse_page_for_new_titles(url, remaining)
-                return page_num, titles
+                    return page, []
+                html = await self.client.fetch_new_titles_html(page)
+                titles = await self.client.parse_page_for_new_titles(html, remaining)
+                return page, titles
 
-        tasks = [fetch(num, url) for num, url in page_links]
+        tasks = [fetch(p) for p in range(1, total_pages + 1)]
+
         for coro in asyncio.as_completed(tasks):
-            page_num, titles = await coro
+            page, titles = await coro
             if titles:
-                all_results.append({"page": page_num, "titles": titles})
+                results.append({"page": page, "titles": titles})
                 collected += len(titles)
                 if collected >= max_titles:
                     break
-        return all_results
+
+        for entry in results:
+            entry["titles"] = self._unique_preserve_order(entry["titles"])
+
+        results.sort(key=lambda x: x["page"])
+        return results

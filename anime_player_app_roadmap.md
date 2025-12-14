@@ -481,7 +481,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Create qt browser for vk, rutube player
 - [x] fixes for qt browser
 - [x] fix saving combined playlist with multiply providers
-- [ ] Add New episodes on AniMedia
+- [x] Add New episodes on AniMedia
+- [x] Created demo app for new episodes on AniMedia
+- [ ] Add Widget in Anime Player for new episodes on AniMedia
 - [ ] on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
 - [ ] fix play video after was paused
 - [ ] Create adapter for season / We have to many same seasons with different name

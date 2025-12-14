@@ -23,6 +23,7 @@ class AnimediaClient:
         self.net_client = net_client
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url.rstrip("/")
+        self.ajax_url = f"{self.base_url}/engine/mods/custom/ajax.php"
         if not self.base_url.startswith(("http://", "https://")):
             self.base_url = f"https://{self.base_url}"
         self._file_cache: Dict[str, str] = {}
@@ -183,67 +184,89 @@ class AnimediaClient:
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
 
-    async def parse_page_for_new_titles(self, url: str, max_titles: int) -> List[str]:
+    #-- New titles and anounces
+
+    async def fetch_new_titles_html(self, page: int) -> str:
+        """Возвращает HTML‑текст страницы `page`."""
+        data = {
+            "name": "poslednie-serii",
+            "cstart": str(page),
+            "action": "getpage",
+        }
         async with self.net_client.create_async_httpx_client(
             headers=self.headers, timeout=30, follow_redirects=True
         ) as client:
-            resp = await client.get(url)
+            resp = await client.post(self.ajax_url, data=data)
             resp.raise_for_status()
+            try:
+                data = resp.json()
+                return data.get("html", "")
+            except json.JSONDecodeError:
+                return resp.text
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        container = soup.find("div", class_="content")
-        if not container:
-            return []
-
-        items = container.select("a.ftop-item")
+    def _build_titles(self, items: List[BeautifulSoup], max_titles: int) -> List[str]:
         results: List[str] = []
-
         for a in items[:max_titles]:
             title = (
-                a.select_one("div.ftop-item__title")
-                .get_text(strip=True)
+                a.select_one("div.ftop-item__title").get_text(strip=True)
                 if a.select_one("div.ftop-item__title")
                 else "—"
             )
-            time = (
-                a.select_one("div.ftop-item__meta")
-                .get_text(strip=True)
+            meta = (
+                a.select_one("div.ftop-item__meta").get_text(strip=True)
                 if a.select_one("div.ftop-item__meta")
                 else "—"
             )
             ep_tag = a.select_one("div.animseri > span")
             episode = ep_tag.get_text(strip=True) if ep_tag else None
-            parts = [title, time]
+
+            parts = [title, meta]
             if episode:
                 parts.append(f"{episode} серия")
             results.append(" – ".join(parts))
-
         return results
 
+    async def parse_page_for_announce_titles(self, html: str, max_titles: int) -> List[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        amd_blocks = soup.select("div.amd")
+        announce_items: List[BeautifulSoup] = []
+        for blk in amd_blocks:
+            if blk.select_one("div.js-custom-content"):
+                continue
+            announce_items.extend(self._extract_items(blk))
+        return self._build_titles(announce_items, max_titles)
 
-    def extract_pagination_for_new_titles(self, soup: BeautifulSoup) -> List[Tuple[int, str]]:
-        """Возвращает список (номер_страницы, url) для всех страниц пагинации."""
+    async def parse_page_for_new_titles(self, html: str, max_titles: int) -> List[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        main_block = soup.select_one("div.js-custom-content")
+        if not main_block:
+            return []
+        items = self._extract_items(main_block)
+        return self._build_titles(items, max_titles)
+
+    def _extract_items(self, container: BeautifulSoup) -> List[BeautifulSoup]:
+        """Возвращает список <a class="ftop-item"> внутри переданного контейнера."""
+        return container.select("a.ftop-item")
+
+    async def get_total_pages(self) -> int:
+        """Определяет количество страниц, используя первую страницу."""
+        first_html = await self.fetch_new_titles_html(1)
+        soup = BeautifulSoup(first_html, "html.parser")
         nav = soup.find("div", class_="ac-navigation")
         if not nav:
-            return []
+            return 1
+        pages = [int(a["data-page"]) for a in nav.select("a[data-page]")]
+        return max(pages) if pages else 1
 
-        pages: List[Tuple[int, str]] = []
-        for a in nav.select("a[data-page]"):
-            page_num = int(a["data-page"])
-            # Если ссылки относительные, делаем их абсолютными
-            href = a.get("href", "")
-            if href.startswith("http"):
-                url = href
-            else:
-                url = f"{self.base_url.rstrip('/')}{href}"
-            pages.append((page_num, url))
-        return pages
-
-
-    async def get_new_titles(self) -> BeautifulSoup:
+    async def get_new_titles(self) -> str | None:
         async with self.net_client.create_async_httpx_client(
             headers=self.headers, timeout=30, follow_redirects=True
         ) as client:
             resp = await client.get(self.base_url)
             resp.raise_for_status()
-        return BeautifulSoup(resp.text, "html.parser")
+            try:
+                data = resp.json()
+                return data.get("html", "")
+            except json.JSONDecodeError:
+                return resp.text
+

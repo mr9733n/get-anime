@@ -3,14 +3,15 @@ import json
 import httpx
 import asyncio
 import logging
-from pathlib import Path
+
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
-from utils.animedia.cache_manager import CacheManager, CacheStatus, CacheConfig
+from utils.animedia.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
 from utils.animedia.animedia_utils import (
     safe_str,
     extract_file_from_html,
+    extract_id_from_url,
     urljoin,
 )
 
@@ -22,7 +23,7 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 
 
 class AnimediaClient:
-    def __init__(self, base_url: str, net_client=None, cache_dir: str = "temp"):
+    def __init__(self, base_url: str, net_client=None, cache: AniMediaCacheManager | None = None, cache_cfg: AniMediaCacheConfig | None = None):
         self.net_client = net_client
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url.rstrip("/")
@@ -40,36 +41,50 @@ class AnimediaClient:
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
         }
-        self.cfg = CacheConfig(base_dir=Path(cache_dir))
-        self.cache = CacheManager(self.cfg.base_dir)
+        self.cfg = cache_cfg
+        self.cache = cache
 
         # in‑memory кэш
-        status, data = self.cache.load(self.cfg.vlink_key, self.cfg.vlink_ttl)
-        self._file_cache = data if status is CacheStatus.VALID and self.cache.is_nonempty(data) else {}
-        if status is CacheStatus.EXPIRED:
-            self.logger.info("vlink‑кеш просрочен – будет перезаписан при следующем запросе")
-        elif status is CacheStatus.MISSING:
+        status, payload = self.cache.load(self.cfg.vlink_key, self.cfg.vlink_ttl)
+
+        if status is AniMediaCacheStatus.MISSING:
             self.logger.debug("vlink‑кеш отсутствует")
+            self._file_cache = {}
+        elif status is AniMediaCacheStatus.EXPIRED:
+            self.logger.info("vlink‑кеш просрочен – будет перезаписан при следующем запросе")
+            self._file_cache = payload.get("data", {}) if isinstance(payload, dict) else {}
+        else:
+            self._file_cache = payload.get("data", {}) if isinstance(payload, dict) else {}
+
+        if not isinstance(self._file_cache, dict):
+            self._file_cache = {}
 
         status, data = self.cache.load(self.cfg.schedule_key, self.cfg.schedule_ttl)
-        self._schedule_cache = data if status is not CacheStatus.MISSING and self.cache.is_nonempty(data) else []
-        if status is not CacheStatus.MISSING and self.cache.is_nonempty(data):
+        self._schedule_cache = data if status is not AniMediaCacheStatus.MISSING and self.cache.is_nonempty(data) else []
+        if status is not AniMediaCacheStatus.MISSING and self.cache.is_nonempty(data):
             self._schedule_cache = data
+        elif status is AniMediaCacheStatus.EXPIRED:
+            self.logger.info("schedule‑кеш просрочен – будет сброшен")
+            self.cache.invalidate_cache(self.cfg.schedule_key)
         else:
             self.logger.debug("schedule‑кеш пустой или повреждён")
 
     def load_schedule_cache(self) -> Optional[List[dict]]:
         """Возвращает уже загруженный в память кеш‑расписание."""
-        return self._schedule_cache if self._schedule_cache else None
+        status, data = self.cache.load(self.cfg.schedule_key, self.cfg.schedule_ttl)
+        if status is AniMediaCacheStatus.VALID:
+            return self._schedule_cache
+        else:
+            return None
 
-    def load_vlink_cache(self, original_id: int) -> Optional[dict[str, str]]:
+    def load_vlink_cache(self, original_id: str) -> Optional[dict[str, str]]:
         """Обёртка над CacheManager.load_vlink."""
         return self.cache.load_vlink(original_id)
 
     def save_schedule_cache(self, data: List[dict]) -> None:
         """Сохраняет в файл и обновляет in‑memory кеш."""
         status = self.cache.save(self.cfg.schedule_key, data)
-        if status is CacheStatus.SAVED:
+        if status is AniMediaCacheStatus.SAVED:
             self.logger.debug("schedule cache is %s", status)
         self._schedule_cache = data
 
@@ -162,7 +177,7 @@ class AnimediaClient:
                     backoff *= 2
         return None
 
-    async def collect_episode_files(self, html: str, original_id: int) -> None | list[Any] | list[str]:
+    async def collect_episode_files(self, html: str, original_id: str) -> None | list[Any] | list[str]:
         try:
             soup = BeautifulSoup(html, "html.parser")
             raw_vlnks = self._extract_vlnks(soup)
@@ -198,7 +213,8 @@ class AnimediaClient:
             finally:
                 if original_id is not None:
                     status = self.cache.save_vlink(original_id, self._file_cache)
-                    if status is CacheStatus.SAVED:
+
+                    if status is AniMediaCacheStatus.SAVED:
                         self.logger.debug("vlink cache for id %s saved", original_id)
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
@@ -232,11 +248,14 @@ class AnimediaClient:
 
     def _build_titles(self, items: List[BeautifulSoup], max_titles: int) -> List[str]:
         results: List[str] = []
+        separator = "\u00B7"
 
         for a in items[:max_titles]:
             link_tag = None
             if a.has_attr("href"):
                 link_tag = urljoin(self.base_url, a["href"])
+
+            title_id = str(extract_id_from_url(link_tag))
 
             title_tag = a.select_one("div.ftop-item__title")
             title = title_tag.get_text(strip=True) if title_tag else "—"
@@ -256,12 +275,14 @@ class AnimediaClient:
             parts = [title, meta]
             if episode:
                 parts.append(f"{episode} серия")
+            if title_id:
+                parts.append(title_id)
             if poster_url:
                 parts.append(poster_url)
             if link_tag:
                 parts.append(link_tag)
 
-            results.append(" – ".join(parts))
+            results.append(separator.join(parts))
 
         return results
 

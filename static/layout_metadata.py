@@ -86,8 +86,8 @@ all_layout_metadata = [
     {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex","widget_key": "title_input"},
     {"layout": "top","type": "split_button","text": "FIND", "default_callback_key": "get_search_by_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_search_by_title_al"},{"text": "AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
     {"layout": "top","type": "split_button","text": "UT⮂", "default_callback_key": "get_update_title","menu_items": [{"text": "AniLiberty", "callback_key": "get_update_title_al"},{"text": "AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
-    {"layout": "top", "type": "button", "text": "RNM", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
-    {"layout": "top", "type": "button", "text": "AMS", "callback_key": "get_animedia_new_titles", "callback_type": "complex", "color_index": 5},
+    {"layout": "top", "type": "button", "text": "RND", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
+    {"layout": "top", "type": "button", "text": "AMS", "callback_key": "get_animedia_new_titles", "callback_type": "complex", "color_index": 0},
     *[{"layout": "top", "type": "button", "text": day, "callback_key": f"display_titles_for_day_{i}", "callback_type": "complex", "color_index": 1}
       for i, day in enumerate(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])],
     {"layout": "top", "type": "button", "text": "RS⮂", "callback_key": "reload_schedule", "callback_type": "complex", "color_index": 0},
@@ -105,6 +105,7 @@ all_layout_metadata = [
 
 show_mode_metadata = {
     'system': {"create_method": "create_system_widget", "description": "System View", "batch_size": None, "columns": None, "generator": "_generate_system_html", "data_fetcher": 'system'},
+    'animedia_schedule': {"create_method": "create_animedia_schedule_widget", "description": "AniMedia Schedule", "batch_size": None, "columns": None, "generator": "_generate_animedia_schedule_html"},
     'franchise_list': {"create_method": "create_list_widget", "description": "Franchise List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_franchises_from_db"},
     'titles_list': {"create_method": "create_list_widget", "description": "Titles List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_titles_list_from_db"},
     'ongoing_list': {"create_method": "create_list_widget", "description": "Ongoing List", "batch_size": 12, "columns": 4, "generator": "_generate_list_html", "data_fetcher": "get_ongoing_titles"},

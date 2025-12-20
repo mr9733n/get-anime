@@ -1,14 +1,18 @@
 # app_handlers.py
 import ast
 import base64
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from PyQt5.QtCore import QTimer
+
+from utils.animedia.cache_manager import AniMediaCacheManager
 
 
 class LinkActionHandler:
     def __init__(self,
                  logger,
                  db_manager,
+                 animedia_cache: AniMediaCacheManager,
                  titles_list_batch_size,
                  display_info,
                  display_titles,
@@ -29,9 +33,11 @@ class LinkActionHandler:
         self.reset_offset = reset_offset
         self.get_search_by_title_animedia = get_search_by_title_animedia
 
+        self.animedia_cache = animedia_cache
+
         self.dispatch = {
             'display_info': self._handle_display_info,
-            'am_search': self._am_search,
+            'am_search': self._handle_am_search,
             'filter_by_franchise': self._handle_filter_by_franchise,
             'filter_by_genre': self._handle_filter_by_genre,
             'filter_by_team_member': self._handle_filter_by_team_member,
@@ -126,8 +132,10 @@ class LinkActionHandler:
         title_id = int(parts[1])
         QTimer.singleShot(100, lambda: self.display_info(title_id))
 
-    def _am_search(self, parts):
+    def _handle_am_search(self, parts):
         title = str(parts[1])
+        original_id = str(parts[2])
+        self.animedia_cache.invalidate_item(self.animedia_cache.cfg.vlink_key, original_id)
         QTimer.singleShot(100, lambda: self.get_search_by_title_animedia(title))
 
     def _handle_filter_by_franchise(self, parts):

@@ -487,7 +487,12 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add cache for AniMedia schedule and vlinks
 - [x] Add Widget in Anime Player for new episodes on AniMedia
 - [x] Add restore on AniMedia schedule screen
-- [ ] on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
+- [x] Init AniMedia cache once
+- [x] Invalidate cache item for vlinks
+- [x] Invalidate title when open from AMS
+- [x] Fix on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
+- [x] Remove unused logic from app
+- [x] Add generic state
 - [ ] fix play video after was paused
 - [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time

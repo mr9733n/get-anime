@@ -2,7 +2,6 @@
 import os
 import re
 import sys
-import ctypes
 import subprocess
 import threading
 import traceback
@@ -10,12 +9,10 @@ import faulthandler
 import logging.config
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
-from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
 from utils.runtime_manager import test_exception
@@ -26,7 +23,6 @@ APP_MAJOR_VERSION = '0.3'
 UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 
 if getattr(sys, 'frozen', False):
-    # В фризе всегда считаем рабочей директорией папку с exe
     os.chdir(os.path.dirname(sys.executable))
 
 def resource_path(*parts: str) -> str:
@@ -38,40 +34,33 @@ def resource_path(*parts: str) -> str:
     if getattr(sys, "frozen", False):
         exe_dir = os.path.dirname(sys.executable)
 
-        # 1) сначала пробуем рядом с exe
         candidate1 = os.path.join(exe_dir, *parts)
         if parts and os.path.exists(candidate1):
             return candidate1
         if not parts:
-            # resource_path() без аргументов -> корень рядом с exe
             return exe_dir
 
-        # 2) пробуем sys._MEIPASS (PyInstaller может его ставить)
         internal = getattr(sys, "_MEIPASS", None)
         if internal:
             candidate2 = os.path.join(internal, *parts)
             if os.path.exists(candidate2):
                 return candidate2
 
-        # 3) пробуем dist/APP/_internal/...
         internal2 = os.path.join(exe_dir, "_internal")
         candidate3 = os.path.join(internal2, *parts)
         if os.path.exists(candidate3):
             return candidate3
 
-        # 4) fallback — считаем, что ресурсов нет, но хотим создать (логи, БД и т.п.)
         return candidate1
     else:
         base = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(base, *parts)
 
 fault_log_file = None
-# --- пути ---
-base_dir = resource_path()  # корень приложения (для dev — рядом с main.py, для frozen — рядом с exe)
+base_dir = resource_path()
 log_dir = os.path.join(base_dir, 'logs')
 db_dir = os.path.join(base_dir, 'db')
 
-# Статические ресурсы ищем либо рядом с exe, либо в _internal:
 icon_dir = resource_path('static')
 lib_dir = resource_path('libs')
 config_path = resource_path('config', 'config.ini')
@@ -110,7 +99,6 @@ def log_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
 
-    # Логируем кратко
     try:
         logger.critical(
             "Unexpected exception: %s",
@@ -122,7 +110,6 @@ def log_exception(exc_type, exc_value, exc_traceback):
         except Exception:
             pass
 
-    # А тут — полный traceback в fault.log (или просто в обычный лог)
     try:
         if fault_log_file:
             traceback.print_exception(exc_type, exc_value, exc_traceback, file=fault_log_file)
@@ -146,7 +133,6 @@ def qt_message_handler(mode, context, message):
         logger.debug(f"Qt: {message}")
 
 def on_app_quit():
-    # Save app current state
     app_state = window_pyqt.get_current_state()
     state_manager.save_state(app_state)
     logger.info(f"AnimePlayerApp Version {version} is closed.")

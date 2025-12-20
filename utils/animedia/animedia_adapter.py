@@ -3,7 +3,7 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Tuple
 from utils.animedia.animedia_client import AnimediaClient
-from utils.animedia.cache_manager import CacheStatus
+from utils.animedia.cache_manager import AniMediaCacheStatus, AniMediaCacheManager, AniMediaCacheConfig
 from utils.animedia.animedia_utils import (
     parse_title_page,
     uniq,
@@ -22,10 +22,10 @@ MAX_CONCURRENT = 3
 
 
 class AnimediaAdapter:
-    def __init__(self, base_url: str, net_client=None):
+    def __init__(self, base_url: str, net_client=None, cache: AniMediaCacheManager | None = None, cache_cfg: AniMediaCacheConfig | None = None):
         self.logger = logging.getLogger(__name__)
         self.net_client = net_client
-        self.client = AnimediaClient(base_url, net_client)
+        self.client = AnimediaClient(base_url, net_client, cache, cache_cfg)
 
 
     async def get_by_title(self, anime_name: str, max_titles: int = 5) -> List[Dict[str, Any]]:
@@ -51,7 +51,7 @@ class AnimediaAdapter:
             html = page_resp.text
 
         meta = parse_title_page(html, self.client.base_url)
-        original_id = int(extract_id_from_url(url))
+        original_id = str(extract_id_from_url(url))
         sanitized_code = replace_spaces_to_hyphen(meta.get("name_en"))
         sanitized_name_ru = replace_brackets(meta.get("name_ru"))
         status_obj = map_status(meta.get("status"))
@@ -91,19 +91,7 @@ class AnimediaAdapter:
 
         cached = self.client.load_schedule_cache()
         if cached:
-            flat = [t for p in cached for t in p["titles"]]
-            if len(flat) >= max_titles:
-                self.logger.debug("schedule‑cache полностью покрывает запрос")
-                trimmed: List[Dict[str, Any]] = []
-                taken = 0
-                for page in cached:
-                    if taken >= max_titles:
-                        break
-                    needed = max_titles - taken
-                    titles = page["titles"][:needed]
-                    trimmed.append({"page": page["page"], "titles": titles})
-                    taken += len(titles)
-                return trimmed
+           return cached
 
         results: List[Dict[str, Any]] = []
         collected = 0

@@ -2,6 +2,7 @@
 import html
 import logging
 import re
+from typing import Tuple, Optional
 from urllib.parse import quote
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
 from utils.runtime_manager import restart_application, LogWindow
@@ -345,20 +346,26 @@ class UISGenerator:
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
 
+    @staticmethod
+    def _parse_line(s: str) -> Tuple[str, str, str, Optional[str], str]:
+        """
+        Возвращает:
+            title, time_part, ep_part, poster_url, original_id
+        """
+        m = re.search(r"(https?://\S+\.(?:webp|jpg|jpeg|png))", s, flags=re.IGNORECASE)
+        poster = m.group(1) if m else None
+        core = s[:m.start()].strip() if m else s
+        parts = [p.strip() for p in core.split("\u00B7")]
+        title = parts[0] if len(parts) > 0 else ""
+        time_part = parts[1] if len(parts) > 1 else ""
+        ep_part = parts[2] if len(parts) > 2 else ""
+        original_id = parts[3] if len(parts) > 3 else ""
+
+        return title, time_part, ep_part, poster, original_id
+
     def _generate_animedia_schedule_html(self, schedule):
         if not schedule:
             return "<div style='padding:20px; font-size:14pt;'>Нет данных расписания AniMedia.</div>"
-
-        def parse_line(s: str):
-            m = re.search(r"(https?://\S+\.(?:webp|jpg|jpeg|png))", s, flags=re.IGNORECASE)
-            poster = m.group(1) if m else None
-            core = s[:m.start()].strip(" –") if m else s
-
-            parts = [p.strip() for p in core.split("–")]
-            title = parts[0] if parts else core
-            time_part = parts[1] if len(parts) > 1 else ""
-            ep_part = parts[2] if len(parts) > 2 else ""
-            return title, time_part, ep_part, poster
 
         rows = []
         rows.append("""
@@ -407,11 +414,9 @@ class UISGenerator:
             rows.append("<ul style='margin-left:16px; line-height:1.4;'>")
 
             for line in titles:
-                title, time_part, ep_part, poster = parse_line(line)
+                title, time_part, ep_part, poster, original_id = self._parse_line(line)
                 safe_title = html.escape(title)
-                # TODO: fix hardcode provider_name
-                provider_name = "animedia"
-                href = "am_search/" + quote(title)
+                href = "am_search/" + quote(title) + "/" + original_id
 
                 time_html = f"<span class='am-time'>{html.escape(time_part)}</span>" if time_part else ""
                 ep_html = f"<span class='am-ep'>{html.escape(ep_part)}</span>" if ep_part else ""

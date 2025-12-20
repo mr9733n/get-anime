@@ -7,7 +7,7 @@ import logging
 import platform
 import subprocess
 from dataclasses import dataclass
-
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Any, Dict, Union
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QLabel, QSystemTrayIcon, QStyle, QDialog
@@ -25,6 +25,7 @@ from static.layout_metadata import all_layout_metadata
 from utils.anilibria.api_client import APIClient
 from utils.anilibria.api_adapter import APIAdapter
 # AniMedia client
+from utils.animedia.cache_manager import CacheManager, CacheStatus
 from utils.animedia.qt_async_worker import AsyncWorker
 from utils.animedia.animedia_adapter import AnimediaAdapter
 from utils.config_manager import ConfigManager
@@ -132,6 +133,8 @@ class AnimePlayerAppVer3(QWidget):
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
+        self.animedia_cache = CacheManager(base_dir=Path("temp"))
+
         # Initialize TorrentManager with the correct paths
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
@@ -178,7 +181,8 @@ class AnimePlayerAppVer3(QWidget):
             play_link=self.play_link,
             play_playlist_wrapper=self.play_playlist_wrapper,
             save_torrent_wrapper=self.save_torrent_wrapper,
-            reset_offset=self.reset_offset
+            reset_offset=self.reset_offset,
+            get_search_by_title_animedia=self.get_search_by_title_animedia
         )
 
         self.callbacks = self.generate_callbacks()
@@ -379,6 +383,7 @@ class AnimePlayerAppVer3(QWidget):
             "get_update_title_al": self.get_update_title_aniliberty,
             "get_update_title_am": self.get_update_title_animedia,
             "get_random_title": self.get_random_title,
+            "get_animedia_new_titles": self.get_animedia_new_titles,
             "refresh_display": self.refresh_display,
             "save_playlist_wrapper": self.save_playlist_wrapper,
             "play_playlist_wrapper": self.play_playlist_wrapper,
@@ -498,6 +503,8 @@ class AnimePlayerAppVer3(QWidget):
                 self._restore_title(title_id)
             elif has_title_ids:
                 self._restore_titles(title_ids, show_mode)
+            elif show_mode == 'animedia_schedule':
+                self.display_animedia_schedule_screen(schedule_json=None)
             else:
                 self.logger.info("Falling back to offset-based restore")
                 self.display_titles(start=True)
@@ -659,6 +666,44 @@ class AnimePlayerAppVer3(QWidget):
         if pagination_widget:
             pagination_widget.setVisible(total_pages > 1)
 
+    def display_animedia_schedule_screen(self, schedule_json=None):
+        self.current_title_id = None
+        self.current_title_ids = None
+        self.current_day_of_week = None
+        self.current_show_mode = "animedia_schedule"  # restore_state
+
+        if not schedule_json:
+            status, cached = self.animedia_cache.load(
+                self.animedia_cache.cfg.schedule_key,
+                self.animedia_cache.cfg.schedule_ttl
+            )
+            if status is CacheStatus.VALID and cached:
+                schedule_json = cached
+            else:
+                self.logger.info("No valid schedule cache to restore")
+                schedule_json = []
+
+        # invalidate vlink cache
+        self.animedia_cache.invalidate_cache(self.animedia_cache.cfg.vlink_key)
+
+        self.current_data = schedule_json
+
+        pagination_widget = self.ui_manager.parent_widgets.get("pagination_widget")
+        if pagination_widget:
+            pagination_widget.setVisible(False)
+
+        self.clear_previous_posters()
+
+        layout = self.create_animedia_schedule_browser(schedule_json)
+        if not layout:
+            self.show_error_notification("AniMedia", "Failed to create schedule view.")
+            return
+
+        widget = QWidget(self)
+        widget.setLayout(layout)
+
+        self.posters_layout.addWidget(widget, 0, 0, 1, 2)
+
     def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:
             self.clear_previous_posters()
@@ -769,7 +814,7 @@ class AnimePlayerAppVer3(QWidget):
 
     def _save_parsed_data(self, parsed_data):
         for i, item in enumerate(parsed_data):
-            self.db_manager.save_schedule(item["day"], item["title_id"], last_updated=datetime.utcnow())
+            self.db_manager.save_schedule(item["day"], item["title_id"], last_updated=datetime.now(timezone.utc))
             # TODO: fix this. need to count as dict
             self.logger.debug(
                 f"[{i + 1}/{len(parsed_data)}] Saved title_id from API: {item['title_id']} on day {item['day']}")
@@ -888,6 +933,13 @@ class AnimePlayerAppVer3(QWidget):
         template = self.current_template
         self.logger.debug(f"Пытаемся создать system_browser с параметрами: {len(statistics)}")
         return self.ui_s_generator.create_system_browser(statistics, template)
+
+    def create_animedia_schedule_browser(self, schedule):
+        """
+        Прокси-метод, который делегирует создание animedia_schedule_browser в UISGenerator.
+        """
+        self.logger.debug(f"Пытаемся создать animedia_schedule_browser с параметрами: {len(schedule)}")
+        return self.ui_s_generator.create_animedia_schedule_browser(schedule)
 
     def create_title_browser(self, title, show_mode='default'):
         """
@@ -1167,7 +1219,35 @@ class AnimePlayerAppVer3(QWidget):
         """Обновление только через AniMedia."""
         return self._update_titles(provider_filter=PROVIDER_ANIMEDIA)
 
-    def _search_by_title(self, provider_filter: str | None) -> bool:
+    def get_animedia_new_titles(self):
+        self.ui_manager.show_loader("Loading AniMedia schedule...")
+        self.ui_manager.set_buttons_enabled(False)
+
+        adapter = AnimediaAdapter(self.base_am_url, self.net_client)
+        self._animedia_worker = AsyncWorker(
+            adapter.get_all_titles,
+            max_titles=60,
+        )
+        self._animedia_worker.finished.connect(self._on_animedia_titles)
+        self._animedia_worker.error.connect(self._on_animedia_error)
+        self._animedia_worker.start()
+
+    def _on_animedia_titles(self, data):
+        try:
+            if not data:
+                self.show_error_notification("AniMedia", "No data received.")
+                return
+
+            self.display_animedia_schedule_screen(data)
+
+        except Exception as e:
+            self.logger.error(f"Error in _on_animedia_titles: {e}")
+            self.show_error_notification("AniMedia", "Failed to show schedule. Check logs.")
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
+
+    def _search_by_title(self, provider_filter: str | None, search_text: str | None) -> bool:
         """
         Общая логика поиска тайтлов по названию.
         :param provider_filter:
@@ -1179,7 +1259,8 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.show_loader("Fetching by title...")
             self.ui_manager.set_buttons_enabled(False)
 
-            search_text = self.title_search_entry.text().strip()
+            if not search_text:
+                search_text = self.title_search_entry.text().strip()
             self.title_search_entry.clear()
             if not search_text:
                 return False
@@ -1252,15 +1333,17 @@ class AnimePlayerAppVer3(QWidget):
 
     def get_search_by_title(self):
         """Поиск тайтла: локальная БД → AniLiberty → Animedia."""
-        return self._search_by_title(provider_filter=None)
+        return self._search_by_title(provider_filter=None, search_text=None)
 
     def get_search_by_title_aniliberty(self):
         """Поиск тайтла: локальная БД → AniLiberty."""
-        return self._search_by_title(provider_filter=PROVIDER_ANILIBERTY)
+        return self._search_by_title(provider_filter=PROVIDER_ANILIBERTY, search_text=None)
 
-    def get_search_by_title_animedia(self):
+    def get_search_by_title_animedia(self, search_text=None):
         """Поиск тайтла: локальная БД (где провайдер = Animedia) → Animedia (async)."""
-        return self._search_by_title(provider_filter=PROVIDER_ANIMEDIA)
+        if search_text:
+            return self._search_by_title(provider_filter=PROVIDER_ANIMEDIA, search_text=search_text)
+        return self._search_by_title(provider_filter=PROVIDER_ANIMEDIA, search_text=None)
 
     def _handle_found_titles(self, title_ids, search_text):
         if len(title_ids) == 1:
@@ -1339,20 +1422,6 @@ class AnimePlayerAppVer3(QWidget):
         finally:
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
-
-    def get_animedia_new_titles(self):
-        adapter = AnimediaAdapter(self.base_am_url, self.net_client)
-        self._animedia_worker = AsyncWorker(
-            adapter.get_by_title,
-            max_titles=10,
-        )
-        self._animedia_worker.finished.connect(self._on_animedia_titles())
-        self._animedia_worker.error.connect(self._on_animedia_error)
-        self._animedia_worker.start()
-
-    def _on_animedia_titles(self):
-        # TODO: show new titles
-        ...
 
     def _handle_get_titles_from_api(self, search_text) -> list[int] | None:
         try:

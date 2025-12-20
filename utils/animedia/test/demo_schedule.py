@@ -3,7 +3,7 @@ import json
 import os
 import pathlib
 
-from animedia_adapter import AnimediaAdapter
+from utils.animedia.animedia_adapter import AnimediaAdapter
 from utils.net_client import NetClient
 from utils.config_manager import ConfigManager
 
@@ -12,7 +12,7 @@ async def demo():
     """Loads the configuration settings needed by the application."""
     network_config = config_manager.network
     net_client = NetClient(network_config)
-    adapter = AnimediaAdapter("https://amd.online", net_client=net_client)
+    adapter = AnimediaAdapter("amd.online", net_client=net_client)
     data = await adapter.get_all_titles(max_titles=100)
 
     # Statistics

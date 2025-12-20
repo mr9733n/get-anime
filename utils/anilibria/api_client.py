@@ -1,4 +1,4 @@
-# api_client.py - ТУПЫЙ HTTP клиент для API v1
+# api_client.py - HTTP клиент для API v1
 import json
 import os
 import time

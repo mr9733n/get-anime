@@ -1,17 +1,24 @@
 import asyncio
 import json
 import os
+import pathlib
 
-from _animedia_adapter import AnimediaAdapter
+from utils.animedia.animedia_adapter import AnimediaAdapter
+from utils.net_client import NetClient
+from utils.config_manager import ConfigManager
 
 
 async def demo():
-    adapter = AnimediaAdapter("https://amedia.online")
+    config_manager = ConfigManager(pathlib.Path('config/config.ini'))
+    """Loads the configuration settings needed by the application."""
+    network_config = config_manager.network
+    net_client = NetClient(network_config)
+    adapter = AnimediaAdapter("amd.online", net_client=net_client)
     data = await adapter.get_by_title("Yano-kun no Futsuu no Hibi")
 
     # Statistics
     for rec in data:
-        print(f"ID={rec['id']} (orig={rec['animedia_id']})"
+        print(f"(orig={rec['external_id']})"
               f"- {rec['code']}")
 
     out_path = "out/"

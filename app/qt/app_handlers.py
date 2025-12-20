@@ -15,7 +15,8 @@ class LinkActionHandler:
                  play_link,
                  play_playlist_wrapper,
                  save_torrent_wrapper,
-                 reset_offset):
+                 reset_offset,
+                 get_search_by_title_animedia):
 
         self.logger = logger
         self.db_manager = db_manager
@@ -26,9 +27,11 @@ class LinkActionHandler:
         self.play_playlist_wrapper = play_playlist_wrapper
         self.save_torrent_wrapper = save_torrent_wrapper
         self.reset_offset = reset_offset
+        self.get_search_by_title_animedia = get_search_by_title_animedia
 
         self.dispatch = {
             'display_info': self._handle_display_info,
+            'am_search': self._am_search,
             'filter_by_franchise': self._handle_filter_by_franchise,
             'filter_by_genre': self._handle_filter_by_genre,
             'filter_by_team_member': self._handle_filter_by_team_member,
@@ -122,6 +125,10 @@ class LinkActionHandler:
     def _handle_display_info(self, parts):
         title_id = int(parts[1])
         QTimer.singleShot(100, lambda: self.display_info(title_id))
+
+    def _am_search(self, parts):
+        title = str(parts[1])
+        QTimer.singleShot(100, lambda: self.get_search_by_title_animedia(title))
 
     def _handle_filter_by_franchise(self, parts):
         title_ids = ast.literal_eval(parts[1])

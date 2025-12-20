@@ -35,7 +35,7 @@ def extract_video_host(urls: Iterable[Union[str, bytes]]) -> str:
             u = u.decode(errors="ignore")
         u = u.strip()
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", u):
-            u = "http://" + u
+            u = "https://" + u
         host = urlparse(u).hostname
         if host:
             return host
@@ -299,7 +299,7 @@ def episodes_dict(sorted_links: list[str]) -> Dict[str, Dict[str, str | None]]:
     return episodes
 
 
-def _extract_id_from_url(url: str) -> int:
+def extract_id_from_url(url: str) -> int:
     try:
         last = url.rstrip("/").split("/")[-1]
         num = "".join(ch for ch in last if ch.isdigit())
@@ -328,29 +328,38 @@ def map_status(status_str: str | None) -> Dict[str, Any]:
     return {"code": 2, "string": "Завершён"}
 
 
-def replace_spaces(text: str) -> str | None:
+def _slugify(text: Optional[str], sep: str) -> Optional[str]:
     """
-    Привести строку к безопасному имени файла:
-    • пробелы → «-»;
-    • удалить все точки «.»;
-    • убрать любые «опасные» символы;
-    • оставить только буквы, цифры, «-» и «_»;
-    • несколько подряд идущих «-» заменить одним «-»;
-    • убрать ведущие/концевые «-».
+    Привести строку к безопасному имени файла.
+    * `sep` - символ‑разделитель: «-» или «_».
     """
     if text is None:
         return None
     txt = str(text).replace('"', "").replace("'", "")
-    txt = txt.replace(" ", "-").replace(".", "")
+    txt = txt.replace(" ", sep).replace(".", "")
     txt = re.sub(r"[^A-Za-z0-9_-]", "", txt)
-    txt = txt.replace("_", "-")
-    txt = re.sub(r"-{2,}", "-", txt)
-    txt = txt.strip("-")
+    opposite = "_" if sep == "-" else "-"
+    txt = txt.replace(opposite, sep)
+    txt = re.sub(rf"{re.escape(sep)}{{2,}}", sep, txt)
+    txt = txt.strip(sep)
+
     return txt.lower()
+
+
+def replace_spaces_to_hyphen(text: Optional[str]) -> Optional[str]:
+    """Slug с дефисами – используется для `code`."""
+    return _slugify(text, "-")
+
+
+def replace_spaces_to_underline(text: Optional[str]) -> Optional[str]:
+    """Slug с подчёркиваниями – используется в URL‑частях."""
+    return _slugify(text, "_")
+
 
 def replace_brackets(text: str) -> str | None:
     txt = str(text).replace("«", "").replace('»', "")
     return txt
+
 
 def build_base_dict(
     *,
@@ -364,7 +373,7 @@ def build_base_dict(
 ) -> Dict[str, Any]:
     """Собирает общий словарь‑результат без дублирования кода."""
 
-    original_id = _extract_id_from_url(url)
+    original_id = extract_id_from_url(url)
     updated_ts = meta.get("updated") or 0
     for ep_data in episodes.values():
         ep_data["created_timestamp"] = updated_ts

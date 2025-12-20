@@ -45,6 +45,13 @@ class TitleDisplayFactory:
         system_widget.setLayout(system_layout)
         return system_widget
 
+    def create_animedia_schedule_widget(self, schedule):
+        """Create animedia schedule widget"""
+        animedia_schedule_widget = QWidget(self.app)
+        system_layout = self.app.create_animedia_schedule_browser(schedule)
+        animedia_schedule_widget.setLayout(system_layout)
+        return animedia_schedule_widget
+
     def create_default_widget(self, title):
         """Создает виджет по умолчанию."""
         return self.app.create_title_browser(title, show_mode='default')

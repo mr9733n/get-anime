@@ -5,27 +5,30 @@ import asyncio
 import logging
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import List, Dict, Any, Final, Optional, Coroutine, Tuple
+from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
+from utils.animedia.cache_manager import CacheManager, CacheStatus, CacheConfig
 from utils.animedia.animedia_utils import (
     safe_str,
     extract_file_from_html,
     urljoin,
 )
 
+
 BATCH_SIZE = 30
 CONCURRENCY = 8
 INTER_BATCH_DELAY = 1.5
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
+
 
 class AnimediaClient:
     def __init__(self, base_url: str, net_client=None, cache_dir: str = "temp"):
         self.net_client = net_client
         self.logger = logging.getLogger(__name__)
         self.base_url = base_url.rstrip("/")
-        self.ajax_url = f"{self.base_url}/engine/mods/custom/ajax.php"
         if not self.base_url.startswith(("http://", "https://")):
             self.base_url = f"https://{self.base_url}"
+        self.ajax_url = f"{self.base_url}/engine/mods/custom/ajax.php"
         self._file_cache: Dict[str, str] = {}
         self.headers = {
             "User-Agent": (
@@ -37,28 +40,41 @@ class AnimediaClient:
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
         }
-        self.cache_path = Path(cache_dir) / "animedia_vlnk.json"
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cfg = CacheConfig(base_dir=Path(cache_dir))
+        self.cache = CacheManager(self.cfg.base_dir)
 
-        if self.cache_path.is_file():
-            try:
-                self._file_cache = json.loads(self.cache_path.read_text())
-            except Exception as exc:
-                self.logger.warning(f"Failed to load cache: {exc}")
-                self._file_cache = {}
+        # in‑memory кэш
+        status, data = self.cache.load(self.cfg.vlink_key, self.cfg.vlink_ttl)
+        self._file_cache = data if status is CacheStatus.VALID and self.cache.is_nonempty(data) else {}
+        if status is CacheStatus.EXPIRED:
+            self.logger.info("vlink‑кеш просрочен – будет перезаписан при следующем запросе")
+        elif status is CacheStatus.MISSING:
+            self.logger.debug("vlink‑кеш отсутствует")
+
+        status, data = self.cache.load(self.cfg.schedule_key, self.cfg.schedule_ttl)
+        self._schedule_cache = data if status is not CacheStatus.MISSING and self.cache.is_nonempty(data) else []
+        if status is not CacheStatus.MISSING and self.cache.is_nonempty(data):
+            self._schedule_cache = data
         else:
-            self._file_cache = {}
+            self.logger.debug("schedule‑кеш пустой или повреждён")
 
-    def _save_cache(self) -> None:
-        """Записывает текущий кеш в файл (вызывается после каждой успешной загрузки)."""
-        try:
-            self.cache_path.write_text(json.dumps(self._file_cache, ensure_ascii=False, indent=2))
-        except Exception as exc:
-            self.logger.error(f"Unable to write cache: {exc}")
+    def load_schedule_cache(self) -> Optional[List[dict]]:
+        """Возвращает уже загруженный в память кеш‑расписание."""
+        return self._schedule_cache if self._schedule_cache else None
+
+    def load_vlink_cache(self, original_id: int) -> Optional[dict[str, str]]:
+        """Обёртка над CacheManager.load_vlink."""
+        return self.cache.load_vlink(original_id)
+
+    def save_schedule_cache(self, data: List[dict]) -> None:
+        """Сохраняет в файл и обновляет in‑memory кеш."""
+        status = self.cache.save(self.cfg.schedule_key, data)
+        if status is CacheStatus.SAVED:
+            self.logger.debug("schedule cache is %s", status)
+        self._schedule_cache = data
 
     def _log_len(self, name: str, seq: list) -> None:
-        n = len(seq)
-        self.logger.info(f"{name}: {n} item{'s' if n != 1 else ''}")
+        self.logger.info(f"{name}: {len(seq)} item{'s' if len(seq) != 1 else ''}")
 
     async def search_titles(self, anime_name: str, max_titles: int = 5) -> List[str]:
         url = f"{self.base_url}/index.php?do=search&story={anime_name}"
@@ -146,7 +162,7 @@ class AnimediaClient:
                     backoff *= 2
         return None
 
-    async def collect_episode_files(self, html: str) -> None | list[Any] | list[str]:
+    async def collect_episode_files(self, html: str, original_id: int) -> None | list[Any] | list[str]:
         try:
             soup = BeautifulSoup(html, "html.parser")
             raw_vlnks = self._extract_vlnks(soup)
@@ -180,50 +196,73 @@ class AnimediaClient:
                 self.logger.info(f"collect_episode_files: {len(results)} files collected")
                 return results
             finally:
-                self._save_cache()
+                if original_id is not None:
+                    status = self.cache.save_vlink(original_id, self._file_cache)
+                    if status is CacheStatus.SAVED:
+                        self.logger.debug("vlink cache for id %s saved", original_id)
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
 
-    #-- New titles and anounces
-
-    async def fetch_new_titles_html(self, page: int) -> str:
-        """Возвращает HTML‑текст страницы `page`."""
-        data = {
-            "name": "poslednie-serii",
-            "cstart": str(page),
-            "action": "getpage",
-        }
+    #-- New titles and announces
+    async def _fetch_schedule(self, url: str, payload: dict[str, str] | None) -> str:
         async with self.net_client.create_async_httpx_client(
             headers=self.headers, timeout=30, follow_redirects=True
         ) as client:
-            resp = await client.post(self.ajax_url, data=data)
+            if payload:
+                resp = await client.post(url, data=payload)
+            else:
+                resp = await client.get(url)
             resp.raise_for_status()
             try:
-                data = resp.json()
-                return data.get("html", "")
+                html = resp.json().get("html", "")
             except json.JSONDecodeError:
-                return resp.text
+                html = resp.text
+        return html
+
+    async def fetch_new_titles_html(self, page: int) -> str:
+        """Возвращает HTML‑текст страницы `page`."""
+        payload = {"name": "poslednie-serii", "cstart": str(page), "action": "getpage"}
+        html = await self._fetch_schedule(self.ajax_url, payload=payload)
+
+        return html
+
+    async def get_new_titles(self) -> Optional[str]:
+        html = await self._fetch_schedule(self.base_url, payload=None)
+        return html
 
     def _build_titles(self, items: List[BeautifulSoup], max_titles: int) -> List[str]:
         results: List[str] = []
+
         for a in items[:max_titles]:
-            title = (
-                a.select_one("div.ftop-item__title").get_text(strip=True)
-                if a.select_one("div.ftop-item__title")
-                else "—"
-            )
-            meta = (
-                a.select_one("div.ftop-item__meta").get_text(strip=True)
-                if a.select_one("div.ftop-item__meta")
-                else "—"
-            )
+            link_tag = None
+            if a.has_attr("href"):
+                link_tag = urljoin(self.base_url, a["href"])
+
+            title_tag = a.select_one("div.ftop-item__title")
+            title = title_tag.get_text(strip=True) if title_tag else "—"
+
+            meta_tag = a.select_one("div.ftop-item__meta")
+            meta = meta_tag.get_text(strip=False) if meta_tag else "—"
+
             ep_tag = a.select_one("div.animseri > span")
             episode = ep_tag.get_text(strip=True) if ep_tag else None
+
+            poster_img = a.select_one("div.ftop-item__img img")
+            if poster_img and poster_img.has_attr("src"):
+                poster_url = urljoin(self.base_url, poster_img["src"])
+            else:
+                poster_url = None
 
             parts = [title, meta]
             if episode:
                 parts.append(f"{episode} серия")
+            if poster_url:
+                parts.append(poster_url)
+            if link_tag:
+                parts.append(link_tag)
+
             results.append(" – ".join(parts))
+
         return results
 
     async def parse_page_for_announce_titles(self, html: str, max_titles: int) -> List[str]:
@@ -257,16 +296,3 @@ class AnimediaClient:
             return 1
         pages = [int(a["data-page"]) for a in nav.select("a[data-page]")]
         return max(pages) if pages else 1
-
-    async def get_new_titles(self) -> str | None:
-        async with self.net_client.create_async_httpx_client(
-            headers=self.headers, timeout=30, follow_redirects=True
-        ) as client:
-            resp = await client.get(self.base_url)
-            resp.raise_for_status()
-            try:
-                data = resp.json()
-                return data.get("html", "")
-            except json.JSONDecodeError:
-                return resp.text
-

@@ -1,6 +1,9 @@
 # ui_s_generator.py
+import html
 import logging
-
+import re
+from typing import Tuple, Optional
+from urllib.parse import quote
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
 from utils.runtime_manager import restart_application, LogWindow
 
@@ -79,6 +82,8 @@ class UISGenerator:
         self.add_studio_button = None
         self.title_ids_input = None
         self.studio_input = None
+        self.delete_title_input = None
+        self.delete_title_button = None
 
     def create_line_edit(self, placeholder_text, parent, max_width=150):
         """Создает QLineEdit с предустановленным стилем."""
@@ -185,6 +190,35 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
+    def create_animedia_schedule_browser(self, schedule):
+        try:
+            animedia_schedule_layout = QVBoxLayout()
+
+            container_widget = QWidget(self.app)
+            container_layout = QVBoxLayout(container_widget)
+
+            animedia_schedule_browser = QTextBrowser(container_widget)
+            animedia_schedule_browser.anchorClicked.connect(self.app.on_link_click)
+            animedia_schedule_browser.setOpenExternalLinks(True)
+            animedia_schedule_browser.setStyleSheet("""
+                text-align: left;
+                border: 1px solid #444;
+                color: #000;
+                font-size: 12pt;
+                font-weight: normal;
+                background: rgba(255, 255, 255, 0.5);
+            """)
+
+            animedia_schedule_browser.setHtml(self._generate_animedia_schedule_html(schedule))
+
+            container_layout.addWidget(animedia_schedule_browser)  # <-- ЭТОГО НЕ ХВАТАЛО
+            animedia_schedule_layout.addWidget(container_widget)
+
+            return animedia_schedule_layout
+        except Exception as e:
+            self.logger.error(f"Error create_animedia_schedule_browser: {e}")
+            return None
+
     def create_system_browser(self, statistics, template):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         try:
@@ -227,21 +261,32 @@ class UISGenerator:
             self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
             self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db, max_width=100)
 
-            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
-
-            # TODO: Disabled for a wile
-            # bottom_layout.addStretch()
-
+            # TODO: Disabled for a while
+            bottom_layout.addStretch()
             bottom_layout.addWidget(self.template_selector)
             bottom_layout.addWidget(self.template_apply_button)
-
             bottom_layout.addWidget(self.studio_input)
             bottom_layout.addWidget(self.title_ids_input)
             bottom_layout.addWidget(self.add_studio_button)
+            bottom_layout.addStretch()
 
-            bottom_layout.addWidget(self.log_button)
+            bottom_layout2 = QHBoxLayout()
+            self.delete_title_input = self.create_line_edit(
+                "DELETE TITLE IDs (comma-separated)", container_widget, max_width=260
+            )
+            self.delete_title_button = self.create_button(
+                "DELETE", container_widget, self.delete_titles_from_db, max_width=100
+            )
+            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
+
+            bottom_layout2.addStretch()
+            bottom_layout2.addWidget(self.delete_title_input)
+            bottom_layout2.addWidget(self.delete_title_button)
+            bottom_layout2.addWidget(self.log_button)
+            bottom_layout2.addStretch()
 
             container_layout.addLayout(bottom_layout)
+            container_layout.addLayout(bottom_layout2)
 
             # Добавляем контейнерный виджет в основной layout
             system_layout.addWidget(container_widget)
@@ -300,6 +345,101 @@ class UISGenerator:
             self.db_manager.save_studio_to_db(title_ids, studio_name)
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
+
+    @staticmethod
+    def _parse_line(s: str) -> Tuple[str, str, str, Optional[str], str]:
+        """
+        Возвращает:
+            title, time_part, ep_part, poster_url, original_id
+        """
+        m = re.search(r"(https?://\S+\.(?:webp|jpg|jpeg|png))", s, flags=re.IGNORECASE)
+        poster = m.group(1) if m else None
+        core = s[:m.start()].strip() if m else s
+        parts = [p.strip() for p in core.split("\u00B7")]
+        title = parts[0] if len(parts) > 0 else ""
+        time_part = parts[1] if len(parts) > 1 else ""
+        ep_part = parts[2] if len(parts) > 2 else ""
+        original_id = parts[3] if len(parts) > 3 else ""
+
+        return title, time_part, ep_part, poster, original_id
+
+    def _generate_animedia_schedule_html(self, schedule):
+        if not schedule:
+            return "<div style='padding:20px; font-size:14pt;'>Нет данных расписания AniMedia.</div>"
+
+        rows = []
+        rows.append("""
+        <style>
+        .am-title {
+            color: #1f2933;        /* тёплый тёмно-серый, не чёрный */
+            font-weight: 600;     /* вместо 600 */
+            font-size: 14pt; 
+            text-decoration: none;
+        }
+        .am-title:hover {
+            text-decoration: underline;
+        }
+        .am-meta {
+            margin-left: 6px;
+            font-size: 12pt;
+            font-weight: 600;
+        }
+        .am-time {
+            color: #4b5563;        /* спокойный серо-графитовый */
+        }
+        .am-ep {
+            color: #6b7280;        /* светлее времени */
+        }
+        </style>
+
+        <div style="padding:18px;">
+          <div style="font-size:20pt; font-weight:bold; margin-bottom:10px;">
+            AniMedia — обновления
+          </div>
+          <div style="opacity:0.8; margin-bottom:18px; font-weight:bold;">
+            Нажми на название, чтобы выполнить поиск в AniMedia.
+          </div>
+        """)
+
+        for block in schedule:
+            page = block.get("page")
+            titles = block.get("titles") or []
+            if not titles:
+                continue
+
+            if not page == 0:
+                rows.append(f"<div style='margin:16px 0 8px; font-size:14pt; font-weight:bold;'>Новые серии аниме [{page}]</div>")
+            else:
+                rows.append(f"<div style='margin:16px 0 8px; font-size:14pt; font-weight:bold;'>Сегодня выйдет</div>")
+            rows.append("<ul style='margin-left:16px; line-height:1.4;'>")
+
+            for line in titles:
+                title, time_part, ep_part, poster, original_id = self._parse_line(line)
+                safe_title = html.escape(title)
+                href = "am_search/" + quote(title) + "/" + original_id
+
+                time_html = f"<span class='am-time'>{html.escape(time_part)}</span>" if time_part else ""
+                ep_html = f"<span class='am-ep'>{html.escape(ep_part)}</span>" if ep_part else ""
+
+                meta_html = ""
+                if time_html or ep_html:
+                    meta_html = f"<span class='am-meta'> {time_html}{' — ' if time_html and ep_html else ''}{ep_html}</span>"
+
+                # TODO: download posters
+                # img_html = f"<img src='{poster}' width='42' style='vertical-align:middle; margin-right:8px; border-radius:4px;'/>" if poster else ""
+                img_html = ""
+
+                rows.append(
+                    f"<li style='margin:6px 0;'>"
+                    f"{img_html}"
+                    f"<a href='{href}' class='am-title'>{safe_title}</a>"
+                    f"{meta_html}"
+                    f"</li>"
+                )
+
+            rows.append("</ul>")
+        rows.append("</div>")
+        return "\n".join(rows)
 
     def _generate_statistics_html(self, statistics, template):
         """Создает HTML-контент для отображения статистики."""
@@ -366,3 +506,33 @@ class UISGenerator:
              </div>
          </div>
          '''
+
+    def delete_titles_from_db(self):
+        """Удаление одного или нескольких тайтлов по списку title_id через запятую."""
+        title_ids_str = self.delete_title_input.text().strip()
+
+        try:
+            if not title_ids_str:
+                self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
+                return
+
+            # просто пробрасываем строку в db_manager — он сам разберёт
+            if not hasattr(self.db_manager, "delete_titles"):
+                self.logger.error("db_manager.delete_titles не реализован.")
+                return
+
+            result = self.db_manager.delete_titles(title_ids_str)
+
+            deleted = result.get("deleted", [])
+            not_found = result.get("not_found", [])
+
+            if deleted:
+                self.logger.info(f"Удалены тайтлы: {deleted}")
+            if not_found:
+                self.logger.warning(f"Тайтлы не найдены в БД и не были удалены: {not_found}")
+
+            # можно очистить поле после успешного вызова
+            self.delete_title_input.clear()
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при удалении тайтлов: {e}")

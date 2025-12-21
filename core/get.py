@@ -8,7 +8,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
-    Template, Genre, TitleTeamRelation, TeamMember
+    Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio
 
 
 class GetManager:
@@ -295,42 +295,6 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке данных о команде из базы данных: {e}")
                 return None
 
-    def get_titles_by_keywords(self, search_string):
-        """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
-        keywords = search_string.split(',')
-        keywords = [kw.strip() for kw in keywords]
-        if not keywords:
-            return []
-        self.logger.debug(f"keyword for processing: {keywords}")
-        with self.Session as session:
-            try:
-                if all(kw.isdigit() for kw in keywords):
-                    title_ids = [int(kw) for kw in keywords]
-                    query = session.query(Title).filter(Title.title_id.in_(title_ids))
-                    titles = query.all()
-                else:
-                    # Build dynamic filter using SQLAlchemy's 'or_' to match any keyword in any column
-                    keyword_filters = [
-                        or_(
-                            Title.code.ilike(f"%{keyword}%"),
-                            Title.name_ru.ilike(f"%{keyword}%"),
-                            Title.name_en.ilike(f"%{keyword}%"),
-                            Title.alternative_name.ilike(f"%{keyword}%")
-                        )
-                        for keyword in keywords
-                    ]
-                    # Combine filters using 'and_' so that all keywords must match (across any field)
-                    query = session.query(Title).filter(and_(*keyword_filters))
-                    self.logger.info(f"keywords find in DB")
-                    titles = query.all()
-
-                title_ids = [title.title_id for title in titles]
-                return title_ids
-
-            except Exception as e:
-                self.logger.error(f"Error during title search: {e}")
-                return []
-
     def get_template(self, name=None):
         """
         Загружает темплейт из базы данных по имени.
@@ -598,3 +562,239 @@ class GetManager:
             except Exception as e:
                 self.logger.error(f"Ошибка при поиске тайтлов по team_member: {team_member}: {e}")
                 return []
+
+    def get_titles_by_keywords(self, search_string: str):
+        """Search for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
+        keywords = [kw.strip() for kw in search_string.split(',') if kw.strip()]
+        if not keywords:
+            return [], []
+
+        self.logger.debug(f"keyword for processing: {keywords}")
+
+        with self.Session as session:
+            try:
+                # базовый query с нужными joinedload
+                base_query = session.query(Title).options(
+                    joinedload(Title.provider_links)
+                    .joinedload(TitleProviderMap.provider)
+                )
+
+                if all(kw.isdigit() for kw in keywords):
+                    # Ищем по ВНУТРЕННИМ title_id
+                    title_ids_input = [int(kw) for kw in keywords]
+                    query = base_query.filter(Title.title_id.in_(title_ids_input))
+                    titles = query.all()
+                else:
+                    keyword_filters = [
+                        or_(
+                            Title.code.ilike(f"%{keyword}%"),
+                            Title.name_ru.ilike(f"%{keyword}%"),
+                            Title.name_en.ilike(f"%{keyword}%"),
+                            Title.alternative_name.ilike(f"%{keyword}%"),
+                        )
+                        for keyword in keywords
+                    ]
+
+                    query = base_query.filter(and_(*keyword_filters))
+                    titles = query.all()
+
+                title_ids = [t.title_id for t in titles]
+                self.logger.info(f"keywords: {keywords} find in DB. tile_ids: {title_ids}")
+
+                providers = []
+                for t in titles:
+                    if t.provider_links:
+                        providers.append(t.provider_links[0].provider.code)
+                    else:
+                        providers.append(getattr(t, "provider", None))
+                self.logger.info(f"providers: {providers} find in DB. tile_ids: {title_ids}")
+
+                return title_ids, providers
+
+            except Exception as e:
+                self.logger.error(f"Error during title search: {e}")
+                return [], []
+
+    def get_titles_search_query(self, query) -> list[dict]:
+        """
+        Универсальный метод:
+          - если query = "123,456" или [123, 456] → ищем по title_id
+          - если query = "naruto" или "death note" → ищем по ключевым словам
+        Возвращает список:
+        [
+            {
+                "title_id": ...,
+                "name_ru": ...,
+                "name_en": ...,
+                "providers": [
+                    {"provider": "animedia", "external_id": "777"},
+                    {"provider": "shikimori", "external_id": "999"},
+                ],
+            },
+            ...
+        ]
+        """
+
+        # --- 1. Нормализуем ввод ---
+        title_ids: list[int] = []
+        search_text: str | None = None
+
+        # если int / список → считаем, что это title_id
+        if isinstance(query, int):
+            title_ids = [query]
+        elif isinstance(query, (list, tuple)):
+            # список - может быть смешанный (str/int)
+            for x in query:
+                if isinstance(x, int):
+                    title_ids.append(x)
+                elif isinstance(x, str) and x.strip().isdigit():
+                    title_ids.append(int(x.strip()))
+            # если список был, но туда ничего не попало — вернём пустой результат
+            if not title_ids and query:
+                return []
+        elif isinstance(query, str):
+            stripped = query.strip()
+            if not stripped:
+                return []
+
+            # строка - либо это CSV чисел, либо ключевые слова
+            parts = [p.strip() for p in stripped.split(",") if p.strip()]
+            if parts and all(p.isdigit() for p in parts):
+                title_ids = [int(p) for p in parts]
+            else:
+                search_text = stripped
+        else:
+            raise ValueError(f"Unsupported query type: {type(query)}")
+
+        with self.Session as session:
+            # --- 2А. Поиск по title_id, если есть ---
+            if title_ids:
+                titles = (
+                    session.query(Title)
+                    .options(
+                        joinedload(Title.provider_links)
+                        .joinedload(TitleProviderMap.provider)
+                    )
+                    .filter(Title.title_id.in_(title_ids))
+                    .all()
+                )
+            # --- 2Б. Поиск по ключевым словам ---
+            elif search_text is not None:
+                keywords = [kw.strip() for kw in search_text.split(",") if kw.strip()]
+                if not keywords:
+                    return []
+
+                keyword_filters = [
+                    or_(
+                        Title.code.ilike(f"%{kw}%"),
+                        Title.name_ru.ilike(f"%{kw}%"),
+                        Title.name_en.ilike(f"%{kw}%"),
+                        Title.alternative_name.ilike(f"%{kw}%"),
+                    )
+                    for kw in keywords
+                ]
+
+                titles = (
+                    session.query(Title)
+                    .options(
+                        joinedload(Title.provider_links)
+                        .joinedload(TitleProviderMap.provider)
+                    )
+                    .filter(and_(*keyword_filters))
+                    .all()
+                )
+            else:
+                return []
+
+            # --- 3. Формируем ответ ---
+            result: list[dict] = []
+
+            for t in titles:
+                providers_info: list[dict] = []
+                for link in t.provider_links:
+                    if not link.provider:
+                        continue
+                    providers_info.append({
+                        "provider": link.provider.code,
+                        "name": link.provider.name,
+                        "external_id": link.external_title_id,
+                    })
+
+                result.append({
+                    "title_id": t.title_id,
+                    "name_ru": t.name_ru,
+                    "name_en": t.name_en,
+                    "providers": providers_info,
+                })
+
+            return result
+
+    def get_title_by_external_id(self, provider_code: str, external_id: int | str):
+        with self.Session as session:
+            external_id_str = str(external_id)
+            title = (
+                session.query(Title)
+                .join(TitleProviderMap, Title.title_id == TitleProviderMap.title_id)
+                .join(Provider, Provider.provider_id == TitleProviderMap.provider_id)
+                .filter(
+                    Provider.code == provider_code,
+                    TitleProviderMap.external_title_id == external_id_str,
+                )
+                .one_or_none()
+            )
+            return title
+
+    def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
+        with self.Session as session:
+            rows = (
+                session.query(TitleProviderMap.title_id)
+                .join(Provider)
+                .filter(Provider.code == provider_code)
+                .all()
+            )
+        return [r[0] for r in rows]
+
+    def get_provider_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает имя провайдера (code) для данного title_id.
+           Если провайдеров несколько — возвращает первый.
+        """
+        with self.Session as session:
+            link = (
+                session.query(TitleProviderMap)
+                .options(joinedload(TitleProviderMap.provider))
+                .filter(TitleProviderMap.title_id == title_id)
+                .first()
+            )
+
+            if not link or not link.provider:
+                return None
+
+            return link.provider.name
+
+    def get_studio_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает название студии по title_id, либо None, если студии нет."""
+        with self.Session as session:
+            studio = (
+                session.query(ProductionStudio)
+                .filter(ProductionStudio.title_id == title_id)
+                .one_or_none()
+            )
+
+            if studio is None:
+                return None
+
+            return studio.name
+
+    def get_player_host_by_title_id(self, title_id: int) -> str | None:
+        """Возвращает host_for_player по title_id."""
+        with self.Session as session:
+            title = (
+                session.query(Title)
+                .filter(Title.title_id == title_id)
+                .one_or_none()
+            )
+
+            if not title:
+                return None
+
+            return title.host_for_player

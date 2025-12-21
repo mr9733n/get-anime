@@ -14,11 +14,11 @@ RETRY_DELAY = 10  # seconds
 MAX_IMAGE_SIZE_KB = 5000
 
 class PosterManager:
-    def __init__(self, save_callback=None):
-
+    def __init__(self, save_callback=None, net_client=None):
         self.logger = logging.getLogger(__name__)
         self.poster_links = []
         self.save_callback = save_callback
+        self.net_client = net_client
         self.save_queue = queue.Queue()
         self._save_thread = None
         self._download_thread = None
@@ -93,20 +93,29 @@ class PosterManager:
             while retries < MAX_RETRIES:
                 try:
                     headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+                        'User-Agent': (
+                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                            'AppleWebKit/537.36 (KHTML, like Gecko) '
+                            'Chrome/128.0.0.0 Safari/537.36'
+                        )
                     }
                     params = {'no_cache': 'true', 'timestamp': time.time()}
                     start_time = time.time()
                     self.logger.info(f"Запрос к URL: {link}")
-                    response = requests.get(link, headers=headers, stream=True, params=params)
+                    response = self.net_client.get(link, headers=headers, stream=True, params=params)
                     self.logger.info(f"Статус ответа: {response.status_code}")
                     response.raise_for_status()
                     end_time = time.time()
                     content_type = response.headers.get('Content-Type', '')
                     self.logger.info(f"Content-Type: {content_type}")
-                    if 'image' not in content_type:
-                        self.logger.error(f"The URL did not return an image: {link}")
-                        continue
+
+                    # ⛔ НЕ картинка — бессмысленно ретраиться
+                    if 'image' not in content_type.lower():
+                        self.logger.error(
+                            f"The URL did not return an image for title_id {title_id}: {link}"
+                        )
+                        # не ретраим, просто пропускаем этот постер
+                        break
 
                     content = response.content
                     hash_value = hashlib.md5(content).hexdigest()
@@ -116,41 +125,70 @@ class PosterManager:
                     img.load()
                     width, height = img.size
                     img_format = img.format
-                    num_kilobytes = len(response.content) / 1024
+                    num_kilobytes = len(content) / 1024
 
+                    # ⛔ Некорректные размеры — тоже не надо долбить этот же URL
                     if width < 10 or height < 10 or width > 10000 or height > 10000:
-                        self.logger.error(f"Invalid image dimensions: {width}x{height} for title_id {title_id}")
-                        continue
+                        self.logger.error(
+                            f"Invalid image dimensions: {width}x{height} for title_id {title_id}"
+                        )
+                        break  # без ретраев
 
+                    # ⛔ Неподдерживаемый формат
                     if img_format not in ["JPEG", "PNG", "GIF", "WEBP"]:
-                        self.logger.error(f"Unsupported image format: {img_format} for title_id {title_id}")
-                        continue
+                        self.logger.error(
+                            f"Unsupported image format: {img_format} for title_id {title_id}"
+                        )
+                        break  # без ретраев
 
+                    # ⛔ Слишком большой файл
                     if num_kilobytes > MAX_IMAGE_SIZE_KB:
                         self.logger.error(
-                            f"Image too large ({num_kilobytes:.2f}KB > {MAX_IMAGE_SIZE_KB}KB) for title_id {title_id}")
-                        continue
+                            f"Image too large ({num_kilobytes:.2f}KB > {MAX_IMAGE_SIZE_KB}KB) "
+                            f"for title_id {title_id}"
+                        )
+                        break  # без ретраев
 
+                    # ✅ Всё ок — сохраняем
                     self.logger.info(f"Successfully downloaded poster for title_id {title_id}")
-                    self.logger.debug(f"Poster details - URL: '{link[-41:]}', Format: {img_format}")
-                    self.logger.debug(f"Poster metrics - Dimensions: {width}x{height}, Size: {num_kilobytes:.2f} KB")
-                    self.logger.debug(f"Performance - Time: {end_time - start_time:.2f}s, Hash: {hash_value}...")
+                    self.logger.debug(
+                        f"Poster details - URL: '{link[-41:]}', Format: {img_format}"
+                    )
+                    self.logger.debug(
+                        f"Poster metrics - Dimensions: {width}x{height}, "
+                        f"Size: {num_kilobytes:.2f} KB"
+                    )
+                    self.logger.debug(
+                        f"Performance - Time: {end_time - start_time:.2f}s, "
+                        f"Hash: {hash_value}..."
+                    )
 
                     self.save_queue.put((title_id, content, hash_value))
                     items_queued = True
                     self.logger.debug(f"Queued poster save for title_id: {title_id}")
                     break
+
                 except (UnidentifiedImageError, IOError, OSError) as img_err:
+                    # сюда имеет смысл дать несколько ретраев (битый поток и т.п.)
                     retries += 1
-                    self.logger.error(f"Failed to identify and process the image data from: {link}: {img_err}")
+                    self.logger.error(
+                        f"Failed to identify and process the image data from: {link}: {img_err}"
+                    )
                 except Exception as e:
                     retries += 1
-                    self.logger.error(f"An error occurred while downloading the poster from {link}: {str(e)}")
+                    self.logger.error(
+                        f"An error occurred while downloading the poster from {link}: {str(e)}"
+                    )
+
                 if retries < MAX_RETRIES:
                     self.logger.info(f"Retrying in {RETRY_DELAY} seconds...")
                     time.sleep(RETRY_DELAY)
                 else:
-                    self.logger.error("Maximum number of retries reached. Unable to download posters.")
+                    self.logger.error(
+                        "Maximum number of retries reached. Unable to download posters "
+                        f"for title_id {title_id}, URL: {link}"
+                    )
+
         if items_queued:
             self.logger.info(f"[+] Starting save thread to process {self.save_queue.qsize()} posters")
             self._ensure_save_thread_running()

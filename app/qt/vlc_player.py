@@ -40,7 +40,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default"):
+    def __init__(self, parent=None, current_template="default", proxy=None):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ class VLCPlayer(QWidget):
         self.skip_ending = None
         self.is_buffering = None
         self.title_id = None
+        self.proxy = proxy
 
         self.setWindowTitle("VLC Video Player Controls")
         self.setGeometry(100, 950, 850, 100)
@@ -59,9 +60,13 @@ class VLCPlayer(QWidget):
         self.setMinimumHeight(100)
         self.setMaximumHeight(200)
         self.video_window = None
-        self.instance = vlc.Instance()
-        self.instance = vlc.Instance('--network-caching=2000')
-
+        # self.instance = vlc.Instance()
+        args = ["--network-caching=2000"]
+        if self.proxy:
+            self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
+            args.append(f"--http-proxy={self.proxy}")
+        self.instance = vlc.Instance(*args)
+        self.logger.debug(f"VLC args: {args}")
         self.list_player = self.instance.media_list_player_new()
         self.media_list = self.instance.media_list_new()
         self.media_player = self.list_player.get_media_player()
@@ -284,33 +289,61 @@ class VLCPlayer(QWidget):
 
         try:
             if self.is_url(path):
-                self.load_playlist_from_url(path)
+                self.load_playlist_from_url(path, title_id)
             else:
-                self.load_playlist_from_file(path)
+                self.load_playlist_from_file(path, title_id)
         except Exception as e:
             self.logger.error(f"!!! Error playing playlist file: {e}", exc_info=True)
 
-    def extract_from_link(self, url):
+    def _clean_int(self, s: str) -> int:
+        """Преобразует строку в int, отбрасывая ведущие нули."""
+        return int(s.lstrip('0') or '0')
+
+    def extract_from_link(self, url: str):
+        """
+        Возвращает (episode_number, episode_quality) как int.
+        Поддерживает разные форматы URL.
+        """
         try:
-            match = re.search(r"/(\d+)/(\d+)/(\d+)/", url)
-            if match:
-                title_id = int(match.group(1))
-                episode_number = int(match.group(2))
-                episode_quality = int(match.group(3))
-                self.logger.debug(f"Title {title_id} Episode {episode_number} Quality {episode_quality}")
-            else:
-                raise ValueError(f"Could not parse URL for title_id, episode_number, or quality: {url}")
-            return title_id, episode_number, episode_quality
-        except Exception as e:
-            self.logger.error(f"!!! Error extracting from URL: {e}")
+            m = re.search(r"/(\d+)/(\d+)/(\d+)/", url)
+            if m:
+                episode_number = self._clean_int(m.group(2))
+                episode_quality = self._clean_int(m.group(3))
+                self.logger.debug(
+                    f"Parsed (old style) – episode:{episode_number}, quality:{episode_quality}"
+                )
+                return episode_number, episode_quality
+
+            m = re.search(r"/(\d+)_\w+/[^/]+/(\d+)/", url)
+            if m:
+                episode_number = self._clean_int(m.group(1))
+                episode_quality = self._clean_int(m.group(2))
+                self.logger.debug(
+                    f"Parsed (new style) – episode:{episode_number}, quality:{episode_quality}"
+                )
+                return episode_number, episode_quality
+
+            parts = [p for p in url.split('/') if p.isdigit()]
+            if len(parts) >= 2:
+                episode_number = self._clean_int(parts[-2])
+                episode_quality = self._clean_int(parts[-1])
+                self.logger.debug(
+                    f"Fallback parsing – episode:{episode_number}, quality:{episode_quality}"
+                )
+                return episode_number, episode_quality
+
+            raise ValueError("No recognizable episode/quality pattern found")
+        except Exception as exc:
+            self.logger.error(f"!!! Error extracting from URL '{url}': {exc}")
             return None
 
-    def load_playlist_from_url(self, url):
+    def load_playlist_from_url(self, url, title_id):
         """
         Загружает и воспроизводит один эпизод по URL.
-
         ВАЖНО: Ожидается ПОЛНЫЙ URL от app.py:
         https://cache.libria.fun/videos/media/ts/9978/1/1080/hash.m3u8
+        https://aser.pro/content/stream/provozhayushhaya_v_poslednij_put_friren/001_27218/hls/720/index.m3u8
+        https://example.com/abc/12/1080/video.m3u8
         """
         try:
             # Проверяем, что получили полный URL
@@ -319,7 +352,7 @@ class VLCPlayer(QWidget):
                 return
 
             # Извлекаем метаданные из URL
-            title_id, episode_number, episode_quality = self.extract_from_link(url)
+            episode_number, episode_quality = self.extract_from_link(url)
             self.current_episode = episode_number
             self.logger.debug(f"Playing title {title_id} episode {episode_number}")
 
@@ -342,7 +375,7 @@ class VLCPlayer(QWidget):
         except Exception as e:
             self.logger.error(f"Error playing stream URL: {e}", exc_info=True)
 
-    def load_playlist_from_file(self, file_path):
+    def load_playlist_from_file(self, file_path, title_id):
         """
         Загружает и воспроизводит плейлист из локального файла.
 
@@ -367,7 +400,7 @@ class VLCPlayer(QWidget):
                         continue
 
                     # Извлекаем метаданные
-                    title_id, episode_number, episode_quality = self.extract_from_link(link)
+                    episode_number, episode_quality = self.extract_from_link(link)
                     self.current_episode = episode_number
                     self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
 
@@ -728,6 +761,7 @@ if __name__ == "__main__":
     parser.add_argument('--title_id', type=int, help='Title ID')
     parser.add_argument('--skip_data', help='Base64 encoded skip data')
     parser.add_argument('--template', default="default", help='UI template name')
+    parser.add_argument('--proxy', help='Use SOCK proxy')
     parser.add_argument('--prod_key')
     args = parser.parse_args()
 
@@ -752,6 +786,8 @@ if __name__ == "__main__":
 
         player.show()
         player.timer.start()
+        if args.proxy:
+            player = VLCPlayer(proxy=args.proxy)
 
     else:
         message = "VLC player cannot be run without AnimePlayer application!"

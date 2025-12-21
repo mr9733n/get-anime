@@ -1,39 +1,74 @@
 # main.py
-import ctypes
-import logging.config
 import os
 import re
-import subprocess
 import sys
+import subprocess
 import threading
+import traceback
 import faulthandler
+import logging.config
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import QSharedMemory
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 from core.database_manager import DatabaseManager
 from app.qt.app import AnimePlayerAppVer3
-from dotenv import load_dotenv
 from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
 from utils.runtime_manager import test_exception
+from utils.config_manager import ConfigManager
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
+UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 
-# Construct the path to the database in the main directory
-base_dir = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    os.chdir(os.path.dirname(sys.executable))
+
+def resource_path(*parts: str) -> str:
+    """
+    Универсальный поиск ресурсов:
+      - dev: рядом с main.py
+      - frozen/onedir: сперва рядом с .exe, потом в _internal
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+
+        candidate1 = os.path.join(exe_dir, *parts)
+        if parts and os.path.exists(candidate1):
+            return candidate1
+        if not parts:
+            return exe_dir
+
+        internal = getattr(sys, "_MEIPASS", None)
+        if internal:
+            candidate2 = os.path.join(internal, *parts)
+            if os.path.exists(candidate2):
+                return candidate2
+
+        internal2 = os.path.join(exe_dir, "_internal")
+        candidate3 = os.path.join(internal2, *parts)
+        if os.path.exists(candidate3):
+            return candidate3
+
+        return candidate1
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base, *parts)
+
+fault_log_file = None
+base_dir = resource_path()
 log_dir = os.path.join(base_dir, 'logs')
 db_dir = os.path.join(base_dir, 'db')
-icon_dir = os.path.join(base_dir, 'static')
-lib_dir = os.path.join(base_dir, 'libs')
 
-load_dotenv()
-prod_key = os.getenv("PROD_KEY")
-fetch_ver = os.getenv('USE_GIT_VERSION')
+icon_dir = resource_path('static')
+lib_dir = resource_path('libs')
+config_path = resource_path('config', 'config.ini')
+logging_config_path = resource_path('config', 'logging.conf')
+config_manager = ConfigManager(config_path)
+prod_key = config_manager.get_setting('System', 'PROD_KEY')
+fetch_ver = config_manager.get_setting('System', 'USE_GIT_VERSION')
 
-UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 if prod_key and re.match(UUID_REGEX, prod_key):
     DEVELOPMENT_MODE = False
 else:
@@ -59,19 +94,31 @@ def fetch_version():
         logger.info(f"Production version: {version}")
 
 def log_exception(exc_type, exc_value, exc_traceback):
-    """Logging unexpected exceptions.
-       Enable faulthandler when it needed."""
-
-    fault_log_path = os.path.join(log_dir, 'fault.log')
-
+    """Global handler for uncaught *Python* exceptions."""
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    logger.critical("Unexpected exception", exc_info=(exc_type, exc_value, exc_traceback))
 
-    with open(fault_log_path, 'a') as fault_log:
-        faulthandler.enable(file=fault_log)
-        faulthandler.dump_traceback(file=fault_log)
+    try:
+        logger.critical(
+            "Unexpected exception: %s",
+            exc_value,
+        )
+    except Exception:
+        try:
+            print("Unexpected exception:", exc_type, exc_value, file=sys.stderr)
+        except Exception:
+            pass
+
+    try:
+        if fault_log_file:
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=fault_log_file)
+            fault_log_file.flush()
+        else:
+            tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            logger.critical("Full traceback:\n%s", tb_str)
+    except Exception:
+        pass
 
 def qt_message_handler(mode, context, message):
     if mode == QtCore.QtMsgType.QtInfoMsg:
@@ -86,7 +133,6 @@ def qt_message_handler(mode, context, message):
         logger.debug(f"Qt: {message}")
 
 def on_app_quit():
-    # Save app current state
     app_state = window_pyqt.get_current_state()
     state_manager.save_state(app_state)
     logger.info(f"AnimePlayerApp Version {version} is closed.")
@@ -97,7 +143,17 @@ if __name__ == "__main__":
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    logging.config.fileConfig('config/logging.conf', disable_existing_loggers=False)
+    fault_log_path = os.path.join(log_dir, 'fault.log')
+    fault_log_file = open(
+        fault_log_path, 'a',
+        buffering=1,
+        encoding='utf-8',
+        errors='replace',
+    )
+    faulthandler.enable(file=fault_log_file)
+
+    logging.config.fileConfig(logging_config_path,
+                              disable_existing_loggers=False)
 
     sys.excepthook = log_exception
 

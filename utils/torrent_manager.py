@@ -4,12 +4,13 @@ import subprocess
 import logging
 
 class TorrentManager:
-    def __init__(self, torrent_save_path="torrents/", torrent_client_path=None, base_url=None):
+    def __init__(self, torrent_save_path="torrents/", torrent_client_path=None, base_url=None, net_client=None):
         self.logger = logging.getLogger(__name__)
         self.torrent_save_path = torrent_save_path
         self.torrent_client_path = torrent_client_path
         self.pre = "https://"
         self.base_url = base_url
+        self.net_client = net_client
         os.makedirs(self.torrent_save_path, exist_ok=True)
 
     def save_torrent_file(self, torrent_url, file_name):
@@ -32,7 +33,7 @@ class TorrentManager:
             self.logger.info(f"Downloading torrent from: {full_url}")
 
             # Скачиваем файл
-            response = requests.get(full_url, timeout=30)
+            response = self.net_client.get(full_url, timeout=30)
             response.raise_for_status()
 
             # Сохраняем

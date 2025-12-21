@@ -363,22 +363,181 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix app lite version for api v1 
 - [x] optimizations for app lite
 - [x] added properties details on build  
-- [ ] Remove unused logic
 
-## 9. Check maybe obsolete
-### 9.0. Some fixes
-- [ ] test build.spec for py installer 6.x
-- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
+### 8.33 AnimePlayerAPP Add AniMedia as second provider
+- [x] Add scraper for AniMedia
+- [x] Add adapter to resolve data inconsistency  
+- [x] Create demo app creating full data response that can process AnimePlayer
+- [x] Implement worker for async scraper
+- [x] Build-in AniMedia provider in AnimePlayer
+- [x] Add provider to FIND
+- [x] Add provider to Update Title
+- [x] Fix playing in AnimePlayerVLC
+- [x] Fix fetch posters
+- [x] Fix saving episodes
+- [x] Show provider in UI for title
+- [x] Remove unused logic
+- [x] Fix process poster link
+- [x] Add check for poster download
+- [x] Pretty code Restore app state
+- [x] Add check for Fatal log
+- [x] test build.spec for py installer 6.x
+
+### 8.33 Player DB Sync Utility 
+- [x] Сквозное шифрование (X25519 + HKDF + NaCl SecretBox), направленные ключи, SAS, TOFU-хранилище (атомично, с fsync).
+- [x] Чанковая передача с ACK, итоговый SHA-256, атомарная запись на приёмнике (`.tmp` → `os.replace`).
+- [x] mDNS: объявление/поиск, корректный unreg при стопе, подбор реального IPv4.
+- [+] «Проверить соединение» с таймаутом/ретраями и подсказками (порт, фаервол). *(базовый есть, доработать UX/тексты ошибок)*
+- [x] Троттлинг скорости (лимит КБ/c) — опция в GUI.
+- [x] Перезапуск приёмника при сбое mDNS/сокета (авто-рестарт).
+- [x] Резюмируемая отправка (resume from offset): сверка размера/хеша снапшота и докачка недостающих чанков.
+- [x] Доп. контроль целостности на каждый чанк (CRC32/sha256) + перезапрос конкретных чанков.
+- [x] Опциональное сжатие (gzip) на лету для SQLite-снапшота.
+- [x] Вкладки: Send / Receive / Merge / Logs; крупный SAS в обеих; индикатор статуса сервера (красный/зелёный).
+- [x] История адресов/портов (~/.player_db_gui.json); автоскролл логов; метки времени.
+- [x] Тихие логи (агрегаты), сводка по таблицам всегда; компактный вывод FK-violations (топ-10).
+- [+] mDNS-список приёмников в выпадающем списке (есть скан; добить автo-обновление и «Очистить/Обновить»).
+- [x] Кнопки «Сохранить лог» и «Очистить лог».
+- [x] Кнопка «Сбросить доверие (TOFU)» для выбранного хоста.
+- [x] Настройки: лимит скорости, размер чанка, опция сжатия, флаги merge (см. ниже) — сохранять в конфиг.
+- [x] Вывод всех сообщений в логи
+- [x] Чекбокс compress gzip при отправке
+- [x] Чекбокс VACUUM при отправке
+- [x] Мёрдж по «естественным» ключам: `episodes.uuid`, `torrents.hash`; **никогда** не переписывать локальные `episode_id/torrent_id`.
+- [x] `history`: резолв `episode_id` через `uuid`, `torrent_id` через `hash`; пропуск сирот с логом.
+- [x] `schedule/production_studios/posters/franchise_releases`: `ensure_title_in_dst(...)`; щадящий пропуск сирот; `posters` — дедуп по `(title_id, hash_value)`, insert без `poster_id`.
+- [x] Умный мёрдж `franchise_releases` по смысловому ключу, без переноса суррогатного `id`.
+- [x] Итоговый отчёт: число пропущенных по каждой таблице + экспорт CSV «сироты/дубликаты».
+- [x] Чекбоксы в GUI Merge: 
+      1. «Пропускать постеры без hash»
+      2. «Нормализовать дни недели (0..6→1..7)» *(дефолт: выкл, на случай неконсистентных источников)*
+      3. «Skip orphans» (поведение по умолчанию уже щадящее — оставить как опцию).
+- [x] `PRAGMA optimize`/`VACUUM` после большого мержа (по чекбоксу).
+- [x] Новый entry-point `db_sync_gui.py`; старые `sync/merge_utility` исключить из spec/бандла.
+- [+] PyInstaller spec: `zeroconf`, `nacl` в hiddenimports; иконка/версия/имя EXE.
+- [x] Post-install подсказка про Windows Firewall (вход на выбранный порт).
+
+### 8.34 Player DB Sync Utility  «Через интернет» без релея
+#### Internet (TCP + STUN/UPnP)
+- [x] использовать текущий TCP протокол
+- [x] Режим «Internet» в GUI (переключатель Receive)
+- [x]  STUN-детектор внешнего IP (pystun3), отображение адреса и порта
+- [x] UPnP / NAT-PMP автопроброс (miniupnpc); результат в логах
+- [x] Кнопка «Проверить доступность» (таймаут, диагностика)
+- [x] Абстрактный TransportBase
+- [x] Реализация TCPTransport
+
+#### WebRTC (DataChannel)
+- [x] WebRTCTransport — ядро (offer/answer, ICE, DataChannel) есть.
+- [x] GUI: офлайн-сигналинг (Offer/Answer) есть.
+- [x] Индикатор ICE есть (states в логах и label).
+- [+] Логика fallback к TCP
+- [x] GUI: Отобразить компактно в два столбца по смыслу, add scroll
+- [x] Pretty Gui
+- [x] Split in 2 version LAN and Inet
+- [x] Fix transport for LAN version
+- [x] Fix shutdown
+- [x] Add **Отправитель (WebRTCSenderTransport):**
+- [x] Add **Приёмник (WebRTCReceiverCore + GUI):** 
+- [+] Добить мелкую косметику (например, текст заголовков/подсказок под каждый режим)
+- [x] Fix Delete snapshot
+- [x] WebRTC. Fix send more than 1 time  
+- [x] после отправки мы не сбрасываем состояние подсказок
+- [x] после Приемки мы не сбрасываем состояние подсказок
+- [x] после Приемки не очищаем блоки с Offer/Answer
+
+### 8.34 Small fixes
+- [x] Fixes in *.spec files
+- [x] Fix get_titles_animedia 
+- [x] Fix playwright executable doesn't exist at
+
+### 8.35 Fixes Anime Player APP 0.3.8.35
+- [x] Removed playwright framework
+- [x] Windows fatal exception: access violation 2025-12-03 02:18:29 | CRITICAL | __main__.log_exception | Unexpected exception TypeError: invalid argument to sipBadCatcherResult()
+- [x] Pretty code
+- [x] Add new tables for providers
+- [x] Fix saving titles
+- [x] Delete titles
+- [x] Fix get titles by keywords
+- [x] Add get titles for search query
+- [x] Add get titles by provider & external_id
+- [x] Fix Update titles
+- [x] Add get_studio_by_title_id, get_provider_by_title_id
+- [x] Show production studio 
+- [x] Fix saving host_for_player from AniLibria
+- [x] Add get_player_host_by_title_id
+- [x] Fix regress saving dates in titles
+- [x] Fix playing video
+- [x] Removed playwright from Animedia demo app
+- [x] Removed playwright from .spec
+- [x] Filter by provider
+
+### 8.36 Anime Player Add Sock proxy
+- [x] Add Net client
+- [x] Add workaround for net client
+- [x] Add net client for each request
+- [:(] Add net client for vlc player 
+- [x] Create demo app for blocked anime
+- [x] Create qt browser for vk, rutube player
+- [x] fixes for qt browser
+- [x] fix saving combined playlist with multiply providers
+- [x] Add New episodes on AniMedia
+- [x] Created demo app for new episodes on AniMedia
+- [x] Fixes for AniMedia schedule
+- [x] Add cache for AniMedia schedule and vlinks
+- [x] Add Widget in Anime Player for new episodes on AniMedia
+- [x] Add restore on AniMedia schedule screen
+- [x] Init AniMedia cache once
+- [x] Invalidate cache item for vlinks
+- [x] Invalidate title when open from AMS
+- [x] Fix on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
+- [x] Remove unused logic from app
+- [x] Add generic state
+- [ ] fix play video after was paused
+- [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time
-- [ ] refactoring app.py
 - [ ] ...
 
-### 9.1. change one title view & redesign system browser 2
-- [ ] show production studio
+### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
+- [ ] Split logic im moduls (managers) from db_sync_gui
+- [ ] ...
+
+### 8.38 New features Player DB Sync Utility 0.0.0.3
+- [ ] если нажать clear и попробовать отправить бд еще раз то офер не сформируется, то и с ответом
+- [ ] Cancel Send
+- [ ] Cancel Receive
+- [ ] Тест-кнопка «ICE connected?» с логом статусов
+- [ ] Тестирование разных NAT/CGNAT сценариев
+- [ ] expand offer/answer data. показывать свернутым по умолчанию
+- [ ] формировать QR code for offer/answer
+- [ ] Отправка Offer/Answer по почте (Postmark): текст + QR в приложении (PNG).
+- [ ] Шифрование Offer/Answer перед QR/почтой:
+      - либо X25519 + NaCl SecretBox (как в TCP-режиме),
+      - либо простая парольная схема (SAS / passphrase) с локальным вводом.
+- [ ] Загрузка Offer/Answer из QR (импорт PNG из письма / файла).
+- [ ] При выборе WebRTC:
+      - дизейблить блок Internet TCP mode (серым),
+      - по возможности отключать несвязанные элементы (скорость/лимит порта),
+      - в хинтах явно показывать, что используется офлайн-сигналинг.
+- [ ] Internet (TCP + STUN/UPnP) Ограничение источников по IP / rate-limit
+
+
+ ## 9. Check maybe obsolete
+### 9.0. Migration to PyQt6
+- [x] Started in branch 0.3.8.34
+- [ ] Have some bugs
+- [ ] ...
+
+### 9.1 Refactoring
+- [ ] refactoring app.py
+
+### 9.2. New features & change one title view & redesign system browser 2
+- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 - [ ] add/update table data
 - [ ] ...
+
 
 ## 10. TECH DEBT
 ### 10.1. Использование Pydantic для Валидации
@@ -386,11 +545,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
 
 ### 10.2. Обработка Ошибок и Резервное Копирование
-- [ ] Merge algorithm is unstable
 - [ ] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
 - [ ] ? remove schedule view logic from get_titles ?
-- [ ] Try to do migration for old big db
 - [ ] create job to inspect db tables for condition
 
 ### 10.3. add watch history bulk selection

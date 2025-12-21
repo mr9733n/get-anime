@@ -48,3 +48,10 @@ find_duplicates_result_old.txt
 anime_player.db.zip
 
 
+*.sqlite
+*.db
+*.tmp
+/app/sync/__pycache__
+*.pyc
+/dist_517
+/app/qt_browser/playlists

@@ -1,4 +1,4 @@
-# utils/animedia/cache_manager.py
+# providers/animedia/cache_manager.py
 import json
 import time
 from dataclasses import dataclass
@@ -74,6 +74,25 @@ class AniMediaCacheManager(Generic[T]):
             return data
         return None
 
+    def load_item(self, key: str, item_id: ItemKey, ttl: int) -> Tuple[AniMediaCacheStatus, Optional[T]]:
+        p = self._file(key)
+        if not p.is_file():
+            return AniMediaCacheStatus.MISSING, None
+
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            entry = raw.get("items", {}).get(item_id)
+            if entry is None:
+                return AniMediaCacheStatus.MISSING, None
+            ts = entry.get("last_updated", 0)
+            data = entry.get("data")
+        except Exception:
+            return AniMediaCacheStatus.MISSING, None
+
+        if 0 < ttl <= int(time.time()) - ts:
+            return AniMediaCacheStatus.EXPIRED, None
+        return AniMediaCacheStatus.VALID, data
+
     def load(self, key: str, ttl: int) -> Tuple[AniMediaCacheStatus, Optional[T]]:
         p = self._file(key)
         if not p.is_file():
@@ -94,14 +113,6 @@ class AniMediaCacheManager(Generic[T]):
                 return AniMediaCacheStatus.EXPIRED, data
         return AniMediaCacheStatus.VALID, data
 
-    def save_vlink(self, original_id: str, vlink_dict: dict[str, str]) -> AniMediaCacheStatus:
-        """
-        Сохраняет словарь ссылок для одного title‑id.
-        vlink_dict: {source_url: target_url, …}
-        """
-        # сохраняем только один элемент, а не весь большой словарь
-        return self.save_item(self.cfg.vlink_key, original_id, vlink_dict)
-
     def save(self, key: str, data: T) -> AniMediaCacheStatus:
         path = self._file(key)
         try:
@@ -110,6 +121,14 @@ class AniMediaCacheManager(Generic[T]):
         except Exception as exc:
             raise IOError(f"Failed to write cache for key {key!r}") from exc
         return AniMediaCacheStatus.SAVED
+
+    def save_vlink(self, original_id: str, vlink_dict: dict[str, str]) -> AniMediaCacheStatus:
+        """
+        Сохраняет словарь ссылок для одного title‑id.
+        vlink_dict: {source_url: target_url, …}
+        """
+        # сохраняем только один элемент, а не весь большой словарь
+        return self.save_item(self.cfg.vlink_key, original_id, vlink_dict)
 
     def save_item(self, key: str, item_id: ItemKey, data: T) -> AniMediaCacheStatus:
         path = self._file(key)
@@ -127,25 +146,6 @@ class AniMediaCacheManager(Generic[T]):
         except Exception as exc:
             raise IOError(f"Failed to write cache for key {key!r}") from exc
         return AniMediaCacheStatus.SAVED
-
-    def load_item(self, key: str, item_id: ItemKey, ttl: int) -> Tuple[AniMediaCacheStatus, Optional[T]]:
-        p = self._file(key)
-        if not p.is_file():
-            return AniMediaCacheStatus.MISSING, None
-
-        try:
-            raw = json.loads(p.read_text(encoding="utf-8"))
-            entry = raw.get("items", {}).get(item_id)
-            if entry is None:
-                return AniMediaCacheStatus.MISSING, None
-            ts = entry.get("last_updated", 0)
-            data = entry.get("data")
-        except Exception:
-            return AniMediaCacheStatus.MISSING, None
-
-        if 0 < ttl <= int(time.time()) - ts:
-            return AniMediaCacheStatus.EXPIRED, None
-        return AniMediaCacheStatus.VALID, data
 
     def invalidate_item(self, key: str, item_id: ItemKey) -> AniMediaCacheStatus:
         path = self._file(key)

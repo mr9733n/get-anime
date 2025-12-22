@@ -23,7 +23,7 @@ class UIManager:
                 end = next_marker
 
             return self.qss_raw[start:end].strip()
-        # Uses in _make_style
+
         self.button_style_template      = block('button')
         self.tool_button_style_template = block('tool_button')
         self.menu_style_template        = block('menu')
@@ -147,9 +147,7 @@ class UIManager:
             menu.setFixedWidth(btn.width())
 
         def on_show_event(e):
-            # 1) сначала синхронизируем ширину меню
             sync_width()
-            # 2) потом даём базовому классу отработать стандартную логику
             QToolButton.showEvent(btn, e)
 
         btn.showEvent = on_show_event
@@ -166,7 +164,7 @@ class UIManager:
         le.setPlaceholderText(placeholder)
         le.setMinimumWidth(min_w)
         le.setMaximumWidth(max_w)
-        le.setStyleSheet(self._make_style('line_edit', 0))   # 0 — любой индекс, цвета не нужны
+        le.setStyleSheet(self._make_style('line_edit', 0))
         self.parent_widgets[widget_key] = le
         layout.addWidget(le)
         self.apply_shadow_effects([le])
@@ -184,11 +182,9 @@ class UIManager:
         return cb
 
     def setup_main_layout(self, main_layout, all_layout_metadata, callbacks):
-        # Создаем два лейаута: верхний и нижний
         top_layout = QHBoxLayout()
         bottom_layout = QHBoxLayout()
 
-        # Разделение метаданных и создание виджетов в соответствующих лейаутах
         for metadata in all_layout_metadata:
             if metadata["layout"] == "top":
                 self.create_widgets_from_metadata([metadata], top_layout, callbacks)
@@ -226,7 +222,6 @@ class UIManager:
                 """)
 
         self.parent.scroll_area.setWidget(self.parent.poster_container)
-
         main_layout.addWidget(self.parent.scroll_area)
 
         pagination_widget = QWidget()
@@ -263,27 +258,20 @@ class UIManager:
         prev_page_button.setStyleSheet(button_style)
         next_page_button.setStyleSheet(button_style)
 
-        # Сохраняем ссылки на виджеты в словаре
         self.parent_widgets["pagination_prev"] = prev_page_button
         self.parent_widgets["pagination_info"] = pagination_info
         self.parent_widgets["pagination_next"] = next_page_button
 
-        # Подключаем новые обработчики для пагинации фильтрованных результатов
         prev_page_button.clicked.connect(lambda: self.parent.navigate_pagination(go_forward=False))
         next_page_button.clicked.connect(lambda: self.parent.navigate_pagination(go_forward=True))
 
-        # Добавляем виджеты в layout пагинации
         pagination_widget_layout.addWidget(prev_page_button)
         pagination_widget_layout.addWidget(pagination_info)
         pagination_widget_layout.addWidget(next_page_button)
 
-        # Скрываем пагинацию по умолчанию
         pagination_widget.setVisible(False)
 
-        # Добавляем нижний лейаут (дополнительные кнопки управления)
         main_layout.addLayout(bottom_layout)
-
-        # Добавляем в основной layout
         main_layout.addWidget(pagination_widget)
         self.parent_widgets["pagination_widget"] = pagination_widget
         self.parent_widgets["pagination_layout"] = pagination_widget_layout
@@ -314,13 +302,11 @@ class UIManager:
     def update_pagination_info(self, current_page, total_pages, total_items, show_mode):
         """Обновляет информацию о пагинации в UI."""
         try:
-            # Обновляем информационный текст
             pagination_info = self.parent_widgets.get("pagination_info")
             if pagination_info:
                 info_text = f"{show_mode} | Pages: {current_page} .. {total_pages} | Titles: {total_items}"
                 pagination_info.setText(info_text)
 
-            # Включаем/отключаем кнопки в зависимости от текущей страницы
             prev_button = self.parent_widgets.get("pagination_prev")
             next_button = self.parent_widgets.get("pagination_next")
 
@@ -330,7 +316,6 @@ class UIManager:
             if next_button:
                 next_button.setEnabled(current_page < total_pages)
 
-            # Показываем/скрываем виджет пагинации
             pagination_widget = self.parent_widgets.get("pagination_widget")
             if pagination_widget:
                 pagination_widget.setVisible(total_pages > 1)

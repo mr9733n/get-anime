@@ -1,11 +1,10 @@
 # app_handlers.py
 import ast
 import base64
-from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from PyQt5.QtCore import QTimer
 
-from utils.animedia.cache_manager import AniMediaCacheManager
+from providers.animedia.cache_manager import AniMediaCacheManager
 
 
 class LinkActionHandler:
@@ -99,28 +98,21 @@ class LinkActionHandler:
                 return
 
             title_code, query_string = last_part.split('?', 1)
-
-            # Парсим query параметры
             query_params = parse_qs(query_string)
 
             if 'link' not in query_params:
                 self.logger.error(f"No 'link' parameter in query: {query_string}")
                 return
 
-            # Получаем URL торрента
             torrent_link = unquote(query_params['link'][0])
 
-            if not torrent_link:  # ← ДОБАВЬТЕ ПРОВЕРКУ
+            if not torrent_link:
                 self.logger.error(f"Empty torrent link for title_id={title_id}")
                 return
 
             self.logger.info(f"Downloading torrent: title_id={title_id}, torrent_id={torrent_id}")
             self.logger.debug(f"Torrent URL: {torrent_link}")
-
-            # Вызываем обработчик сохранения
             self.save_torrent_wrapper(torrent_link, title_code, torrent_id)
-
-            # Обновляем UI
             QTimer.singleShot(100, lambda: self.display_info(title_id))
 
         except ValueError as e:

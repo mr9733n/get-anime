@@ -8,7 +8,6 @@ from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPush
 from utils.runtime_manager import restart_application, LogWindow
 
 
-# Константы для стилей
 LINE_EDIT_STYLE = """
     QLineEdit {
         background: rgba(255, 255, 255, 1.0);
@@ -22,7 +21,6 @@ LINE_EDIT_STYLE = """
         border: 1px solid #0078d4;  /* синий цвет при фокусе */
     }
 """
-
 BUTTON_STYLE = """
     QPushButton {
         color: #fff;
@@ -43,7 +41,6 @@ BUTTON_STYLE = """
         border: 1px solid #555;
     }
 """
-
 COMBOBOX_STYLE = """
     QComboBox {
         background: rgba(255, 255, 255, 1.0);
@@ -107,15 +104,13 @@ class UISGenerator:
             if hasattr(self.app, "db_manager") and hasattr(self.app.db_manager, "app_state_manager"):
                 current_state = self.app.db_manager.app_state_manager.load_state()
 
-                # Если стейт пуст, пробуем взять из self.app
                 if not current_state:
                     self.logger.warning("Состояние приложения пустое, используем self.app.current_template")
                     return self.current_template, {}
 
-                # Проверяем, есть ли ключ template_name
                 template_name = current_state.get("template_name", "default")
 
-                # Убираем лишние кавычки, если есть
+
                 if isinstance(template_name, str) and template_name.startswith('"') and template_name.endswith('"'):
                     template_name = template_name.strip('"')
 
@@ -124,7 +119,7 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Error in get_current_template: {e}")
 
-        return "default", {}  # Если ошибка, возвращаем шаблон по умолчанию и пустой state
+        return "default", {}
 
     def create_template_selector(self, parent):
         """Создает выпадающий список с доступными шаблонами и устанавливает текущий."""
@@ -132,26 +127,17 @@ class UISGenerator:
             combo_box = QComboBox(parent)
             combo_box.setMaximumWidth(200)
             combo_box.setStyleSheet(COMBOBOX_STYLE)
-
-            # Загружаем список шаблонов
             templates = self.db_manager.get_available_templates()
-
-            # Получаем текущий шаблон
             current_template, _ = self.get_current_template()
-
-            # Очистка пробелов и приведение к одному регистру
             templates = [t.strip() for t in templates]
             current_template = current_template.strip()
 
-            # Сортируем так, чтобы default был первым (если есть)
             if "default" in templates:
                 templates.remove("default")
                 templates.insert(0, "default")
 
-            # Добавляем шаблоны в QComboBox
             combo_box.addItems(templates)
 
-            # Устанавливаем текущий шаблон
             if current_template in templates:
                 index = templates.index(current_template)
                 combo_box.setCurrentIndex(index)
@@ -168,22 +154,15 @@ class UISGenerator:
         """Переключает текущий шаблон, сохраняя в state и перезапуская приложение."""
         try:
             template_name = self.template_selector.currentText()
-
-            # Загружаем текущее состояние
             _, current_state = self.get_current_template()
 
-            # Гарантируем, что current_state — это dict
             if not isinstance(current_state, dict):
                 current_state = {}
 
-            # Обновляем только template_name
             current_state["template_name"] = template_name
 
-            # Сохраняем обновленный state
             self.app.db_manager.app_state_manager.save_state(current_state)
             self.logger.info(f"Шаблон сохранен в state: {template_name}")
-
-            # Перезапускаем приложение
             self.logger.info("Перезапуск приложения для применения шаблона...")
             restart_application()
 
@@ -211,7 +190,7 @@ class UISGenerator:
 
             animedia_schedule_browser.setHtml(self._generate_animedia_schedule_html(schedule))
 
-            container_layout.addWidget(animedia_schedule_browser)  # <-- ЭТОГО НЕ ХВАТАЛО
+            container_layout.addWidget(animedia_schedule_browser)
             animedia_schedule_layout.addWidget(container_widget)
 
             return animedia_schedule_layout
@@ -223,17 +202,15 @@ class UISGenerator:
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         try:
             self.logger.debug("Начинаем создание system_browser...")
-            # Создаем главный вертикальный layout для системного экрана
             system_layout = QVBoxLayout()
 
-            # Создаем контейнерный виджет и layout для него
             container_widget = QWidget(self.app)
             container_layout = QVBoxLayout()
             container_widget.setLayout(container_layout)
-            # Создаем QTextBrowser для отображения информации о тайтлах и франшизах
+
             system_browser = QTextBrowser(self.app)
             system_browser.setPlainText(f"Title: SYSTEM")
-            # system_browser.setProperty('title_id', title.title_id)
+
             system_browser.anchorClicked.connect(self.app.on_link_click)
             system_browser.setOpenExternalLinks(True)
             system_browser.setStyleSheet(
@@ -249,9 +226,7 @@ class UISGenerator:
             )
 
             system_browser.setHtml(self._generate_statistics_html(statistics, template))
-            # Добавляем system_browser в layout контейнера
             container_layout.addWidget(system_browser)
-
             bottom_layout = QHBoxLayout()
 
             self.template_selector = self.create_template_selector(container_widget)
@@ -287,8 +262,6 @@ class UISGenerator:
 
             container_layout.addLayout(bottom_layout)
             container_layout.addLayout(bottom_layout2)
-
-            # Добавляем контейнерный виджет в основной layout
             system_layout.addWidget(container_widget)
 
             return system_layout
@@ -299,13 +272,13 @@ class UISGenerator:
     def show_log_window(self):
         if self.log_window is None or not self.log_window.isVisible():
             self.log_window = LogWindow("logs/debug_log.txt", self.current_template)
-            self.log_window.closed.connect(lambda: self.log_button.setText("SHOW LOGS"))  # Подключаем сигнал
+            self.log_window.closed.connect(lambda: self.log_button.setText("SHOW LOGS"))
             self.log_window.show()
-            self.log_button.setText("HIDE LOGS")  # Меняем текст кнопки
+            self.log_button.setText("HIDE LOGS")
         else:
             self.log_window.close()
-            self.log_window = None  # Сбрасываем переменную
-            self.log_button.setText("SHOW LOGS")  # Возвращаем текст кнопки
+            self.log_window = None
+            self.log_button.setText("SHOW LOGS")
 
     def add_studio_to_db(self):
         """Функция для добавления новой студии в базу данных."""
@@ -313,16 +286,13 @@ class UISGenerator:
         title_ids_str = self.title_ids_input.text().strip()
 
         try:
-            # Проверка на пустой ввод
             if not studio_name or not title_ids_str:
                 self.logger.error("Ошибка ввода: Пожалуйста, введите название студии и title_id(ы).")
                 return
 
-            # Преобразование title_ids из строки в список ключевых слов
             keywords = title_ids_str.split(',')
             keywords = [kw.strip() for kw in keywords]
 
-            # Проверка, что ключевые слова содержат только целые числа
             if all(kw.isdigit() for kw in keywords):
                 title_ids = [int(kw) for kw in keywords]
                 self._handle_found_titles(title_ids, studio_name)
@@ -338,10 +308,8 @@ class UISGenerator:
     def _handle_found_titles(self, title_ids, studio_name):
         """Обработка сохранения студий для одного или нескольких title_ids."""
         if len(title_ids) == 1:
-            # Если найден только один title_id, передаем его как единственное значение
             self.db_manager.save_studio_to_db([title_ids[0]], studio_name)
         else:
-            # Если найдено несколько title_ids, передаем их все
             self.db_manager.save_studio_to_db(title_ids, studio_name)
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
@@ -466,13 +434,11 @@ class UISGenerator:
         reset_offset_status = True
 
         if blocked_titles:
-            # Разделяем строку на элементы
             blocked_titles_entries = blocked_titles.split(',')
-            # Формируем HTML список из элементов
             blocked_titles_list = ''.join(
                 f'<li>{entry.strip()}</li>' for entry in blocked_titles_entries
             )
-        # Логирование статистики
+
         self.logger.debug(f"Количество тайтлов: {titles_count}, Количество франшиз: {franchises_count}")
         self.logger.debug(f"Количество эпизодов: {episodes_count}, Количество постеров: {posters_count}")
         self.logger.debug(
@@ -480,7 +446,6 @@ class UISGenerator:
         self.logger.debug(f"Количество заблокированных тайтлов: {blocked_titles_count}")
         self.logger.debug(f"blocked_titles: {blocked_titles}")
 
-        # HTML контент для отображения статистики
         return f'''
          <div style="font-size: 20pt;">
              <p>Application version: {app_version}</p>
@@ -516,7 +481,6 @@ class UISGenerator:
                 self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
                 return
 
-            # просто пробрасываем строку в db_manager — он сам разберёт
             if not hasattr(self.db_manager, "delete_titles"):
                 self.logger.error("db_manager.delete_titles не реализован.")
                 return
@@ -531,7 +495,6 @@ class UISGenerator:
             if not_found:
                 self.logger.warning(f"Тайтлы не найдены в БД и не были удалены: {not_found}")
 
-            # можно очистить поле после успешного вызова
             self.delete_title_input.clear()
 
         except Exception as e:

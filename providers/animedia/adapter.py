@@ -1,10 +1,10 @@
-# utils/animedia/animedia_adapter.py
+# providers/animedia/adapter.py
 import asyncio
 import logging
 from typing import List, Dict, Any, Tuple
-from utils.animedia.animedia_client import AnimediaClient
-from utils.animedia.cache_manager import AniMediaCacheStatus, AniMediaCacheManager, AniMediaCacheConfig
-from utils.animedia.animedia_utils import (
+from providers.animedia.client import AnimediaClient
+from providers.animedia.cache_manager import AniMediaCacheStatus, AniMediaCacheManager, AniMediaCacheConfig
+from providers.animedia.legacy_mapper import (
     parse_title_page,
     uniq,
     dedup_and_sort,

@@ -1,4 +1,4 @@
-# snimedia_utils.py
+# providers/animedia/legacy_mapper.py
 import re
 import uuid
 from datetime import datetime, timezone

@@ -1,8 +1,7 @@
-# utils/qt_async_worker.py
+# providers/animedia//qt_async_worker.py
 import asyncio
 import logging
 from typing import Callable, Any
-
 from PyQt5.QtCore import QThread, pyqtSignal
 
 

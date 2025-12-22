@@ -99,7 +99,7 @@ class ProcessManager:
                     f"Skipping further processing for external_id={external_id}, provider={provider_code}"
                 )
 
-            self.process_franchises({'title_id': title_id, **title_fields})
+            self.process_franchises({'external_id': external_id, 'title_id': title_id, **title_fields})
 
             genres_json = title_fields['title_genres']
             decoded_genres = json.loads(genres_json)
@@ -188,10 +188,11 @@ class ProcessManager:
         if franchises:
             for franchise in franchises:
                 franchise_data = {
+                    'external_id': title_data['external_id'],
                     'title_id': title_data['title_id'],
                     'franchise_id': franchise.get('franchise', {}).get('id'),
                     'franchise_name': franchise.get('franchise', {}).get('name'),
-                    'releases': franchise.get('releases', [])
+                    'franchise_releases': franchise.get('franchise_releases', [])
                 }
                 self.logger.debug(f"Franchises found for title_id: {title_data['title_id']} : {len(franchise_data)}")
                 self.save_manager.save_franchise(franchise_data)

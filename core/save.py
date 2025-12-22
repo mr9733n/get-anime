@@ -382,6 +382,7 @@ class SaveManager:
     def save_franchise(self, franchise_data):
         with self.Session as session:
             try:
+                external_id = franchise_data['external_id']
                 title_id = franchise_data['title_id']
                 franchise_id = franchise_data['franchise_id']
                 franchise_name = franchise_data['franchise_name']
@@ -409,39 +410,41 @@ class SaveManager:
                     session.flush()  # Получаем ID новой франшизы для использования в релизах
                     franchise = new_franchise
 
-                # Обработка информации о релизах франшизы
-                for release in franchise_data.get('releases', []):
-                    release_title_id = release.get('id')
-                    release_code = release.get('code')
-                    release_ordinal = release.get('ordinal')
-                    release_names = release.get('names', {})
+                current = None
+                for fr in franchise_data.get("franchise_releases", []):
+                    if fr.get("release_id") == external_id:
+                        current = fr
+                        break
 
-                    # Проверка существования релиза франшизы в базе данных
-                    existing_release = session.query(FranchiseRelease).filter_by(franchise_id=franchise.id,
-                                                                                 title_id=release_title_id).first()
-                    if existing_release:
-                        self.logger.debug(
-                            f"Franchise release for title_id {release_title_id} already exists. Updating...")
-                        # Обновление существующего релиза
-                        existing_release.code = release_code
-                        existing_release.ordinal = release_ordinal
-                        existing_release.name_ru = release_names.get('ru')
-                        existing_release.name_en = release_names.get('en')
-                        existing_release.name_alternative = release_names.get('alternative')
-                        existing_release.last_updated = datetime.now(timezone.utc)
-                    else:
-                        # Создание нового релиза франшизы
-                        new_release = FranchiseRelease(
-                            franchise_id=franchise.id,
-                            title_id=release_title_id,
-                            code=release_code,
-                            ordinal=release_ordinal,
-                            name_ru=release_names.get('ru'),
-                            name_en=release_names.get('en'),
-                            name_alternative=release_names.get('alternative'),
-                            last_updated=datetime.now(timezone.utc)
-                        )
-                        session.add(new_release)
+                # если не нашли — либо выходим, либо сохраняем только Franchise без релизов
+                if not current:
+                    session.commit()
+                    return True
+
+                release = current.get("release") or {}
+                names = release.get("names") or {}
+
+                existing_release = (
+                    session.query(FranchiseRelease)
+                    .filter_by(franchise_id=franchise.id, title_id=title_id)
+                    .one_or_none()
+                )
+
+                if existing_release:
+                    r = existing_release
+                else:
+                    r = FranchiseRelease(franchise_id=franchise.id, title_id=title_id)
+                    session.add(r)
+
+                r.ext_fr_id = current.get("franchise_id")
+                r.ext_fr_rel_id = current.get("franchise_release_id")
+                r.ext_rel_id = current.get("release_id")
+                r.code = release.get("code")
+                r.ordinal = current.get("ordinal")
+                r.name_ru = names.get("ru")
+                r.name_en = names.get("en")
+                r.name_alternative = names.get("alternative")
+                r.last_updated = datetime.now(timezone.utc)
 
                 session.commit()
                 self.logger.debug(f"Successfully saved franchise for title_id: {title_id}")

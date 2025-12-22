@@ -333,20 +333,31 @@ class GetManager:
         with self.Session as session:
             try:
                 if title_id:
-                    franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
+                    # New style
+                    franchise_subquery = session.query(FranchiseRelease.ext_fr_id).filter(
                         FranchiseRelease.title_id == title_id
                     ).scalar_subquery()
 
                     query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id == franchise_subquery,
+                        FranchiseRelease.ext_fr_id == franchise_subquery,
                         FranchiseRelease.franchise_id.isnot(None)
                     )
+                    total_count = query.count()
+                    if total_count == 0:
+                        # old style
+                        franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
+                            FranchiseRelease.title_id == title_id
+                        ).scalar_subquery()
+
+                        query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
+                            FranchiseRelease.franchise_id == franchise_subquery,
+                            FranchiseRelease.franchise_id.isnot(None)
+                        )
                 else:
                     query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
                         FranchiseRelease.franchise_id.isnot(None)
                     )
 
-                total_count = query.count()
                 if offset >= total_count:
                     offset = 0
 

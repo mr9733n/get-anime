@@ -1,4 +1,4 @@
-# api_adapter_refactored.py
+# adapter.py
 """
 Refactored API v1 adapter:
 - network/orchestration вынесены в ReleaseBundleService
@@ -16,8 +16,8 @@ import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
-from providers.anilibria_v1.legacy_mapper import LegacyMapper
-from providers.anilibria_v1.service import ReleaseBundleService
+from providers.aniliberty.v1.legacy_mapper import LegacyMapper
+from providers.aniliberty.v1.service import ReleaseBundleService
 
 
 class APIAdapter:
@@ -40,6 +40,18 @@ class APIAdapter:
                 lock = threading.Lock()
                 self._title_locks[release_id] = lock
             return lock
+
+    # ============================================
+    # APP STATUS
+    # ============================================
+
+    def get_app_status(self) -> dict:
+        try:
+            data = self.client.get_status()
+            return data if isinstance(data, dict) else {"data": data}
+        except Exception as e:
+            self.logger.error(f"Error in get_app_status: {e}")
+            return {"error": str(e)}
 
     # ============================================
     # SCHEDULE
@@ -94,9 +106,7 @@ class APIAdapter:
             if isinstance(week_data, dict) and 'error' in week_data:
                 return week_data
 
-            # API v1 может возвращать {'data':[...]} или сразу list
             releases = self._extract_releases(week_data)
-            # в schedule/week day может быть в publish_day.value
             filtered = []
             for release in releases:
                 try:
@@ -107,7 +117,7 @@ class APIAdapter:
                     if wd is None:
                         continue
                     if int(wd) == int(day):
-                        filtered.append(obj)  # или append(release) — смотри что дальше маппишь
+                        filtered.append(obj)
                 except Exception:
                     continue
 
@@ -147,9 +157,28 @@ class APIAdapter:
             self.logger.error(f"Error in get_search_by_title: {e}")
             return {'error': str(e)}
 
-    def get_search_by_title_id(self, title_id: int):
+    def get_search_by_alias(self, alias: str):
         try:
-            data = self.client.get_release_by_id(int(title_id))
+            data = self.client.get_release(str(alias))
+            if 'error' in data:
+                return data
+            adapted = self._enrich_and_adapt(
+                data,
+                fetch_episodes=True,
+                fetch_torrents=True,
+                fetch_team=True,
+                fetch_franchises=True,
+                allow_network=True,
+            )
+            return {'list': [adapted]}
+        except Exception as e:
+            self.logger.error(f"Error in get_search_by_alias: {e}")
+            return {'error': str(e)}
+
+    def get_search_by_title_id(self, external_id: int):
+        """title_id must be external_id. don't use internal title_id"""
+        try:
+            data = self.client.get_release(int(external_id))
             if 'error' in data:
                 return data
             adapted = self._enrich_and_adapt(
@@ -166,6 +195,7 @@ class APIAdapter:
             return {'error': str(e)}
 
     def get_search_by_title_ids(self, title_ids: Sequence[int]):
+        """title_ids : list of external_id. don't use internal title_id"""
         out = []
         for tid in title_ids:
             out.append(self.get_search_by_title_id(tid))
@@ -179,7 +209,7 @@ class APIAdapter:
             releases = self._extract_releases(data)
             if not releases:
                 return {'error': 'No releases'}
-            # API может вернуть один
+            # API can return many
             release = releases[0]
             item = self._enrich_and_adapt(
                 release,
@@ -193,6 +223,90 @@ class APIAdapter:
         except Exception as e:
             self.logger.error(f"Error in get_random_title: {e}")
             return {'error': str(e)}
+
+    # ============================================
+    # Catalog and Latest releases
+    # ============================================
+
+    def get_latest_releases(self, limit: int = 14):
+        """
+        Возвращает список "последние релизы" в legacy формате.
+        """
+        try:
+            data = self.client.get_latest_releases(limit=limit)
+            if isinstance(data, dict) and "error" in data:
+                return data
+
+            releases = self._extract_releases(data)
+            adapted = [
+                self._enrich_and_adapt(
+                    r,
+                    fetch_episodes=True,
+                    fetch_torrents=True,
+                    fetch_team=True,
+                    fetch_franchises=True,
+                    allow_network=True,
+                )
+                for r in releases
+            ]
+            return {"list": adapted}
+        except Exception as e:
+            self.logger.error(f"Error in get_latest_releases: {e}")
+            return {"error": str(e)}
+
+    def get_catalog_releases(self, *, page: int = 1, limit: int = 10, filters: Optional[Dict[str, Any]] = None, use_post: bool = False):
+        try:
+            data = self.client.get_catalog_releases(page=page, limit=limit, filters=filters, use_post=use_post)
+            if isinstance(data, dict) and "error" in data:
+                return data
+
+            releases = self._extract_releases(data)
+            adapted = [
+                self._enrich_and_adapt(
+                    r,
+                    fetch_episodes=False,
+                    fetch_torrents=False,
+                    fetch_team=False,
+                    fetch_franchises=False,
+                    allow_network=False,
+                )
+                for r in releases
+            ]
+            if isinstance(data, dict):
+                return {"list": adapted, "meta": {k: v for k, v in data.items() if k not in ("data", "releases")}}
+            return {"list": adapted}
+        except Exception as e:
+            self.logger.error(f"Error in get_catalog_releases: {e}")
+            return {"error": str(e)}
+
+    # ============================================
+    # RSS (torrents)
+    # ============================================
+
+    def get_torrents_rss(self, *, limit: int = 10, pk: str | None = None) -> Dict[str, Any]:
+        """
+        RSS лента торрентов (XML -> JSON).
+        """
+        try:
+            xml_bytes = self.client.get_torrents_rss(limit=limit, pk=pk)
+            return self.mapper.adapt_rss_feed(xml_bytes)
+        except Exception as e:
+            self.logger.error(f"Error in get_torrents_rss: {e}")
+            return {"error": str(e)}
+
+    def get_torrents_rss_for_release(self, external_id: int, *, pk: str | None = None) -> Dict[str, Any]:
+        """
+        RSS лента торрентов конкретного релиза.
+        ВАЖНО: endpoint требует external_id. Alias не поддерживаем — UI должен прислать id.
+        """
+        try:
+            if not external_id:
+                return {"error": f"Cannot resolve release id for '{external_id}'"}
+            xml_bytes = self.client.get_torrents_rss_for_release(external_id, pk=pk)
+            return self.mapper.adapt_rss_feed(xml_bytes)
+        except Exception as e:
+            self.logger.error(f"Error in get_torrents_rss_for_release: {e}")
+            return {"error": str(e)}
 
     # ============================================
     # CORE: enrich + map to legacy
@@ -222,7 +336,6 @@ class APIAdapter:
                 lock.__enter__()
 
             try:
-                # 1) Получаем enriched raw release
                 if allow_network and release_id:
                     need = []
                     if fetch_torrents:
@@ -309,7 +422,6 @@ class APIAdapter:
 
         except Exception as e:
             self.logger.error(f"Error enriching release {release.get('id')}: {e}", exc_info=True)
-            # максимально безопасный фолбэк: маппим что есть
             try:
                 self.mapper.stream_video_host = None
                 return self.mapper.adapt_structure(release)
@@ -331,23 +443,6 @@ class APIAdapter:
                 return data['releases']
             if 'today' in data:
                 return data['today']
-        return []
-
-    def _single_item_pagination(self, data):
-        """
-        Иногда API отдаёт объект релиза без массива. Нормализуем к list.
-        """
-        if not data:
-            return []
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            # если это "релиз" (есть id) — завернём в список
-            if 'id' in data:
-                return [data]
-            # если это пагинация вида {data:[...]}
-            if 'data' in data and isinstance(data['data'], list):
-                return data['data']
         return []
 
     # ============================================

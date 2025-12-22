@@ -1,4 +1,4 @@
-# providers/animedia//qt_async_worker.py
+# providers/animedia/v0/qt_async_worker.py
 import asyncio
 import logging
 from typing import Callable, Any

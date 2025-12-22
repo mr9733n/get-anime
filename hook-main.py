@@ -24,13 +24,22 @@ hiddenimports = (
     collect_submodules('core.tables') +
     collect_submodules('core.utils') +
 
-    collect_submodules('utils.animedia.animedia_adapter') +
-    collect_submodules('utils.animedia.animedia_client') +
-    collect_submodules('utils.animedia.animedia_utils') +
-    collect_submodules('utils.animedia.qt_async_worker') +
+    collect_submodules('providers.animedia.v0.adapter') +
+    collect_submodules('providers.animedia.v0.cache_manager') +
+    collect_submodules('providers.animedia.v0.client') +
+    collect_submodules('providers.animedia.v0.legacy_mapper') +
+    collect_submodules('providers.animedia.v0.qt_async_worker') +
 
-    collect_submodules('utils.anilibria.api_adapter') +
-    collect_submodules('utils.anilibria.api_client') +
+    collect_submodules('providers.aniliberty.v1.adapter') +
+    collect_submodules('providers.aniliberty.v1.api') +
+    collect_submodules('providers.aniliberty.v1.cache_policy') +
+    collect_submodules('providers.aniliberty.v1.endpoints') +
+    collect_submodules('providers.aniliberty.v1.legacy_mapper') +
+    collect_submodules('providers.aniliberty.v1.service') +
+    collect_submodules('providers.aniliberty.v1.settings') +
+    collect_submodules('providers.aniliberty.v1.transport') +
+    collect_submodules('providers.aniliberty.v1.xml_parser') +
+
     collect_submodules('utils.config_manager') +
     collect_submodules('utils.library_loader') +
     collect_submodules('utils.logging_handlers') +

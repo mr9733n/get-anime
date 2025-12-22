@@ -370,3 +370,41 @@ SET code = LOWER(code)
 WHERE code IS NOT NULL;
 ```
 
+22. Add new columns
+```sql
+ALTER TABLE franchise_releases ADD COLUMN ext_fr_id;
+ALTER TABLE franchise_releases ADD COLUMN ext_fr_rel_id;
+ALTER TABLE franchise_releases ADD COLUMN ext_rel_id;
+ALTER TABLE titles ADD COLUMN season_key;
+```
+
+23. verify after backfill
+```sql
+-- неизвестные сезоны (должно быть мало или 0)
+SELECT season_string, COUNT(*)
+FROM titles
+WHERE season_key IS NULL OR season_key = 'unknown'
+GROUP BY season_string
+ORDER BY COUNT(*) DESC;
+
+-- несостыковки key<->code
+SELECT season_key, season_code, COUNT(*)
+FROM titles
+GROUP BY season_key, season_code
+ORDER BY season_key, season_code;
+
+```
+
+24. Check after normalisation season
+```sql
+ SELECT season_key, season_code, COUNT(*)
+FROM titles
+GROUP BY season_key, season_code
+ORDER BY season_key, season_code;
+
+SELECT season_string, COUNT(*)
+FROM titles
+WHERE season_key='unknown'
+GROUP BY season_string
+ORDER BY COUNT(*) DESC;
+```

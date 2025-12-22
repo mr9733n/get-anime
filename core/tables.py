@@ -33,6 +33,7 @@ class Title(Base):
     team_voice = Column(String)  # Сохраняется как строка в формате JSON
     team_translator = Column(String)  # Сохраняется как строка в формате JSON
     team_timing = Column(String)  # Сохраняется как строка в формате JSON
+    season_key = Column(String)
     season_string = Column(String)
     season_code = Column(Integer)
     season_year = Column(Integer)

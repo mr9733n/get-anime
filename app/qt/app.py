@@ -19,15 +19,11 @@ from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 from static.layout_metadata import all_layout_metadata
-# AniLiberty api client
-#from utils.anilibria.api_client import APIClient
-#from utils.anilibria.api_adapter import APIAdapter
-from providers.anilibria_v1.api import APIClient
-from providers.anilibria_v1.adapter import APIAdapter
-# AniMedia client
-from providers.animedia.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
-from providers.animedia.qt_async_worker import AsyncWorker
-from providers.animedia.adapter import AnimediaAdapter
+from providers.aniliberty.v1.api import APIClient
+from providers.aniliberty.v1.adapter import APIAdapter
+from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
+from providers.animedia.v0.qt_async_worker import AsyncWorker
+from providers.animedia.v0.adapter import AnimediaAdapter
 from utils.config_manager import ConfigManager
 from utils.net_client import NetClient
 from utils.poster_manager import PosterManager
@@ -147,7 +143,9 @@ class AnimePlayerAppVer3(QWidget):
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
-        self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=Path("temp"))
+        self.temp_dir = "temp"
+
+        self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=Path(self.temp_dir))
         self.animedia_cache = AniMediaCacheManager(self.animedia_cache_cfg.base_dir)
         self.animedia_adapter = AnimediaAdapter(self.base_am_url, self.net_client, self.animedia_cache, self.animedia_cache_cfg)
 
@@ -162,11 +160,18 @@ class AnimePlayerAppVer3(QWidget):
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
-        # Initialize other components
-        self.api_client = APIClient(self.base_al_url, self.al_api_version, net_client=self.net_client)
+        self.api_client = APIClient(
+            base_url=self.base_al_url,
+            api_version=self.al_api_version,
+            net_client=self.net_client,
+            logger=self.logger,
+            utils_folder=self.temp_dir,
+            sleep_fn=None,
+            max_cache_items=512,
+            enable_dumps=True
+        )
         self.api_adapter = APIAdapter(
             self.api_client,
-            #api_version=self.al_api_version,
             self.logger,
         )
 

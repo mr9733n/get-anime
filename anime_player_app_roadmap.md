@@ -493,8 +493,15 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fix on change quality in schedule 2025-12-13 14:44:50 | ERROR | app.qt.app.refresh_display | Ошибка при обновлении экрана при нажатии REFRESH: 'int' object has no attribute 'episodes'
 - [x] Remove unused logic from app
 - [x] Add generic state
+
+
+### 8.36 Refactoring AniLiberty API client
+- [x] Done
+- [x] Smoke tests - done
+
+### 8.36 Fixes 
+- [x] Create adapter for season / We have to many same seasons with different name
 - [ ] fix play video after was paused
-- [ ] Create adapter for season / We have to many same seasons with different name
 - [ ] need to fix watch status for title_id when set status first time
 - [ ] ...
 

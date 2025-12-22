@@ -1,4 +1,4 @@
-# providers/animedia/legacy_mapper.py
+# providers/animedia/v0/legacy_mapper.py
 import re
 import uuid
 from datetime import datetime, timezone

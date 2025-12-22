@@ -166,6 +166,8 @@ datas = [
     (os.path.join(project_dir, 'app/qt/__pycache__'), 'app/qt/__pycache__'),  # Add compiled .pyc files
     (os.path.join(project_dir, 'core/__pycache__'), 'core/__pycache__'),      # Add compiled .pyc files
     (os.path.join(project_dir, 'utils/__pycache__'), 'utils/__pycache__'),    # Add compiled .pyc files
+    (os.path.join(project_dir, 'providers/animedia/v0/__pycache__'), 'providers/animedia/v0/__pycache__'),    # Add compiled .pyc files
+    (os.path.join(project_dir, 'providers/aniliberty/v1/__pycache__'), 'providers/aniliberty/v1/__pycache__'),    # Add compiled .pyc files
 	(os.path.join(project_dir, 'favicon.ico'), '.'),
 	(os.path.join(project_dir, 'anime_player_app_roadmap.md'), '.'),
 	(os.path.join(project_dir, 'LICENSE.md'), '.'),

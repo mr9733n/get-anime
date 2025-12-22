@@ -1,14 +1,123 @@
 # process.py
+from __future__ import annotations
+
+import re
 import ast
 import json
 import logging
 from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+@dataclass(frozen=True)
+class SeasonNorm:
+    key: str                 # winter/spring/summer/autumn/unknown
+    code: Optional[int]      # 1..4 or None
+    string: str              # canonical display (e.g. "Spring" or "Весна")
+    raw_string: str = ""
+    raw_code: Optional[int] = None
+
+    @property
+    def is_known(self) -> bool:
+        return self.code is not None and self.key != "unknown"
+
+
+@dataclass(frozen=True)
+class SeasonCatalog:
+    key_to_code: dict[str, int]
+    key_to_en: dict[str, str]
+    key_to_ru: dict[str, str]
+    aliases: dict[str, str]
+
+    @classmethod
+    def default(cls) -> "SeasonCatalog":
+        key_to_code = {"winter": 1, "spring": 2, "summer": 3, "autumn": 4}
+        key_to_en = {"winter": "Winter", "spring": "Spring", "summer": "Summer", "autumn": "Autumn"}
+        key_to_ru = {"winter": "Зима", "spring": "Весна", "summer": "Лето", "autumn": "Осень"}
+
+        aliases = {
+            # EN
+            "winter": "winter", "win": "winter",
+            "spring": "spring", "spr": "spring",
+            "summer": "summer", "sum": "summer",
+            "autumn": "autumn", "aut": "autumn",
+            "fall": "autumn",
+
+            # RU
+            "зима": "winter", "зимний": "winter",
+            "весна": "spring", "весенний": "spring",
+            "лето": "summer", "летний": "summer",
+            "осень": "autumn", "осенний": "autumn",
+        }
+        return cls(key_to_code=key_to_code, key_to_en=key_to_en, key_to_ru=key_to_ru, aliases=aliases)
 
 
 class ProcessManager:
     def __init__(self, save_manager):
         self.logger = logging.getLogger(__name__)
         self.save_manager = save_manager
+
+    @staticmethod
+    def _norm_token(s: str) -> str:
+        s = s.strip().lower()
+        s = re.sub(r"[\s_\-]+", " ", s)
+        return s
+
+    @staticmethod
+    def normalize_season(season: Any, *, locale: str = "en", catalog: SeasonCatalog | None = None) -> SeasonNorm:
+        """
+        season может быть: dict / str / None.
+        Понимает numeric code 1..4, рус/англ, регистр, и строки типа "Весна 2024".
+        """
+        catalog = catalog or SeasonCatalog.default()
+
+        raw_code: Optional[int] = None
+        raw_string: str = ""
+
+        if season is None:
+            return SeasonNorm(key="unknown", code=None, string="", raw_string="", raw_code=None)
+
+        if isinstance(season, str):
+            raw_string = season
+        elif isinstance(season, dict):
+            raw_code = season.get("code")
+            raw_string = season.get("string") or season.get("value") or season.get("description") or ""
+        else:
+            raw_string = str(season)
+
+        if isinstance(raw_code, int) and raw_code in (1, 2, 3, 4):
+            key = {1: "winter", 2: "spring", 3: "summer", 4: "autumn"}[raw_code]
+            canon_code = raw_code
+        else:
+            def _norm_token(s: str) -> str:
+                s = s.strip().lower()
+                s = re.sub(r"[\s_\-]+", " ", s)
+                return s
+            t = _norm_token(raw_string)
+            key = catalog.aliases.get(t, "unknown")
+
+            if key == "unknown" and t:
+                for tok in t.split():
+                    key = catalog.aliases.get(tok, "unknown")
+                    if key != "unknown":
+                        break
+
+            canon_code = catalog.key_to_code.get(key)
+
+        if key == "unknown":
+            canon_string = ""
+            canon_code = None
+        else:
+            canon_string = (catalog.key_to_en if locale == "en" else catalog.key_to_ru)[key]
+
+        return SeasonNorm(
+            key=key,
+            code=canon_code,
+            string=canon_string,
+            raw_string=raw_string,
+            raw_code=raw_code,
+        )
 
     def process_external_data(self, title_id: int, title_data: dict):
         try:
@@ -33,6 +142,7 @@ class ProcessManager:
 
     def process_titles(self, raw_title_data: dict):
         try:
+            season_norm = self.normalize_season(raw_title_data.get("season"), locale="en")
             provider_code = raw_title_data.get('provider')
             external_id = raw_title_data.get('external_id')
 
@@ -63,8 +173,9 @@ class ProcessManager:
                 'team_voice': json.dumps(raw_title_data.get('team', {}).get('voice', [])),
                 'team_translator': json.dumps(raw_title_data.get('team', {}).get('translator', [])),
                 'team_timing': json.dumps(raw_title_data.get('team', {}).get('timing', [])),
-                'season_string': raw_title_data.get('season', {}).get('string', ''),
-                'season_code': raw_title_data.get('season', {}).get('code', None),
+                "season_key": season_norm.key,
+                "season_code": season_norm.code,
+                "season_string": season_norm.string,
                 'season_year': raw_title_data.get('season', {}).get('year', None),
                 'season_week_day': raw_title_data.get('season', {}).get('week_day', None),
                 'description': raw_title_data.get('description', ''),
@@ -125,7 +236,6 @@ class ProcessManager:
         try:
             list_data = title_data.get("player", {}).get("list")
 
-            # Проверяем, является ли `list_data` словарем или списком
             if isinstance(list_data, dict):
                 episodes = list_data.values()
             elif isinstance(list_data, list):
@@ -142,7 +252,6 @@ class ProcessManager:
                 if "hls" in episode:
                     try:
                         # self.logger.debug(f"Processing episode: {episode.get('episode')}")
-
                         created_timestamp = episode.get('created_timestamp')
                         if created_timestamp is not None and isinstance(created_timestamp, (int, float)):
                             created_timestamp = datetime.fromtimestamp(created_timestamp, tz=timezone.utc)
@@ -219,7 +328,6 @@ class ProcessManager:
                             'torrent_id': torrent.get('torrent_id'),
                             'title_id': title_data.get('title_id'), # Internal id
                             'episodes_range': torrent.get('episodes', {}).get('string', 'Неизвестный диапазон'),
-
                             'quality': torrent.get('quality', {}).get('string', 'Качество не указано'),
                             'quality_type': torrent.get('quality', {}).get('type'),
                             'resolution': torrent.get('quality', {}).get('resolution'),

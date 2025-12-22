@@ -1,4 +1,4 @@
-# providers/animedia/animedia_client.py
+# providers/animedia/v0/animedia_client.py
 import json
 import httpx
 import asyncio
@@ -7,8 +7,8 @@ import logging
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
-from providers.animedia.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
-from providers.animedia.legacy_mapper import (
+from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
+from providers.animedia.v0.legacy_mapper import (
     safe_str,
     extract_file_from_html,
     extract_id_from_url,

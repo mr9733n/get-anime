@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from providers.aniliberty.v1.xml_parser import parse_torrents_rss
+
 
 @dataclass
 class LegacyMapper:
@@ -52,13 +54,14 @@ class LegacyMapper:
             'status': self.map_status(release),
 
             'type': {
-                'code': None,
+                'description': (release.get('type') or {}).get('description', ''),
                 'string': (release.get('type') or {}).get('value', '')
             },
 
             'season': {
                 'code': None,
                 'string': (release.get('season') or {}).get('value', ''),
+                'description': (release.get('season') or {}).get('description', ''),
                 'year': release.get('year'),
                 'week_day': (release.get('publish_day') or {}).get('value')
             },
@@ -80,7 +83,7 @@ class LegacyMapper:
             'player': {
                 'host': None,
                 'alternative_player': release.get('external_player', ''),
-                'list': {}
+                'list': []
             },
 
             'genres': self.extract_genre_names(release.get('genres', [])),
@@ -274,6 +277,27 @@ class LegacyMapper:
             ),
             'updated_at': self.to_timestamp(torrent.get('updated_at')),
         }
+
+    def adapt_rss_feed(self, xml_bytes: bytes) -> dict:
+        parsed = parse_torrents_rss(xml_bytes)
+
+        items = []
+        for it in parsed.get("items", []):
+            items.append({
+                "title": it.get("title"),
+                "link": it.get("link") or (it.get("enclosure") or {}).get("url"),
+                "pubDate": it.get("pubDate"),
+                "guid": it.get("guid"),
+                "torrent_url": (it.get("enclosure") or {}).get("url"),
+                "torrent_length": (it.get("enclosure") or {}).get("length"),
+                "torrent_type": (it.get("enclosure") or {}).get("type"),
+            })
+
+        return {
+            "channel": parsed.get("channel", {}),
+            "items": items,
+        }
+
     # =========================
     # Franchise mapping
     # =========================

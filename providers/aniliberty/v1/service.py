@@ -1,4 +1,4 @@
-# bundle_service.py
+# service.py
 from __future__ import annotations
 
 import threading
@@ -86,8 +86,8 @@ class ReleaseBundleService:
                 if not prefer_embedded:
                     return True
                 # если embedded есть — не трогаем сеть
-                if field == "episodes":
-                    return not have_episodes
+                # if field == "episodes":
+                #    return not have_episodes
                 return not current
 
             # embedded fields
@@ -103,8 +103,8 @@ class ReleaseBundleService:
                     tasks["members"] = ex.submit(self.api.get_release_members, rid)
                 if "franchises" in need and should_fetch("franchises", embedded_franchises):
                     tasks["franchises"] = ex.submit(self.api.get_franchise_by_release, rid)
-                if "episodes" in need and should_fetch("episodes", base_eps_list):
-                    tasks["episodes"] = ex.submit(self.api.get_release_episodes, rid)
+                #if "episodes" in need and should_fetch("episodes", base_eps_list):
+                #    tasks["episodes"] = ex.submit(self.api.get_release_episodes, rid)
 
                 results: Dict[str, Any] = {}
                 for k, fut in tasks.items():
@@ -133,13 +133,13 @@ class ReleaseBundleService:
             if "episodes" in need:
                 if have_episodes:
                     base["episodes"] = base_eps_list
-                else:
-                    episodes = results.get("episodes")
-                    # важный кейс: 404 /episodes -> это норма, считаем как "нет эпизодов"
-                    if isinstance(episodes, dict) and episodes.get("status_code") == 404:
-                        base["episodes"] = []
-                    elif episodes and "error" not in episodes:
-                        base["episodes"] = self._episodes_to_list(episodes)
+                # else:
+                #    episodes = results.get("episodes")
+                #    # важный кейс: 404 /episodes -> это норма, считаем как "нет эпизодов"
+                #    if isinstance(episodes, dict) and episodes.get("status_code") == 404:
+                #        base["episodes"] = []
+                #    elif episodes and "error" not in episodes:
+                #        base["episodes"] = self._episodes_to_list(episodes)
 
             return base
 

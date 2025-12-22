@@ -1,4 +1,4 @@
-# utils/animedia/animedia_client.py
+# providers/animedia/animedia_client.py
 import json
 import httpx
 import asyncio
@@ -7,8 +7,8 @@ import logging
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
-from utils.animedia.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
-from utils.animedia.animedia_utils import (
+from providers.animedia.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
+from providers.animedia.legacy_mapper import (
     safe_str,
     extract_file_from_html,
     extract_id_from_url,
@@ -44,6 +44,7 @@ class AnimediaClient:
         self.cfg = cache_cfg
         self.cache = cache
 
+        self._cache_lock = asyncio.Lock()
         # in‑memory кэш
         status, payload = self.cache.load(self.cfg.vlink_key, self.cfg.vlink_ttl)
 
@@ -139,8 +140,9 @@ class AnimediaClient:
             self.logger.debug(f"Skipping image placeholder: {vlnk_url}")
             return None
 
-        if vlnk_url in self._file_cache:
-            return self._file_cache[vlnk_url]
+        async with self._cache_lock:
+            if vlnk_url in self._file_cache:
+                return self._file_cache[vlnk_url]
 
         max_tries = 5
         backoff = 1
@@ -178,6 +180,7 @@ class AnimediaClient:
         return None
 
     async def collect_episode_files(self, html: str, original_id: str) -> None | list[Any] | list[str]:
+        self._file_cache = {}
         try:
             soup = BeautifulSoup(html, "html.parser")
             raw_vlnks = self._extract_vlnks(soup)
@@ -213,9 +216,9 @@ class AnimediaClient:
             finally:
                 if original_id is not None:
                     status = self.cache.save_vlink(original_id, self._file_cache)
-
                     if status is AniMediaCacheStatus.SAVED:
                         self.logger.debug("vlink cache for id %s saved", original_id)
+                self._file_cache = {}
         except Exception as e:
             self.logger.error(f"Error collect_episode_files: {e}")
 

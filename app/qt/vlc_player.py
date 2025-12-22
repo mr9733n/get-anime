@@ -43,7 +43,6 @@ class VLCPlayer(QWidget):
     def __init__(self, parent=None, current_template="default", proxy=None):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
-
         self.current_template = current_template
         self.skip_data_cache = None
         self.current_episode = None
@@ -60,7 +59,7 @@ class VLCPlayer(QWidget):
         self.setMinimumHeight(100)
         self.setMaximumHeight(200)
         self.video_window = None
-        # self.instance = vlc.Instance()
+
         args = ["--network-caching=2000"]
         if self.proxy:
             self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
@@ -71,11 +70,9 @@ class VLCPlayer(QWidget):
         self.media_list = self.instance.media_list_new()
         self.media_player = self.list_player.get_media_player()
 
-        # Флаги для повторения и перемешивания
         self.is_repeat = False
         self.is_seeking = False
 
-        # Интерфейс
         self.play_button = QPushButton("PLAY")
         self.previous_button = QPushButton("PREV")
         self.stop_button = QPushButton("STOP")
@@ -91,9 +88,7 @@ class VLCPlayer(QWidget):
         self.progress_slider.setRange(0, 100)
         self.time_label = QLabel("00:00 / 00:00")
         self.playlist_widget = QListWidget()
-        self.playlist_widget.hide()  # Прячем список по умолчанию
-
-        # Задание длины слайдеров
+        self.playlist_widget.hide()
         self.play_button.setFixedHeight(25)
         self.stop_button.setFixedHeight(25)
         self.next_button.setFixedHeight(25)
@@ -105,10 +100,8 @@ class VLCPlayer(QWidget):
         self.volume_slider.setFixedWidth(80)
         self.progress_slider.setFixedWidth(830)
 
-        # Layout
         progress_layout = QHBoxLayout()
         progress_layout.addWidget(self.progress_slider)
-
         control_layout = QHBoxLayout()
         control_layout.addWidget(self.time_label)
         control_layout.addWidget(self.skip_credits_button)
@@ -126,10 +119,8 @@ class VLCPlayer(QWidget):
         main_layout.addLayout(control_layout)
         main_layout.addWidget(self.playlist_widget)
         self.setLayout(main_layout)
-        # Применяем стили в зависимости от шаблона
         self.apply_theme()
 
-        # Сигналы
         self.progress_slider.sliderReleased.connect(self.seek_position)
         self.progress_slider.mousePressEvent = self.slider_clicked
         self.play_button.clicked.connect(self.play_pause)
@@ -143,20 +134,18 @@ class VLCPlayer(QWidget):
         self.playlist_widget.itemClicked.connect(self.play_selected_item)
         self.volume_slider.valueChanged.connect(self.set_volume)
 
-        # Таймер для обновления прогресса
         self.timer = QTimer(self)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.update_ui)
 
         self.sleep_timer = QTimer(self)
-        self.sleep_timer.setInterval(30000)  # обновлять каждые 30 секунд
+        self.sleep_timer.setInterval(30000)
         self.sleep_timer.timeout.connect(self.prevent_sleep)
         self.sleep_timer.start()
 
     def apply_theme(self):
         """Применяет стили к VLC Player с учетом текущего шаблона."""
 
-        # Определяем стиль фона
         if self.current_template == "default":
             background_style = "background-color: rgba(240, 240, 240, 1.0);"
         elif self.current_template == "no_background_night":
@@ -164,9 +153,8 @@ class VLCPlayer(QWidget):
         elif self.current_template == "no_background":
             background_style = "background-color: rgba(240, 240, 240, 1.0);"
         else:
-            background_style = ""  # Если нет шаблона, ничего не меняем
+            background_style = ""
 
-        # Стили контроллов (кнопки, слайдеры, метки и т.д.)
         control_styles = """
             QPushButton {
                 background-color: #4a4a4a;
@@ -209,8 +197,6 @@ class VLCPlayer(QWidget):
                 font-size: 14px;
             }
         """
-
-        # Объединяем стили перед установкой
         self.setStyleSheet(f"QWidget {{ {background_style} }} {control_styles}")
 
     def toggle_repeat(self):
@@ -346,17 +332,14 @@ class VLCPlayer(QWidget):
         https://example.com/abc/12/1080/video.m3u8
         """
         try:
-            # Проверяем, что получили полный URL
             if not self.is_url(url):
                 self.logger.error(f"Expected full URL, got: {url}")
                 return
 
-            # Извлекаем метаданные из URL
             episode_number, episode_quality = self.extract_from_link(url)
             self.current_episode = episode_number
             self.logger.debug(f"Playing title {title_id} episode {episode_number}")
 
-            # Получаем данные о пропуске
             skip_opening, skip_ending = None, None
             if self.skip_data_cache and self.skip_data_cache.get("episode_number") == episode_number:
                 skip_opening = self.skip_data_cache.get("skip_opening", [])
@@ -364,7 +347,6 @@ class VLCPlayer(QWidget):
 
             self.logger.debug(f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
-            # Создаём медиа и воспроизводим
             media = self.instance.media_new(url)
             self.media_list.add_media(media)
             self.playlist_widget.addItem(url)
@@ -378,7 +360,6 @@ class VLCPlayer(QWidget):
     def load_playlist_from_file(self, file_path, title_id):
         """
         Загружает и воспроизводит плейлист из локального файла.
-
         ВАЖНО: Плейлист должен содержать ПОЛНЫЕ URL.
         """
         if not os.path.exists(file_path):
@@ -390,21 +371,17 @@ class VLCPlayer(QWidget):
                 for line in playlist_file:
                     link = line.strip()
 
-                    # Пропускаем комментарии и пустые строки
                     if not link or link.startswith("#"):
                         continue
 
-                    # Проверяем, что это полный URL
                     if not self.is_url(link):
                         self.logger.warning(f"Skipping invalid URL: {link}")
                         continue
 
-                    # Извлекаем метаданные
                     episode_number, episode_quality = self.extract_from_link(link)
                     self.current_episode = episode_number
                     self.logger.debug(f"Cached {title_id} Episode {self.current_episode}")
 
-                    # Получаем данные о пропуске
                     skip_opening, skip_ending = None, None
                     if self.skip_data_cache and episode_number:
                         for skip_entry in self.skip_data_cache.get("episode_skips", []):
@@ -416,7 +393,6 @@ class VLCPlayer(QWidget):
                     self.logger.debug(
                         f"Episode {episode_number}: Skip opening: {skip_opening}, Skip ending: {skip_ending}")
 
-                    # Добавляем в плейлист
                     media = self.instance.media_new(link)
                     self.media_list.add_media(media)
                     self.playlist_widget.addItem(link)
@@ -457,7 +433,7 @@ class VLCPlayer(QWidget):
             self.media_player.pause()
             self.play_button.setText("PLAY")
             self.timer.stop()
-            self.sleep_timer.stop()  # Останавливаем обновление состояния сна
+            self.sleep_timer.stop()
             self.allow_sleep()
         else:
             self.media_player.play()
@@ -564,7 +540,6 @@ class VLCPlayer(QWidget):
 
             length = self.media_player.get_length() / 1000
             current_time = self.media_player.get_time() / 1000
-
             self.update_playlist_highlight()
 
             if length > 0:
@@ -684,14 +659,11 @@ class VLCPlayer(QWidget):
     def get_episode_skips(self, episode_number):
         """
         Извлекает диапазоны для пропуска открывающих и закрывающих титров для данного эпизода.
-
         Args:
             episode_number (int): номер эпизода.
         """
         skip_opening, skip_ending = None, None
         if self.skip_data_cache:
-            # Если структура содержит ключ "episode_skips", используем его;
-            # иначе оборачиваем сам словарь в список.
             entries = self.skip_data_cache.get("episode_skips")
             if not entries:
                 entries = [self.skip_data_cache]
@@ -712,7 +684,6 @@ class VLCPlayer(QWidget):
     def get_playing_episode_number(self):
         """
         Извлекает номер текущего эпизода на основе URL текущего медиа.
-
         Returns:
             int или None: номер эпизода, если удалось определить.
         """
@@ -727,7 +698,6 @@ class VLCPlayer(QWidget):
     def get_episode_number(self, url):
         """
         Извлекает номер эпизода из URL.
-
         Returns:
             int или None: номер эпизода, если удалось определить.
         """
@@ -741,14 +711,12 @@ class VLCPlayer(QWidget):
 
 if __name__ == "__main__":
     if getattr(sys, 'frozen', False):
-        # Set up logging for frozen application
         log_dir = os.path.join(os.path.dirname(sys.executable), 'logs')
 
         try:
             logging.config.fileConfig(os.path.join(os.path.dirname(sys.executable), 'config', 'logging.conf'),
                                       disable_existing_loggers=False)
         except Exception as e:
-            # Fallback logging setup
             logging.basicConfig(
                 level=logging.DEBUG,
                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

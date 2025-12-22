@@ -74,19 +74,14 @@ class TitleDataFactory:
     def get_titles(self, show_mode='default', title_ids=None, current_offset=0, batch_size=None):
         """Возвращает данные тайтлов на основе режима отображения."""
         try:
-            # Проверяем наличие show_mode в метаданных
             if show_mode not in show_mode_metadata:
                 self.logger.warning(f"Режим отображения {show_mode} не найден. Используется 'default'.")
                 show_mode = 'default'
 
-            # Используем значение из batch_size_map, если batch_size не передан явно
             if batch_size is None:
                 batch_size = show_mode_metadata[show_mode].get("batch_size", 2)
 
-            # Получаем имя функции для получения данных из метаданных
             data_fetcher_name = show_mode_metadata[show_mode].get("data_fetcher")
-
-            # Определяем списочные режимы с пагинацией
             pagination_modes = ['titles_genre_list', 'titles_team_member_list', 'titles_year_list', 'titles_status_list', 'titles_provider_list']
 
             if data_fetcher_name == 'system':
@@ -99,7 +94,6 @@ class TitleDataFactory:
                     current_offset = 0
 
                 if batch_size and len(title_ids) > batch_size:
-                    # Получаем подмножество title_ids для текущей страницы
                     end_idx = min(current_offset + batch_size, len(title_ids))
                     page_title_ids = title_ids[current_offset:end_idx]
 
@@ -107,22 +101,16 @@ class TitleDataFactory:
 
                     return self.db_manager.get_titles_from_db(show_all=False, title_ids=page_title_ids, offset=current_offset)
                 else:
-                    # Если title_ids меньше или равен размеру страницы, просто возвращаем все
                     return self.db_manager.get_titles_from_db(show_all=False, title_ids=title_ids)
 
-            # Обработка других методов получения данных
             elif data_fetcher_name and hasattr(self.db_manager, data_fetcher_name):
                 data_fetcher = getattr(self.db_manager, data_fetcher_name)
                 if callable(data_fetcher):
                     return data_fetcher(batch_size=batch_size, offset=current_offset)
                 else:
                     return []
-
-                # Если переданы конкретные title_ids, но не попали под списочные режимы
             elif title_ids:
                 return self.db_manager.get_titles_from_db(show_all=False, offset=current_offset, title_ids=title_ids)
-
-            # По умолчанию получаем все тайтлы
             else:
                 return self.db_manager.get_titles_from_db(show_all=True, batch_size=batch_size, offset=current_offset)
 
@@ -141,7 +129,6 @@ class TitleHtmlFactory:
         try:
             self.logger.debug(f"Начинаем генерацию HTML для режима: {show_mode} с title_id: {title.title_id}")
 
-            # Проверяем наличие show_mode в метаданных
             if show_mode not in show_mode_metadata:
                 self.logger.warning(f"Режим отображения {show_mode} не найден. Используется 'default'.")
                 show_mode = 'default'
@@ -152,7 +139,6 @@ class TitleHtmlFactory:
             if not callable(generator):
                 raise ValueError(f"Генератор {generator_name} не является вызываемой функцией.")
 
-            # Вызов генератора с одним аргументом
             html_content = generator(title)
             self.logger.debug(f"Генерация HTML завершена для режима: {show_mode}")
             return html_content
@@ -303,7 +289,6 @@ class TitleBrowserFactory:
         title_browser.setProperty('title_id', title.title_id)
         title_browser.anchorClicked.connect(self.app.on_link_click)
 
-        # Настраиваем виджет на основе метаданных
         title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         title_browser.setStyleSheet("""
@@ -315,7 +300,6 @@ class TitleBrowserFactory:
             background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный фон */
         """)
 
-        # Устанавливаем HTML-содержимое
         html_content = self.app.ui_generator.get_title_html(title, show_mode)
         title_browser.setHtml(html_content)
 
@@ -330,7 +314,6 @@ class TitleBrowserFactory:
         title_browser.anchorClicked.connect(self.app.on_link_click)
 
         title_browser.setFixedSize(455, 650)
-        # Устанавливаем HTML-содержимое
         html_content = self.app.ui_generator.get_title_html(title, show_mode)
         title_browser.setHtml(html_content)
 

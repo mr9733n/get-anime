@@ -3,7 +3,7 @@ import json
 import os
 import pathlib
 
-from utils.animedia.animedia_adapter import AnimediaAdapter
+from providers.animedia.adapter import AnimediaAdapter
 from utils.net_client import NetClient
 from utils.config_manager import ConfigManager
 

@@ -1,4 +1,5 @@
 import time
+import json
 import httpx
 import pytest
 
@@ -102,3 +103,37 @@ def test_request_raw_returns_bytes():
     t = HttpTransport(net_client=FakeNetClient(fake_http), base_url="http://x")
     b = t.request_raw("anime/torrents/rss", params={"limit": 5})
     assert b == b"<rss></rss>"
+
+def test_cache_disabled_when_ttl_zero():
+    fake_http = FakeHTTP([
+        FakeResponse(json_data={"ok": 1}),
+        FakeResponse(json_data={"ok": 2}),
+    ])
+    t = HttpTransport(net_client=FakeNetClient(fake_http), base_url="http://x", enable_dumps=False)
+
+    r1 = t.request_json("anime/releases/1", params={"a": 1}, cache_ttl=0)
+    r2 = t.request_json("anime/releases/1", params={"a": 1}, cache_ttl=0)
+
+    assert r1["ok"] == 1
+    assert r2["ok"] == 2
+    assert len(fake_http.calls) == 2
+
+def test_request_json_http_status_error():
+    fake_http = FakeHTTP([
+        FakeResponse(status_code=503, json_data={"msg": "down"}),
+    ])
+    t = HttpTransport(net_client=FakeNetClient(fake_http), base_url="http://x", enable_dumps=False)
+
+    out = t.request_json("anime/releases/1", params=None, method="GET", cache_ttl=0)
+    assert isinstance(out, dict)
+    assert out.get("error")  # зависит от твоего формата
+
+def test_request_json_invalid_json_returns_error():
+    fake_http = FakeHTTP([
+        FakeResponse(status_code=200, json_data=None, content=b"not-json", headers={"Content-Type": "text/plain"}),
+    ])
+    t = HttpTransport(net_client=FakeNetClient(fake_http), base_url="http://x", enable_dumps=False)
+
+    out = t.request_json("app/status", params=None, method="GET", cache_ttl=0)
+    assert isinstance(out, dict)
+    assert out.get("error")  # или проверяй "raw"/"text" — как у тебя сделано

@@ -1,0 +1,6 @@
+# minimal vlcrc for proxy
+ignore-config=0
+http-proxy=http://192.168.0.100:8866
+# http-proxy-user=
+# http-proxy-pwd=
+

@@ -138,6 +138,10 @@ class AnimePlayerAppVer3(QWidget):
         self.num_columns = int(self.config_manager.get_setting('Settings', 'num_columns'))
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
+
+        self.log_enable = self.config_manager.get_setting('VlcPlayer', 'log_enable').capitalize()
+        self.verbose = self.config_manager.get_setting('VlcPlayer', 'verbose_level')
+
         self.proxy_url = self.config_manager.get_setting('Network', 'proxy_url')
 
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
@@ -1643,7 +1647,7 @@ class AnimePlayerAppVer3(QWidget):
         return url.strip().split('?')[0]
 
     def open_vlc_player(self, playlist_path, title_id, skip_data=None):
-        self.vlc_window = VLCPlayer(current_template=self.current_template, proxy=self.proxy_url)
+        self.vlc_window = VLCPlayer(current_template=self.current_template, proxy=self.proxy_url, log=self.log_enable, log_level=self.verbose)
         self.logger.debug(f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}")
         self.vlc_window.load_playlist(playlist_path, title_id, skip_data)
         self.vlc_window.show()
@@ -1675,6 +1679,9 @@ class AnimePlayerAppVer3(QWidget):
             # TODO: fix this
             if self.net_client:
                 cmd.extend(["--proxy", str(self.proxy_url)])
+            if self.log_enable:
+                cmd.extend(["--log", str(self.log_enable)])
+                cmd.extend(["--verbose", int(self.verbose)])
 
             subprocess.Popen(cmd, close_fds=True)
             self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")

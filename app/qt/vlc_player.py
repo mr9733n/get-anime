@@ -6,11 +6,14 @@ import logging
 import logging.config
 import re
 import ctypes
+from pathlib import Path
+
 import vlc
 import time
 import sys
 import argparse
 
+from vlc import State as state
 from PyQt5.QtGui import QIcon
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
@@ -40,7 +43,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default", proxy=None):
+    def __init__(self, parent=None, current_template="default", proxy=None, log=False, log_level=2):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.current_template = current_template
@@ -51,6 +54,8 @@ class VLCPlayer(QWidget):
         self.is_buffering = None
         self.title_id = None
         self.proxy = proxy
+        self.log = log
+        self.verbose = log_level
 
         self.setWindowTitle("VLC Video Player Controls")
         self.setGeometry(100, 950, 850, 100)
@@ -60,18 +65,44 @@ class VLCPlayer(QWidget):
         self.setMaximumHeight(200)
         self.video_window = None
 
-        args = ["--network-caching=2000"]
+        log_path = Path("logs/vlc.log").resolve()
+        cfg_path = Path("config/vlcrc").resolve()
+
+        args = [
+            "--network-caching=2000",
+            "--http-reconnect",
+            "--retry=3",
+        ]
+
+        if self.log:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            args.append(f"--verbose={self.verbose}")
+            args.append("--file-logging")
+            args.append(f"--logfile={log_path}")
+
         if self.proxy:
             self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
-            args.append(f"--http-proxy={self.proxy}")
+            args.append(f"--config={cfg_path}")
+
         self.instance = vlc.Instance(*args)
+        if not self.instance:
+            raise RuntimeError(f"Failed to init VLC (bad args?): {args}")
+
         self.logger.debug(f"VLC args: {args}")
+
         self.list_player = self.instance.media_list_player_new()
         self.media_list = self.instance.media_list_new()
         self.media_player = self.list_player.get_media_player()
 
         self.is_repeat = False
         self.is_seeking = False
+
+        self._last_mrl = None
+        self._last_time_ms = 0
+        self._resume_probe_time_ms = 0
+        self._resume_watchdog = QTimer(self)
+        self._resume_watchdog.setSingleShot(True)
+        self._resume_watchdog.timeout.connect(self._resume_watchdog_check)
 
         self.play_button = QPushButton("PLAY")
         self.previous_button = QPushButton("PREV")
@@ -427,20 +458,83 @@ class VLCPlayer(QWidget):
         except Exception as e:
             logging.getLogger(__name__).error("Error allowing sleep: %s", e)
 
+    def _resume_watchdog_check(self):
+        try:
+            st = self.media_player.get_state()
+
+            # если VLC ещё "раскачивается" — дадим шанс, но ограниченно
+            if st in (vlc.State.Opening, vlc.State.Buffering):
+                self._resume_watchdog.start(1500)
+                return
+
+            # ключевая проверка: двигается ли время
+            now_t = self.media_player.get_time() or 0
+            probe_t = self._resume_probe_time_ms or 0
+
+            # если time пошёл — всё ок
+            if now_t > probe_t + 300:  # 0.3 сек допуск
+                return
+
+            # если state "Playing", но time стоит — это и есть залипание
+            self._force_reload_current()
+
+        except Exception:
+            self.logger.exception("resume watchdog failed")
+
+    def _force_reload_current(self):
+        mrl = None
+        media = self.media_player.get_media()
+        if media:
+            mrl = media.get_mrl()
+        if not mrl:
+            mrl = self._last_mrl
+        if not mrl:
+            self.logger.warning("No MRL to reload.")
+            return
+
+        resume_time = self.media_player.get_time() or self._last_time_ms or 0
+        self.logger.warning(f"Reloading stream after stalled resume. mrl={mrl[-80:]} time={resume_time}ms")
+
+        try:
+            self.media_player.stop()
+            new_media = self.instance.media_new(mrl)
+            self.media_player.set_media(new_media)
+            self.media_player.play()
+
+            # восстановим позицию чуть позже, когда стартанёт декодер
+            QTimer.singleShot(1200, lambda: self._restore_time_safe(resume_time))
+        except Exception:
+            self.logger.exception("Failed to force reload.")
+
+    def _restore_time_safe(self, resume_time_ms: int):
+        try:
+            if resume_time_ms > 0:
+                self.media_player.set_time(resume_time_ms)
+        except Exception:
+            self.logger.exception("Failed to restore time after reload.")
+
     def play_pause(self):
         """Простой переключатель воспроизведения/паузы без автоматического пропуска титров."""
-        if self.media_player.is_playing():
-            self.media_player.pause()
+        st = self.media_player.get_state()  # vlc.State.*
+        if st == vlc.State.Playing:
+            self.media_player.set_pause(1)
             self.play_button.setText("PLAY")
             self.timer.stop()
             self.sleep_timer.stop()
             self.allow_sleep()
-        else:
-            self.media_player.play()
-            self.play_button.setText("PAUSE")
-            self.timer.start()
-            self.sleep_timer.start()
-            self.prevent_sleep()
+            return
+
+        # Если было Paused/Stopped/Ended/Error — пробуем resume
+        self.media_player.set_pause(0)  # если реально paused — снимет паузу
+        self.media_player.play()  # если stopped/error — попробует стартануть
+
+        self.play_button.setText("PAUSE")
+        self.timer.start()
+        self.sleep_timer.start()
+        self.prevent_sleep()
+
+        self._resume_probe_time_ms = self.media_player.get_time() or self._last_time_ms or 0
+        self._resume_watchdog.start(1500)
 
     def stop_media(self):
         self.list_player.stop()
@@ -532,24 +626,36 @@ class VLCPlayer(QWidget):
     def update_ui(self):
         """Обновляет прогресс-бар, таймер и подсвечивает текущую серию."""
         try:
-            self.play_button.setText("PAUSE")
-            if self.is_seeking or self.is_buffering:
-                return
-            if not self.media_player.is_playing():
-                return
+            st = self.media_player.get_state()
 
-            length = self.media_player.get_length() / 1000
-            current_time = self.media_player.get_time() / 1000
-            self.update_playlist_highlight()
+            # кэшировать MRL и time можно почти всегда (кроме NothingSpecial/Stopped без media)
+            media = self.media_player.get_media()
+            if media:
+                self._last_mrl = media.get_mrl()
 
-            if length > 0:
-                position = int((current_time / length) * 100)
-                self.progress_slider.setValue(position)
+            t = self.media_player.get_time()
+            if t is not None and t >= 0:
+                self._last_time_ms = t
 
-            self.time_label.setText(f"{self.format_time(current_time)} / {self.format_time(length)}")
+            # UI можно обновлять если хоть что-то загружено
+            if st in (vlc.State.Playing, vlc.State.Paused, vlc.State.Buffering, vlc.State.Opening):
+                length = max((self.media_player.get_length() or 0) / 1000, 0)
+                current_time = max((self.media_player.get_time() or 0) / 1000, 0)
+
+                if length > 0:
+                    pos = int((current_time / length) * 100)
+                    self.progress_slider.setValue(pos)
+
+                self.time_label.setText(f"{self.format_time(current_time)} / {self.format_time(length)}")
+
+            # кнопку можно выставлять по state
+            if st == vlc.State.Paused:
+                self.play_button.setText("PLAY")
+            elif st == vlc.State.Playing:
+                self.play_button.setText("PAUSE")
+
         except Exception as e:
-            error_message = f"An error occurred while updating UI: {str(e)}"
-            self.logger.error(error_message, exc_info=True)
+            self.logger.error(f"An error occurred while updating UI: {e}", exc_info=True)
 
     def update_playlist_highlight(self):
         """Подсвечивает текущую серию в плейлисте."""
@@ -730,6 +836,8 @@ if __name__ == "__main__":
     parser.add_argument('--skip_data', help='Base64 encoded skip data')
     parser.add_argument('--template', default="default", help='UI template name')
     parser.add_argument('--proxy', help='Use SOCK proxy')
+    parser.add_argument('--log', help='Use logs')
+    parser.add_argument('--verbose', help='Verbose level')
     parser.add_argument('--prod_key')
     args = parser.parse_args()
 
@@ -747,15 +855,13 @@ if __name__ == "__main__":
             logging.getLogger().error("Anime Player VLC player is already running!")
             sys.exit(1)
 
-        player = VLCPlayer(current_template=args.template)
+        player = VLCPlayer(current_template=args.template, proxy=args.proxy, log=args.log, log_level=args.verbose)
 
         if args.playlist:
             player.load_playlist(args.playlist, args.title_id, args.skip_data)
 
         player.show()
         player.timer.start()
-        if args.proxy:
-            player = VLCPlayer(proxy=args.proxy)
 
     else:
         message = "VLC player cannot be run without AnimePlayer application!"

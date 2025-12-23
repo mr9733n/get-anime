@@ -32,7 +32,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "595e8f8641d7d704f7c129fffb23955f3d62ee288547991bbc7082a4334aa8b4"
+VLC_PLAYER_HASH = "90125abfb8d480887da2d364d89cf7a86cdc2c5f0f40ad00a4b6eaec2dd167c5"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 SHOW_DEFAULT = "default"
@@ -139,9 +139,10 @@ class AnimePlayerAppVer3(QWidget):
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
-        self.log_enable = self.config_manager.get_setting('VlcPlayer', 'log_enable').capitalize()
+        self.log_enabled = self.config_manager.get_setting('VlcPlayer', 'log_enabled').capitalize()
         self.verbose = self.config_manager.get_setting('VlcPlayer', 'verbose_level')
 
+        self.proxy_enabled = self.config_manager.get_setting('Network', 'proxy_enabled').capitalize()
         self.proxy_url = self.config_manager.get_setting('Network', 'proxy_url')
 
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
@@ -1647,8 +1648,24 @@ class AnimePlayerAppVer3(QWidget):
         return url.strip().split('?')[0]
 
     def open_vlc_player(self, playlist_path, title_id, skip_data=None):
-        self.vlc_window = VLCPlayer(current_template=self.current_template, proxy=self.proxy_url, log=self.log_enable, log_level=self.verbose)
-        self.logger.debug(f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}")
+        """
+        Создаёт и открывает окно VLC‑плеера.
+        Параметры `proxy`, `log` и `log_level` передаются только если они включены.
+        """
+        vlc_kwargs = {"current_template": self.current_template}
+
+        if self.proxy_enabled == "true":
+            vlc_kwargs["proxy"] = self.proxy_url
+
+        if self.log_enabled == "true":
+            vlc_kwargs["log"] = self.log_enabled
+            vlc_kwargs["log_level"] = self.verbose
+
+        self.vlc_window = VLCPlayer(**vlc_kwargs)
+
+        self.logger.debug(
+            f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}"
+        )
         self.vlc_window.load_playlist(playlist_path, title_id, skip_data)
         self.vlc_window.show()
         self.vlc_window.timer.start()
@@ -1677,11 +1694,11 @@ class AnimePlayerAppVer3(QWidget):
             if self.prod_key is not None:
                 cmd.extend(["--prod_key", str(self.prod_key)])
             # TODO: fix this
-            if self.net_client:
+            if self.proxy_enabled == "true":
                 cmd.extend(["--proxy", str(self.proxy_url)])
-            if self.log_enable:
-                cmd.extend(["--log", str(self.log_enable)])
-                cmd.extend(["--verbose", int(self.verbose)])
+            if self.log_enabled == "true":
+                cmd.extend(["--log", str(self.log_enabled)])
+                cmd.extend(["--verbose", str(self.verbose)])
 
             subprocess.Popen(cmd, close_fds=True)
             self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")
@@ -1712,7 +1729,7 @@ class AnimePlayerAppVer3(QWidget):
                 open_link = f"https://{self.stream_video_url}{link}"
 
             if self.use_libvlc == "true":
-                self.open_standalone_vlc_player(open_link, title_id, skip_data)
+                self.open_standalone_vlc_player(open_link, str(title_id), skip_data)
             else:
                 subprocess.Popen([self.video_player_path, open_link])
 

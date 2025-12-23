@@ -494,16 +494,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Remove unused logic from app
 - [x] Add generic state
 
-
 ### 8.36 Refactoring AniLiberty API client
 - [x] Done
 - [x] Smoke tests - done
+- [x] Add Unit tests 
 
 ### 8.36 Fixes 
 - [x] Create adapter for season / We have to many same seasons with different name
-- [ ] fix play video after was paused
-- [ ] need to fix watch status for title_id when set status first time
-- [ ] ...
+- [x] fix play video after was paused
+- [x] need to fix watch status for title_id when set status first time
+- [x] vlc logs enabled
+- [ ] fix vlc proxy
 
 ### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui

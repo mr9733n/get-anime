@@ -3,9 +3,10 @@ import json
 import os
 import pathlib
 
-from providers.animedia.adapter import AnimediaAdapter
+from providers.animedia.v0.adapter import AnimediaAdapter
 from utils.net_client import NetClient
 from utils.config_manager import ConfigManager
+
 
 async def demo():
     config_manager = ConfigManager(pathlib.Path('config/config.ini'))
@@ -13,11 +14,12 @@ async def demo():
     network_config = config_manager.network
     net_client = NetClient(network_config)
     adapter = AnimediaAdapter("amd.online", net_client=net_client)
-    data = await adapter.get_all_titles(max_titles=100)
+    data = await adapter.get_by_title("Yano-kun no Futsuu no Hibi")
 
     # Statistics
-    if data:
-        print(f"{data}")
+    for rec in data:
+        print(f"(orig={rec['external_id']})"
+              f"- {rec['code']}")
 
     out_path = "out/"
     os.makedirs(out_path, exist_ok=True)

@@ -43,7 +43,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default", proxy=None, log=False, log_level=2):
+    def __init__(self, parent=None, current_template="default", proxy=None, log=None, log_level=2):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.current_template = current_template
@@ -83,6 +83,7 @@ class VLCPlayer(QWidget):
         if self.proxy:
             self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
             args.append(f"--config={cfg_path}")
+            args.append(f"--http-proxy={self.proxy}")
 
         self.instance = vlc.Instance(*args)
         if not self.instance:

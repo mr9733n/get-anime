@@ -504,7 +504,10 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix play video after was paused
 - [x] need to fix watch status for title_id when set status first time
 - [x] vlc logs enabled
-- [ ] fix vlc proxy
+- [x] fix vlc logs 
+- [-] fix vlc proxy
+
+### 8.37 MPV Player
 
 ### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui

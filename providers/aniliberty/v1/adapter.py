@@ -72,6 +72,34 @@ class APIAdapter:
             self.logger.error(f"Error in get_schedule: {e}")
             return {'error': str(e)}
 
+    def _process_schedule_releases(self, day, releases):
+        filtered = []
+        for release in releases:
+            try:
+                rel = release.get("release") if isinstance(release, dict) else None
+                obj = rel if isinstance(rel, dict) else release
+
+                wd = ((obj.get("publish_day") or {}).get("value"))
+                if wd is None:
+                    continue
+                if int(wd) == int(day):
+                    filtered.append(obj)
+            except Exception:
+                continue
+
+        adapted_releases = []
+        for release in filtered:
+            adapted = self._enrich_and_adapt(
+                release,
+                fetch_episodes=True,
+                fetch_torrents=True,
+                fetch_team=True,
+                fetch_franchises=True,
+                allow_network=True,
+            )
+            adapted_releases.append(adapted)
+        return adapted_releases
+
     def _get_schedule_now(self, day):
         """Загружает расписание на СЕГОДНЯ."""
         try:
@@ -79,19 +107,8 @@ class APIAdapter:
             if isinstance(now_data, dict) and 'error' in now_data:
                 return now_data
 
-            today_items = self._extract_releases(now_data)
-
-            adapted_releases = []
-            for release in today_items:
-                adapted = self._enrich_and_adapt(
-                    release,
-                    fetch_episodes=True,
-                    fetch_torrents=True,
-                    fetch_team=True,
-                    fetch_franchises=True,
-                    allow_network=True,
-                )
-                adapted_releases.append(adapted)
+            releases = self._extract_releases(now_data)
+            adapted_releases = self._process_schedule_releases(day, releases)
 
             return [{'day': day, 'list': adapted_releases}]
 
@@ -107,31 +124,7 @@ class APIAdapter:
                 return week_data
 
             releases = self._extract_releases(week_data)
-            filtered = []
-            for release in releases:
-                try:
-                    rel = release.get("release") if isinstance(release, dict) else None
-                    obj = rel if isinstance(rel, dict) else release
-
-                    wd = ((obj.get("publish_day") or {}).get("value"))
-                    if wd is None:
-                        continue
-                    if int(wd) == int(day):
-                        filtered.append(obj)
-                except Exception:
-                    continue
-
-            adapted_releases = []
-            for release in filtered:
-                adapted = self._enrich_and_adapt(
-                    release,
-                    fetch_episodes=True,
-                    fetch_torrents=True,
-                    fetch_team=True,
-                    fetch_franchises=True,
-                    allow_network=True,
-                )
-                adapted_releases.append(adapted)
+            adapted_releases = self._process_schedule_releases(day, releases)
 
             return [{'day': day, 'list': adapted_releases}]
         except Exception as e:

@@ -476,7 +476,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add Net client
 - [x] Add workaround for net client
 - [x] Add net client for each request
-- [:(] Add net client for vlc player 
+- [-] Add net client for vlc player - not worked
 - [x] Create demo app for blocked anime
 - [x] Create qt browser for vk, rutube player
 - [x] fixes for qt browser
@@ -494,7 +494,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Remove unused logic from app
 - [x] Add generic state
 
-### 8.36 Refactoring AniLiberty API client
+### 8.36 Refactoring AniLiberty API client v1
 - [x] Done
 - [x] Smoke tests - done
 - [x] Add Unit tests 
@@ -504,10 +504,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix play video after was paused
 - [x] need to fix watch status for title_id when set status first time
 - [x] vlc logs enabled
-- [x] fix vlc logs 
+- [x] small fixes
 - [-] fix vlc proxy
+- [x] fix processing data of AniLiberty schedule
 
 ### 8.37 MPV Player
+- [ ] ...
+
+### 8.37 Refactoring AniMedia client v0
+- [ ] add transport layer
+- [ ] add service layer
+- [ ] add settings
 
 ### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui

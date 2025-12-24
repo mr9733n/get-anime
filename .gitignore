@@ -55,3 +55,4 @@ anime_player.db.zip
 *.pyc
 /dist_517
 /app/qt_browser/playlists
+/libs

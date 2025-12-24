@@ -510,7 +510,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 
 ### 8.37 MPV Player
 - [x] Done
-- [x] 
+- [x] Smoke testing 
+- [x] Fixes
+
 
 ### 8.37 Fixes
 - [ ] fix get title from db by query

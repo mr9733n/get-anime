@@ -90,6 +90,8 @@ class PlayerWindow(QMainWindow):
         template: str | None = None,
     ):
         super().__init__()
+
+
         self.engine = engine
         self.logger = logging.getLogger(__name__)
         self.apply_template(template)
@@ -105,6 +107,12 @@ class PlayerWindow(QMainWindow):
         self._skip_data_b64: str | None = skip_data
         if skip_data:
             self._decode_skip_data(skip_data)
+
+        self._cur_index = 0
+        self._switch_in_progress = None
+        self._closing = False
+        self._early_error_retry = {}  # idx -> count
+        self._repeat_enabled: bool = False
 
         # плейлист
         self.playlist_urls: list[str] = []
@@ -227,8 +235,8 @@ class PlayerWindow(QMainWindow):
         self.playlist_widget.hide()
         self._seeking_until = 0.0
         self._switching_track = False
-
-        self._closing = False
+        self._last_switch_ts = 0.0
+        self._last_switch_index = 0
 
         for b in (self.btn_skip, self.btn_play, self.btn_prev, self.btn_stop,
                   self.btn_next, self.btn_repeat, self.btn_playlist, self.btn_shot):
@@ -340,12 +348,7 @@ class PlayerWindow(QMainWindow):
 
         # URL — оставляем как было (одиночная ссылка)
         if self.is_url(src):
-            self.load_playlist_from_url(src)
-            self.playlist_index = 0
-            self.playlist_widget.clear()
-            self.playlist_widget.addItem(src)
-            if self.autoplay:
-                self.play_index(0)
+            self.load_playlist(src, title_id, skip_data=None)  # оно само очистит urls/widget/index
             return
 
         p = Path(src)
@@ -380,24 +383,66 @@ class PlayerWindow(QMainWindow):
             self.url.setText(fn)
             self.load_source(fn, self.title_id)
 
-    def play_index(self, index: int) -> None:
-        if not (0 <= index < len(self.playlist_urls)):
+    def play_index(self, idx: int):
+        if self._closing:
             return
-        self.playlist_index = index
-        url = self.playlist_urls[index]
-        self.engine.load(url)
-        self.engine.play()
+        if getattr(self, "_switch_in_progress", False):
+            self.logger.warning("Switch already in progress, ignoring play_index(%s)", idx)
+            return
+        if not (0 <= idx < len(self.playlist_urls)):
+            return
+
+        self._switch_in_progress = True
+        self._last_switch_ts = time.time()
+        self._last_switch_index = idx
+
+        self.playlist_index = idx
         self.update_playlist_highlight()
-        st = self.engine.get_state()
-        if st.is_playing:
-            self._start_watchdog()
+        self.playlist_widget.setCurrentRow(idx)
+        self.playlist_widget.scrollToItem(self.playlist_widget.item(idx))
+
+        url = self.playlist_urls[idx]
+
+        # показать видео-окно при старте воспроизведения
+        if not self.video_window.isVisible():
             self.video_window.show()
+
+        self._set_controls_enabled(False)
+        try:
+            self.t.stop()
+        except Exception:
+            pass
+
+        QTimer.singleShot(0, lambda u=url: self._do_load(u))
+
+    def _do_load(self, url: str):
+        if self._closing:
+            return
+        try:
+            self.engine.load(url)
+            self.engine.play()
+            self._start_watchdog()
+        finally:
+            QTimer.singleShot(400, self._clear_switch_flag)
+
+    def _clear_switch_flag(self):
+        if self._closing:
+            return
+        self._switch_in_progress = False
+        self._set_controls_enabled(True)
+        try:
+            if not self.t.isActive():
+                self.t.start()
+        except Exception:
+            pass
 
     def on_playlist_double_click(self, item: QListWidgetItem):
         row = self.playlist_widget.row(item)
+        self.playlist_widget.setCurrentRow(row)
         self.play_index(row)
 
     def next_media(self):
+        self.logger.info(f"NEXT: cur={self.playlist_index} -> {self.playlist_index+1} len={len(self.playlist_urls)}")
         if not self.playlist_urls:
             return
         nxt = self.playlist_index + 1
@@ -420,10 +465,11 @@ class PlayerWindow(QMainWindow):
         self.engine.toggle_pause()
         st = self.engine.get_state()
         if st.is_playing:
+            self.btn_play.setText("PAUSE")
             self._start_watchdog()
             self.video_window.show()
         else:
-            self.btn_play.setText("PAUSE")
+            self.btn_play.setText("PLAY")
             self._stop_watchdog()
             self.allow_sleep()
 
@@ -432,11 +478,15 @@ class PlayerWindow(QMainWindow):
         self._stop_watchdog()
         self.allow_sleep()
 
+    def _set_controls_enabled(self, enabled: bool):
+        for w in (self.btn_prev, self.btn_next, self.btn_play, self.btn_stop,
+                  self.btn_repeat, self.btn_skip, self.btn_shot, self.btn_playlist,
+                  self.prog, self.vol, self.url):
+            w.setEnabled(enabled)
+
     # -------------------------
     # repeat
     # -------------------------
-    _repeat_enabled: bool = False
-
     def toggle_repeat(self):
         self._repeat_enabled = not self._repeat_enabled
         if self._repeat_enabled:
@@ -453,7 +503,8 @@ class PlayerWindow(QMainWindow):
     # UI update
     # -------------------------
     def update_playlist_highlight(self):
-        dark = bool(self.styleSheet())  # грубо, но работает
+        dark = bool(self._night)
+
         for i in range(self.playlist_widget.count()):
             item = self.playlist_widget.item(i)
             if i == self.playlist_index:
@@ -516,6 +567,37 @@ class PlayerWindow(QMainWindow):
         if self._switching_track:
             return
         self._switching_track = True
+        # EOF может прилететь от предыдущего трека после loadfile/stop (гонка).
+        # Если EOF пришёл слишком быстро после смены трека — игнорируем.
+        if time.time() - getattr(self, "_last_switch_ts", 0.0) < 0.7:
+            self.logger.warning(
+                f"Ignoring stale EOF right after switch: dt={time.time() - self._last_switch_ts:.3f}s "
+                f"cur_idx={self.playlist_index} last_req={self._last_switch_index}"
+            )
+            self._switching_track = False
+            return
+
+        reason = getattr(self.engine, "last_end_reason", None)
+        if reason is None:
+            self.logger.warning("EOF reason is None -> treat as stale/ignore")
+            self._switching_track = False
+            return
+        self.logger.info(f"EOF event: reason={reason} idx={self.playlist_index}")
+        st = self.engine.get_state()
+        played_ms = int(st.time_ms or 0)
+
+        # ранний error: один раз пробуем перезагрузить текущий вместо next
+        if reason == "error" and played_ms < 5000 and self.playlist_urls:
+            idx = self.playlist_index
+            cnt = self._early_error_retry.get(idx, 0)
+            if cnt < 1:
+                self._early_error_retry[idx] = cnt + 1
+                self.logger.warning(f"Early end-file error on idx={idx}, played_ms={played_ms}: retry current")
+                self._force_reload_current(resume_ms=0)  # без seek
+                # отпускаем переключатель чуть раньше
+                QTimer.singleShot(400, lambda: setattr(self, "_switching_track", False))
+                return
+
         self.logger.info("EOF received, moving to next media")
         QTimer.singleShot(200, self._next_media_safe)
 
@@ -789,6 +871,22 @@ class PlayerWindow(QMainWindow):
             handle = "#ffffff"
 
         qss = f"""
+        QListWidget {{
+            background: {panel};
+            color: {fg};
+            border: 1px solid {border};
+            border-radius: 6px;
+            padding: 2px;
+            outline: 0;
+        }}
+        QListWidget::item {{
+            background: transparent;
+            padding: 6px 8px;
+            border-radius: 4px;
+        }}
+        QListWidget::item:selected {{
+            background: {btn_bg_pressed};
+        }}
         QWidget {{
             background: {bg};
             color: {fg};
@@ -851,7 +949,7 @@ class PlayerWindow(QMainWindow):
             border: 1px solid {border};
         }}
         """
-
+        self._night = night
         self.setStyleSheet(qss)
 
     def _after_seek_reset_watchdog(self):
@@ -877,4 +975,4 @@ class PlayerWindow(QMainWindow):
     def _on_video_window_user_close(self):
         if self._closing:
             return
-        self.close()
+        QTimer.singleShot(10, self.close)

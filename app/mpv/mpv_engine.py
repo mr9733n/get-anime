@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 import logging
+from pathlib import Path
 from typing import Callable, Optional
 
 from app.mpv.base_engine import PlaybackState
@@ -47,6 +49,8 @@ def _normalize_proxy(proxy: str | None) -> str | None:
 class MpvEngine:
     def __init__(self, *, proxy: str | None = None, loglevel: str = "warn", log_file: str | None = None):
         self.logger = logging.getLogger(__name__)
+        self._lock = threading.RLock()
+        self._alive = True
         self.on_eof: Optional[Callable[[], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
 
@@ -74,23 +78,34 @@ class MpvEngine:
         self._last_endfile_ts = 0.0
         self._wid_set = False
         self._current_url: str | None = None
+        self.last_end_reason = None
 
         @self._player.event_callback("end-file")
         def _(event):
             reason = getattr(event, "reason", None)
+            self.last_end_reason = reason
+
+            # stop/quit — это ручная остановка/закрытие, не крутим плейлист
             if reason in ("stop", "quit"):
                 return
 
-            now = time.time()
-            if now - self._last_endfile_ts < 0.5:
+            # ERROR: сообщаем, но не обязаны автопереходить
+            if reason == "error":
+                if self.on_error:
+                    self.on_error("mpv: end-file reason=error")
+                # если хочешь переходить дальше при ошибке — делай это в UI, но отдельным отложенным вызовом
+                if self.on_eof:
+                    self.on_eof()
                 return
-            self._last_endfile_ts = now
 
-            if reason == "error" and self.on_error:
-                self.on_error("mpv: end-file reason=error")
+            # EOF: только реальный eof
+            if reason == "eof":
+                if self.on_eof:
+                    self.on_eof()
+                return
 
-            if self.on_eof:
-                self.on_eof()
+            # Всё остальное (None/redirect/unknown) — игнорим
+            return
 
     def _on_mpv_log(self, level, prefix, text):
         # Тихий лог в файл по желанию (потоковый дебаг, если понадобится)
@@ -110,38 +125,56 @@ class MpvEngine:
         self._wid_set = True
 
     def shutdown(self) -> None:
-        self._alive = False
-        try:
-            self._player.terminate()
-        except Exception:
-            pass
+        with self._lock:
+            self._alive = False
+            try:
+                # мягко остановим
+                try:
+                    self._player.command("stop")
+                except Exception:
+                    pass
+                self._player.terminate()
+            except Exception:
+                pass
+
+    def _safe(self):
+        return getattr(self, "_alive", True)
 
     def load(self, url: str) -> None:
-        self._current_url = url
-        try:
-            # помогает на end-file гонках
-            self._player.command("stop")
-        except Exception:
-            pass
-
-        # небольшая уступка ядру mpv
-        try:
+        if not self._safe():
+            return
+        with self._lock:
+            if not self._safe():
+                return
+            self._current_url = url
             self._player.command("loadfile", url, "replace")
-        except Exception:
-            # fallback: иногда replace хуже, чем append-play
-            self._player.command("loadfile", url, "append-play")
 
     def play(self) -> None:
-        self._player.pause = False
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            self._player.pause = False
 
     def pause(self) -> None:
-        self._player.pause = True
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            self._player.pause = True
 
     def toggle_pause(self) -> None:
-        self._player.pause = not bool(self._player.pause)
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            self._player.pause = not bool(self._player.pause)
 
     def stop(self) -> None:
-        self._player.command("stop")
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            try:
+                self._player.command("stop")
+            except Exception:
+                pass
 
     def seek_ratio(self, ratio: float) -> bool:
         st = self.get_state()
@@ -151,6 +184,8 @@ class MpvEngine:
         return self.seek_ms(target)
 
     def seek_ms(self, ms: int) -> bool:
+        if not getattr(self, "_alive", True):
+            return False
         sec = max(0.0, ms / 1000.0)
         try:
             self._player.command("seek", sec, "absolute+exact")
@@ -163,27 +198,34 @@ class MpvEngine:
                 return False
 
     def set_volume(self, volume: int) -> None:
-        self._player.volume = max(0, min(100, int(volume)))
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            self._player.volume = max(0, min(100, int(volume)))
 
     def screenshot(self, path: str) -> None:
-        # video|window|subtitles; обычно достаточно video
-        self._player.command("screenshot-to-file", path, "video")
+        if not self._safe(): return
+        with self._lock:
+            if not self._safe(): return
+            self._player.command("screenshot-to-file", path, "video")
 
     def get_state(self) -> PlaybackState:
-        if not getattr(self, "_alive", True):
-            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
+        if not self._safe():
+            return PlaybackState(False, 0, 0, 0, self._current_url)
 
-        try:
-            time_pos = self._player.time_pos
-            duration = self._player.duration
-            volume = self._player.volume
-            paused = bool(self._player.pause)
-        except mpv.ShutdownError:
-            self._alive = False
-            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
-        except Exception:
-            # на всякий — не валим UI
-            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
+        with self._lock:
+            if not self._safe():
+                return PlaybackState(False, 0, 0, 0, self._current_url)
+            try:
+                time_pos = self._player.time_pos
+                duration = self._player.duration
+                volume = self._player.volume
+                paused = bool(self._player.pause)
+            except mpv.ShutdownError:
+                self._alive = False
+                return PlaybackState(False, 0, 0, 0, self._current_url)
+            except Exception:
+                return PlaybackState(False, 0, 0, 0, self._current_url)
 
         def _sec_to_ms(x) -> int:
             try:
@@ -200,12 +242,13 @@ class MpvEngine:
         )
 
     def is_seekable(self) -> bool:
-        if not getattr(self, "_alive", True):
-            return False
-        try:
-            return bool(self._player.seekable)
-        except Exception:
-            return False
+        if not self._safe(): return False
+        with self._lock:
+            if not self._safe(): return False
+            try:
+                return bool(self._player.seekable)
+            except Exception:
+                return False
 
     def seek_seconds_relative(self, sec: float) -> None:
         self._player.command("seek", float(sec), "relative")

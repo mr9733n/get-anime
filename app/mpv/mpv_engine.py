@@ -1,0 +1,227 @@
+# player/mpv_engine.py
+from __future__ import annotations
+
+import os
+import sys
+import time
+import logging
+from typing import Callable, Optional
+
+from app.mpv.base_engine import PlaybackState
+from utils.library_loader import verify_library, load_library
+
+LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
+LIB_NAME = "libmpv-2.dll"
+
+
+lib_dir = os.path.join('libs')
+try:
+    expected_hash = LIB_HASH
+    lib_file_path = load_library(lib_dir, LIB_NAME)
+    status = verify_library(lib_file_path, expected_hash)
+    if not status:
+        sys.exit(1)
+except Exception as e:
+    logging.error(f"Failed to initialize library: {e}", exc_info=True)
+
+os.environ["PATH"] = str(lib_dir) + os.pathsep + os.environ.get("PATH", "")
+import mpv  # python-mpv
+
+
+def _normalize_proxy(proxy: str | None) -> str | None:
+    """
+    В твоих параметрах может приходить "IP:PORT".
+    Для mpv чаще нужен URL вида http://IP:PORT или socks5://IP:PORT.
+    Если схемы нет — считаем что это http-proxy.
+    """
+    if not proxy:
+        return None
+    p = proxy.strip()
+    if not p:
+        return None
+    if "://" not in p:
+        return f"http://{p}"
+    return p
+
+
+class MpvEngine:
+    def __init__(self, *, proxy: str | None = None, loglevel: str = "warn", log_file: str | None = None):
+        self.logger = logging.getLogger(__name__)
+        self.on_eof: Optional[Callable[[], None]] = None
+        self.on_error: Optional[Callable[[str], None]] = None
+
+        self._log_file = log_file
+        self._player = mpv.MPV(
+            log_handler=self._on_mpv_log,
+            loglevel=loglevel,
+            ytdl=False,  # можно включить позже, если надо
+        )
+
+        self._player["cache"] = "yes"
+        self._player["demuxer-max-bytes"] = "100M"
+        self._player["demuxer-readahead-secs"] = "20"
+
+        self._alive = True
+        # Прокси (опция работает если сборка mpv/ffmpeg поддерживает)
+        proxy_norm = _normalize_proxy(proxy)
+        if proxy_norm:
+            try:
+                self._player["http-proxy"] = proxy_norm
+            except Exception as e:
+                if self.on_error:
+                    self.on_error(f"mpv: не удалось применить proxy '{proxy_norm}': {e}")
+
+        self._last_endfile_ts = 0.0
+        self._wid_set = False
+        self._current_url: str | None = None
+
+        @self._player.event_callback("end-file")
+        def _(event):
+            reason = getattr(event, "reason", None)
+            if reason in ("stop", "quit"):
+                return
+
+            now = time.time()
+            if now - self._last_endfile_ts < 0.5:
+                return
+            self._last_endfile_ts = now
+
+            if reason == "error" and self.on_error:
+                self.on_error("mpv: end-file reason=error")
+
+            if self.on_eof:
+                self.on_eof()
+
+    def _on_mpv_log(self, level, prefix, text):
+        # Тихий лог в файл по желанию (потоковый дебаг, если понадобится)
+        if not self._log_file:
+            return
+        try:
+            Path(self._log_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(self._log_file, "a", encoding="utf-8", errors="ignore") as f:
+                f.write(f"[{level}] {prefix}: {text}")
+        except Exception:
+            pass
+
+    def set_video_widget(self, win_id: int) -> None:
+        if self._wid_set:
+            return
+        self._player.wid = int(win_id)
+        self._wid_set = True
+
+    def shutdown(self) -> None:
+        self._alive = False
+        try:
+            self._player.terminate()
+        except Exception:
+            pass
+
+    def load(self, url: str) -> None:
+        self._current_url = url
+        try:
+            # помогает на end-file гонках
+            self._player.command("stop")
+        except Exception:
+            pass
+
+        # небольшая уступка ядру mpv
+        try:
+            self._player.command("loadfile", url, "replace")
+        except Exception:
+            # fallback: иногда replace хуже, чем append-play
+            self._player.command("loadfile", url, "append-play")
+
+    def play(self) -> None:
+        self._player.pause = False
+
+    def pause(self) -> None:
+        self._player.pause = True
+
+    def toggle_pause(self) -> None:
+        self._player.pause = not bool(self._player.pause)
+
+    def stop(self) -> None:
+        self._player.command("stop")
+
+    def seek_ratio(self, ratio: float) -> bool:
+        st = self.get_state()
+        if st.length_ms <= 0:
+            return False
+        target = int(st.length_ms * max(0.0, min(1.0, ratio)))
+        return self.seek_ms(target)
+
+    def seek_ms(self, ms: int) -> bool:
+        sec = max(0.0, ms / 1000.0)
+        try:
+            self._player.command("seek", sec, "absolute+exact")
+            return True
+        except Exception:
+            try:
+                self._player.command("seek", sec, "absolute")
+                return True
+            except Exception:
+                return False
+
+    def set_volume(self, volume: int) -> None:
+        self._player.volume = max(0, min(100, int(volume)))
+
+    def screenshot(self, path: str) -> None:
+        # video|window|subtitles; обычно достаточно video
+        self._player.command("screenshot-to-file", path, "video")
+
+    def get_state(self) -> PlaybackState:
+        if not getattr(self, "_alive", True):
+            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
+
+        try:
+            time_pos = self._player.time_pos
+            duration = self._player.duration
+            volume = self._player.volume
+            paused = bool(self._player.pause)
+        except mpv.ShutdownError:
+            self._alive = False
+            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
+        except Exception:
+            # на всякий — не валим UI
+            return PlaybackState(is_playing=False, time_ms=0, length_ms=0, volume=0, mrl=self._current_url)
+
+        def _sec_to_ms(x) -> int:
+            try:
+                return int(float(x) * 1000)
+            except Exception:
+                return 0
+
+        return PlaybackState(
+            is_playing=not paused,
+            time_ms=_sec_to_ms(time_pos),
+            length_ms=_sec_to_ms(duration),
+            volume=int(volume or 0),
+            mrl=self._current_url,
+        )
+
+    def is_seekable(self) -> bool:
+        if not getattr(self, "_alive", True):
+            return False
+        try:
+            return bool(self._player.seekable)
+        except Exception:
+            return False
+
+    def seek_seconds_relative(self, sec: float) -> None:
+        self._player.command("seek", float(sec), "relative")
+
+    def is_buffering_or_seeking(self) -> bool:
+        try:
+            return bool(self._player.core_idle) is False and (bool(self._player.seeking) or bool(self._player.paused_for_cache))
+        except Exception:
+            return False
+
+    def get_video_size(self) -> tuple[int, int] | None:
+        try:
+            w = int(self._player.dwidth or 0)
+            h = int(self._player.dheight or 0)
+            if w > 0 and h > 0:
+                return w, h
+        except Exception:
+            pass
+        return None

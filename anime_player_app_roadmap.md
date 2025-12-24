@@ -509,7 +509,14 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] fix processing data of AniLiberty schedule
 
 ### 8.37 MPV Player
-- [ ] ...
+- [x] Done
+- [x] 
+
+### 8.37 Fixes
+- [ ] fix get title from db by query
+- [ ] save franchise_id to titles table [title_franchises]
+- [ ] add dll hash on build, remove hardcode
+
 
 ### 8.37 Refactoring AniMedia client v0
 - [ ] add transport layer

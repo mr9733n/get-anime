@@ -21,6 +21,8 @@ from utils.config_manager import ConfigManager
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'
 UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+LIB_HASH = "a2625d21b2cbca52ae5a9799e375529c715dba797a5646adf62f1c0289dbfb68"
+LIB_NAME = "libvlc.dll"
 
 if getattr(sys, 'frozen', False):
     os.chdir(os.path.dirname(sys.executable))
@@ -159,8 +161,8 @@ if __name__ == "__main__":
 
     # Check vlc library
     try:
-        expected_hash = "a2625d21b2cbca52ae5a9799e375529c715dba797a5646adf62f1c0289dbfb68"
-        lib_file_path = load_library(lib_dir, 'libvlc.dll')
+        expected_hash = LIB_HASH
+        lib_file_path = load_library(lib_dir, LIB_NAME)
         status = verify_library(lib_file_path, expected_hash)
         if not status:
             sys.exit(1)

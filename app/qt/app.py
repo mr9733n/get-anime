@@ -32,7 +32,7 @@ from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 
 
-VLC_PLAYER_HASH = "90125abfb8d480887da2d364d89cf7a86cdc2c5f0f40ad00a4b6eaec2dd167c5"
+VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 SHOW_DEFAULT = "default"
@@ -131,7 +131,7 @@ class AnimePlayerAppVer3(QWidget):
         self.base_al_url = self.config_manager.get_setting('Settings', 'base_al_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
         self.al_api_version = self.config_manager.get_setting('Settings', 'al_api_version')
-        self.use_libvlc = self.config_manager.get_setting('Settings', 'use_libvlc')
+
         self.titles_batch_size = int(self.config_manager.get_setting('Settings', 'titles_batch_size'))
         self.titles_list_batch_size = int(self.config_manager.get_setting('Settings', 'titles_list_batch_size'))
         self.current_offset = int(self.config_manager.get_setting('Settings', 'current_offset'))
@@ -139,11 +139,18 @@ class AnimePlayerAppVer3(QWidget):
         self.user_id = int(self.config_manager.get_setting('Settings', 'user_id'))
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
-        self.log_enabled = self.config_manager.get_setting('VlcPlayer', 'log_enabled').capitalize()
-        self.verbose = self.config_manager.get_setting('VlcPlayer', 'verbose_level')
-
-        self.proxy_enabled = self.config_manager.get_setting('Network', 'proxy_enabled').capitalize()
-        self.proxy_url = self.config_manager.get_setting('Network', 'proxy_url')
+        # vlc_player
+        self.use_libvlc = self._get_cfg('Settings', 'use_libvlc', "false", lower=True)
+        self.log_enabled = self._get_cfg('VlcPlayer', 'log_enabled', "false", lower=True)
+        self.verbose = self._get_cfg('VlcPlayer', 'verbose_level', "2")
+        # network
+        self.proxy_enabled = self._get_cfg('Network', 'proxy_enabled', "false", lower=True)
+        self.proxy_url = self._get_cfg('Network', 'proxy_url', None)
+        # mpv‑related
+        self.use_mpv_player = self._get_cfg('Settings', 'use_mpv_player', "false", lower=True)
+        self.mpv_player_executable_name = self._get_cfg('MpvPlayer', 'executable_name', "mpv_player.exe")
+        self.mpv_log_enabled = self._get_cfg('MpvPlayer', 'log_enabled', "false", lower=True)
+        self.mpv_verbose = self._get_cfg('MpvPlayer', 'verbose_level', "info")
 
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
@@ -223,6 +230,18 @@ class AnimePlayerAppVer3(QWidget):
             app.aboutToQuit.connect(self.api_client.close)
 
         self.init_ui()
+
+    def _get_cfg(self, section: str, option: str, default: Any, *, lower: bool = False) -> Any:
+        """
+        Возвращает значение из конфигурации.
+        Если чтение падает – возвращает `default`.
+        Параметр `lower` приводит строку к нижнему регистру (удобно для булевых флагов).
+        """
+        try:
+            value = self.config_manager.get_setting(section, option)
+            return value.lower() if lower and isinstance(value, str) else value
+        except Exception:
+            return default
 
     def closeEvent(self, event):
         QApplication.instance().quit()  # Завершает все окна приложения
@@ -1706,6 +1725,96 @@ class AnimePlayerAppVer3(QWidget):
             # TODO: DEVELOPMENT Version
             self.open_vlc_player(playlist_path, title_id, skip_data)
 
+    def open_mpv_player(self, playlist_path, title_id, skip_data=None):
+        """
+        DEV-версия: открываем окно mpv прямо в текущем процессе (без бинарника).
+        """
+        try:
+            from app.mpv.mpv_engine import MpvEngine
+            from app.mpv.player_window import PlayerWindow
+
+            mpv_kwargs = {}
+            # прокси
+            if self.proxy_enabled == "true":
+                mpv_kwargs["proxy"] = self.proxy_url
+
+            # логирование (опционально)
+            log_file = None
+            if self.mpv_log_enabled == "true":
+                # можно положить рядом с temp/logs
+                log_file = str(Path("logs") / "mpv.log")
+
+            engine = MpvEngine(
+                proxy=mpv_kwargs.get("proxy"),
+                loglevel=("info" if str(self.mpv_verbose).lower() in ("info", "debug") else "warn"),
+                log_file=log_file
+            )
+
+            w = PlayerWindow(
+                engine,
+                playlist=playlist_path,
+                title_id=title_id,
+                skip_data=skip_data,
+                proxy=mpv_kwargs.get("proxy"),
+                autoplay=True,
+                template=self.current_template,  # важно!
+            )
+            w.show()
+
+            # держим ссылку, чтобы окно не убилось GC
+            self.mpv_window = w
+
+        except Exception as e:
+            self.logger.error(f"DEV mpv player launch failed: {e}", exc_info=True)
+            raise
+
+    def open_standalone_mpv_player(self, playlist_path, title_id, skip_data=None) -> bool:
+        """
+        PROD-версия: запускаем mpv-плеер как отдельный процесс.
+        Возвращает True если удалось запустить, иначе False.
+        """
+        try:
+            if getattr(sys, 'frozen', False):
+                mpv_executable = os.path.join(os.path.dirname(sys.executable), self.mpv_player_executable_name)
+
+                if not os.path.exists(mpv_executable):
+                    self.logger.error(f"mpv player executable not found: {mpv_executable}")
+                    return False
+
+                cmd = [
+                    mpv_executable,
+                    "--playlist", str(playlist_path),
+                    "--title_id", str(title_id),
+                    "--template", str(self.current_template),
+                ]
+
+                if skip_data:
+                    cmd.extend(["--skip_data", skip_data])
+
+                if self.prod_key is not None:
+                    cmd.extend(["--prod_key", str(self.prod_key)])
+
+                if self.proxy_enabled == "true":
+                    cmd.extend(["--proxy", str(self.proxy_url)])
+
+                # mpv лог/verbose (опционально)
+                if self.mpv_log_enabled == "true":
+                    cmd.extend(["--log", str(Path("logs") / "mpv.log")])
+                if str(self.mpv_verbose).lower() in ("info", "debug"):
+                    cmd.extend(["--verbose"])
+
+                subprocess.Popen(cmd, close_fds=True)
+                self.logger.info(f"Launched standalone MPV player for title_id: {title_id}")
+                return True
+
+            # DEV
+            self.open_mpv_player(playlist_path, title_id, skip_data)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"open_standalone_mpv_player failed: {e}", exc_info=True)
+            return False
+
     def play_link(self, link, title_id=None, skip_data=None):
         """
         Воспроизводит ссылку на эпизод.
@@ -1728,9 +1837,21 @@ class AnimePlayerAppVer3(QWidget):
 
                 open_link = f"https://{self.stream_video_url}{link}"
 
+            # 1) mpv (если включен)
+            if getattr(self, "use_mpv_player", "false") == "true":
+                ok = self.open_standalone_mpv_player(open_link, str(title_id), skip_data)
+                if ok:
+                    self.logger.info(f"Playing via MPV: {open_link[-50:]}")
+                    return
+
+                # mpv не смог стартовать -> fallback на VLC
+                self.logger.warning("MPV failed to launch, falling back to VLC...")
+
+            # 2) VLC (как было)
             if self.use_libvlc == "true":
                 self.open_standalone_vlc_player(open_link, str(title_id), skip_data)
             else:
+                # внешний плеер
                 subprocess.Popen([self.video_player_path, open_link])
 
             self.logger.info(f"Playing: {open_link[-50:]}")
@@ -1759,6 +1880,13 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error(f"Playlist file does not exist: {file_path}")
                 return
             self.logger.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
+
+            if getattr(self, "use_mpv_player", "false") == "true":
+                ok = self.open_standalone_mpv_player(file_path, title_id, skip_data)
+                if ok:
+                    self.logger.debug("Playlist launched via MPV successfully")
+                    return
+                self.logger.warning("MPV failed to launch playlist, falling back to VLC...")
 
             if self.use_libvlc == "true":
                 self.open_standalone_vlc_player(file_path, title_id, skip_data)

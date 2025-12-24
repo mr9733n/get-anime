@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 LIB_DIR = os.path.join(ROOT_DIR, "libs")
-LIB_NAME = "libvlc.dll"
+LIBS_NAME = [ "libvlc.dll", "libmpv-2.dll" ]
 
 def load_library(lib_name, lib_dir=LIB_DIR):
     """
@@ -70,14 +70,15 @@ def execute_library_specific_actions(lib_name):
 
 if __name__ == "__main__":
     try:
-        library_name = LIB_NAME
-        file_path = load_library(library_name)
+        for lib in LIBS_NAME:
+            library_name = lib
+            file_path = load_library(library_name)
 
-        execute_library_specific_actions(library_name)
+            execute_library_specific_actions(library_name)
 
-        hash_value = calculate_sha256(file_path)
-        if hash_value:
-            logger.info(f"SHA256: {hash_value}")
+            hash_value = calculate_sha256(file_path)
+            if hash_value:
+                logger.info(f"SHA256: {hash_value}")
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")

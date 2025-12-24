@@ -13,7 +13,6 @@ import time
 import sys
 import argparse
 
-from vlc import State as state
 from PyQt5.QtGui import QIcon
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
@@ -43,7 +42,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default", proxy=None, log=None, log_level=2):
+    def __init__(self, parent=None, current_template="default", proxy=None, log=None, log_level="2"):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.current_template = current_template

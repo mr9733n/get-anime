@@ -2,7 +2,7 @@
 import re
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qs
 from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
 
@@ -262,40 +262,32 @@ def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
     }
 
 
-def _episode_number(url: str) -> str:
-    """Номер эпизода берётся из части /<num>_/ в URL."""
-    m = re.search(r"/(\d+)_", url)
-    return str(int(m.group(1))) if m else "0"
-
-
-def episodes_dict(sorted_links: list[str]) -> Dict[str, Dict[str, str | None]]:
+def episodes_dict(sorted_links: List[str]) -> Dict[str, Dict[str, Any]]:
     """
-    Принимает уже отсортированные ссылки (480 p) и возвращает
-    структуру, полностью соответствующую требуемому формату.
+    Присваивает каждой ссылке порядковый номер (1‑based) и
+    формирует структуру с полями sd/hd/fhd.
     """
-    hd_links = [add_720(u) for u in sorted_links]   # 720 p
-    sd_links = sorted_links                         # 480 p
-
     episodes: Dict[str, Dict[str, Any]] = {}
-    for hd, sd in zip(hd_links, sd_links):
-        ep_num = _episode_number(sd)
 
-        episodes[ep_num] = {
-            'hls': {
-                "fhd": "",
-                "hd": _strip_host(str(hd)),
-                "sd": _strip_host(sd),
-            },
+    for idx, link in enumerate(sorted_links, start=1):   # <-- порядковый номер
+        # создаём запись один раз
+        episodes[str(idx)] = {
+            "hls": {"fhd": "", "hd": "", "sd": ""},
             "uuid": str(uuid.uuid4()),
             "created_timestamp": 0,
-            "episode": int(ep_num),
-            "name": f"Серия {int(ep_num)}",
+            "episode": idx,
+            "name": f"Серия {idx}",
             "preview": None,
-            "skips": {
-                "ending": [None, None],
-                "opening": [None, None],
-            },
+            "skips": {"ending": [None, None], "opening": [None, None]},
         }
+
+        # определяем качество ссылки
+        if link.endswith(".m3u8"):
+            episodes[str(idx)]["hls"]["sd"] = _strip_host(link)
+            episodes[str(idx)]["hls"]["hd"] = _strip_host(add_720(link))
+        else:
+            episodes[str(idx)]["hls"]["fhd"] = link
+
     return episodes
 
 

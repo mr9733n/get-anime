@@ -8,13 +8,13 @@ import time
 import logging
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import urlparse
 
 from app.mpv.base_engine import PlaybackState
 from utils.library_loader import verify_library, load_library
 
 LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
 LIB_NAME = "libmpv-2.dll"
-
 
 lib_dir = os.path.join('libs')
 try:
@@ -31,18 +31,32 @@ import mpv  # python-mpv
 
 
 def _normalize_proxy(proxy: str | None) -> str | None:
-    """
-    В твоих параметрах может приходить "IP:PORT".
-    Для mpv чаще нужен URL вида http://IP:PORT или socks5://IP:PORT.
-    Если схемы нет — считаем что это http-proxy.
-    """
     if not proxy:
         return None
+
     p = proxy.strip()
     if not p:
         return None
-    if "://" not in p:
-        return f"http://{p}"
+
+    orig = p
+
+    if "://" in p:
+        u = urlparse(p)
+        # urlparse("http://1.2.3.4:3128") -> netloc="1.2.3.4:3128"
+        if u.netloc:
+            p = u.netloc
+        else:
+            # на случай кривого ввода типа "http://1.2.3.4:3128/"
+            p = p.split("://", 1)[1]
+
+    # убрать возможный хвостовой слеш
+    p = p.rstrip("/")
+
+    if not p:
+        return None
+
+    if p != orig:
+        logging.info(f"proxy normalised: '{orig}' -> '{p}'")
     return p
 
 
@@ -55,25 +69,36 @@ class MpvEngine:
         self.on_error: Optional[Callable[[str], None]] = None
 
         self._log_file = log_file
-        self._player = mpv.MPV(
-            log_handler=self._on_mpv_log,
-            loglevel=loglevel,
-            ytdl=False,  # можно включить позже, если надо
-        )
+
+        # КРИТИЧНО: инициализируем без wid, установим позже
+        try:
+            self._player = mpv.MPV(
+                log_handler=self._on_mpv_log,
+                loglevel=loglevel,
+                ytdl=False,
+                vo="gpu-next",  # попробовать
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create MPV instance: {e}", exc_info=True)
+            raise
 
         self._player["cache"] = "yes"
         self._player["demuxer-max-bytes"] = "100M"
         self._player["demuxer-readahead-secs"] = "20"
 
         self._alive = True
+
         # Прокси (опция работает если сборка mpv/ffmpeg поддерживает)
         proxy_norm = _normalize_proxy(proxy)
         if proxy_norm:
             try:
                 self._player["http-proxy"] = proxy_norm
             except Exception as e:
+                err_msg = f"mpv: не удалось применить proxy '{proxy_norm}': {e}"
+                self.logger.warning(err_msg)
                 if self.on_error:
-                    self.on_error(f"mpv: не удалось применить proxy '{proxy_norm}': {e}")
+                    self.on_error(err_msg)
 
         self._last_endfile_ts = 0.0
         self._wid_set = False
@@ -85,30 +110,24 @@ class MpvEngine:
             reason = getattr(event, "reason", None)
             self.last_end_reason = reason
 
-            # stop/quit — это ручная остановка/закрытие, не крутим плейлист
             if reason in ("stop", "quit"):
                 return
 
-            # ERROR: сообщаем, но не обязаны автопереходить
             if reason == "error":
                 if self.on_error:
                     self.on_error("mpv: end-file reason=error")
-                # если хочешь переходить дальше при ошибке — делай это в UI, но отдельным отложенным вызовом
                 if self.on_eof:
                     self.on_eof()
                 return
 
-            # EOF: только реальный eof
             if reason == "eof":
                 if self.on_eof:
                     self.on_eof()
                 return
 
-            # Всё остальное (None/redirect/unknown) — игнорим
             return
 
     def _on_mpv_log(self, level, prefix, text):
-        # Тихий лог в файл по желанию (потоковый дебаг, если понадобится)
         if not self._log_file:
             return
         try:
@@ -119,62 +138,110 @@ class MpvEngine:
             pass
 
     def set_video_widget(self, win_id: int) -> None:
+        """ВАЖНО: должен быть вызван ДО первого load()"""
         if self._wid_set:
+            self.logger.debug("WID already set, ignoring")
             return
-        self._player.wid = int(win_id)
-        self._wid_set = True
+
+        try:
+            with self._lock:
+                if not self._alive:
+                    self.logger.warning("Cannot set WID - engine not alive")
+                    return
+
+                self._player.wid = int(win_id)
+                self._wid_set = True
+                self.logger.info(f"Video widget WID set to {win_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to set video widget: {e}", exc_info=True)
+            raise
 
     def shutdown(self) -> None:
         with self._lock:
             self._alive = False
             try:
-                # мягко остановим
                 try:
                     self._player.command("stop")
                 except Exception:
                     pass
                 self._player.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error(f"Error during shutdown: {e}")
 
     def _safe(self):
         return getattr(self, "_alive", True)
 
     def load(self, url: str) -> None:
+        """Загружает URL. ТРЕБУЕТ предварительного вызова set_video_widget()"""
+        if not self._safe():
+            self.logger.warning("load() called but engine not alive")
+            return
+
+        with self._lock:
+            if not self._safe():
+                return
+
+            # КРИТИЧНО: проверяем что WID установлен
+            if not self._wid_set:
+                err_msg = "Cannot load media: video widget not set. Call set_video_widget() first."
+                self.logger.error(err_msg)
+                if self.on_error:
+                    self.on_error(err_msg)
+                return
+
+            try:
+                self._current_url = url
+                self._player.command("loadfile", url, "replace")
+                self.logger.info(f"Loaded: {url}")
+            except Exception as e:
+                err_msg = f"Failed to load '{url}': {e}"
+                self.logger.error(err_msg, exc_info=True)
+                if self.on_error:
+                    self.on_error(err_msg)
+
+    def play(self) -> None:
         if not self._safe():
             return
         with self._lock:
             if not self._safe():
                 return
-            self._current_url = url
-            self._player.command("loadfile", url, "replace")
-
-    def play(self) -> None:
-        if not self._safe(): return
-        with self._lock:
-            if not self._safe(): return
-            self._player.pause = False
+            try:
+                self._player.pause = False
+            except Exception as e:
+                self.logger.error(f"play() failed: {e}")
 
     def pause(self) -> None:
-        if not self._safe(): return
+        if not self._safe():
+            return
         with self._lock:
-            if not self._safe(): return
-            self._player.pause = True
+            if not self._safe():
+                return
+            try:
+                self._player.pause = True
+            except Exception as e:
+                self.logger.error(f"pause() failed: {e}")
 
     def toggle_pause(self) -> None:
-        if not self._safe(): return
+        if not self._safe():
+            return
         with self._lock:
-            if not self._safe(): return
-            self._player.pause = not bool(self._player.pause)
+            if not self._safe():
+                return
+            try:
+                self._player.pause = not bool(self._player.pause)
+            except Exception as e:
+                self.logger.error(f"toggle_pause() failed: {e}")
 
     def stop(self) -> None:
-        if not self._safe(): return
+        if not self._safe():
+            return
         with self._lock:
-            if not self._safe(): return
+            if not self._safe():
+                return
             try:
                 self._player.command("stop")
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.error(f"stop() failed: {e}")
 
     def seek_ratio(self, ratio: float) -> bool:
         st = self.get_state()
@@ -194,20 +261,31 @@ class MpvEngine:
             try:
                 self._player.command("seek", sec, "absolute")
                 return True
-            except Exception:
+            except Exception as e:
+                self.logger.error(f"seek_ms({ms}) failed: {e}")
                 return False
 
     def set_volume(self, volume: int) -> None:
-        if not self._safe(): return
+        if not self._safe():
+            return
         with self._lock:
-            if not self._safe(): return
-            self._player.volume = max(0, min(100, int(volume)))
+            if not self._safe():
+                return
+            try:
+                self._player.volume = max(0, min(100, int(volume)))
+            except Exception as e:
+                self.logger.error(f"set_volume({volume}) failed: {e}")
 
     def screenshot(self, path: str) -> None:
-        if not self._safe(): return
+        if not self._safe():
+            return
         with self._lock:
-            if not self._safe(): return
-            self._player.command("screenshot-to-file", path, "video")
+            if not self._safe():
+                return
+            try:
+                self._player.command("screenshot-to-file", path, "video")
+            except Exception as e:
+                self.logger.error(f"screenshot() failed: {e}")
 
     def get_state(self) -> PlaybackState:
         if not self._safe():
@@ -224,7 +302,8 @@ class MpvEngine:
             except mpv.ShutdownError:
                 self._alive = False
                 return PlaybackState(False, 0, 0, 0, self._current_url)
-            except Exception:
+            except Exception as e:
+                self.logger.debug(f"get_state() property access failed: {e}")
                 return PlaybackState(False, 0, 0, 0, self._current_url)
 
         def _sec_to_ms(x) -> int:
@@ -242,20 +321,26 @@ class MpvEngine:
         )
 
     def is_seekable(self) -> bool:
-        if not self._safe(): return False
+        if not self._safe():
+            return False
         with self._lock:
-            if not self._safe(): return False
+            if not self._safe():
+                return False
             try:
                 return bool(self._player.seekable)
             except Exception:
                 return False
 
     def seek_seconds_relative(self, sec: float) -> None:
-        self._player.command("seek", float(sec), "relative")
+        try:
+            self._player.command("seek", float(sec), "relative")
+        except Exception as e:
+            self.logger.error(f"seek_seconds_relative({sec}) failed: {e}")
 
     def is_buffering_or_seeking(self) -> bool:
         try:
-            return bool(self._player.core_idle) is False and (bool(self._player.seeking) or bool(self._player.paused_for_cache))
+            return bool(self._player.core_idle) is False and (
+                        bool(self._player.seeking) or bool(self._player.paused_for_cache))
         except Exception:
             return False
 

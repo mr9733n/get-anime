@@ -19,7 +19,8 @@ class LinkActionHandler:
                  play_playlist_wrapper,
                  save_torrent_wrapper,
                  reset_offset,
-                 get_search_by_title_animedia):
+                 get_search_by_title_animedia,
+                 open_web):
 
         self.logger = logger
         self.db_manager = db_manager
@@ -31,6 +32,7 @@ class LinkActionHandler:
         self.save_torrent_wrapper = save_torrent_wrapper
         self.reset_offset = reset_offset
         self.get_search_by_title_animedia = get_search_by_title_animedia
+        self.open_web_link = open_web
 
         self.animedia_cache = animedia_cache
 
@@ -53,7 +55,8 @@ class LinkActionHandler:
             'set_rating': self._handle_set_rating,
             'play_all': self._handle_play_all,
             'play_m3u8': self._handle_play_m3u8,
-            'download_torrent': self._handle_torrent_download
+            'download_torrent': self._handle_torrent_download,
+            'open_web': self._handle_open_web,
         }
 
     def handle(self, link):
@@ -311,3 +314,21 @@ class LinkActionHandler:
                 self.logger.error(f"Error parsing: {e}")
         else:
             self.logger.error(f"Invalid play_m3u8 link structure: {parts}")
+
+    def _handle_open_web(self, parts):
+        if len(parts) >= 4:
+            try:
+                title_id = int(parts[1])
+                skip_data = parts[2].strip("[]")
+                extracted_link = parts[3].strip("[]")
+                decoded_link = base64.urlsafe_b64decode(extracted_link).decode()
+                self.logger.debug(
+                    f"Skip data base64: {skip_data}, Extracted link: {extracted_link}, Decoded link: {decoded_link}")
+                link = decoded_link
+                self.logger.info(f"Sending video link: {link} to Qt Browser")
+                self.open_web_link(decoded_link, title_id=title_id, skip_data=None)
+                QTimer.singleShot(100, lambda: self.display_info(title_id))
+            except (ValueError, SyntaxError) as e:
+                self.logger.error(f"Error parsing: {e}")
+        else:
+            self.logger.error(f"Invalid open_web link structure: {parts}")

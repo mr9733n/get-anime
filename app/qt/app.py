@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QL
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
-from app.qt.vlc_player import VLCPlayer
+from app.vlc.vlc_player import VLCPlayer
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
@@ -30,6 +30,8 @@ from utils.poster_manager import PosterManager
 from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
+from utils.open_router import OpenRouter, PlaylistTargets
+from utils.library_loader import _calc_bundle_key
 
 
 VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
@@ -87,6 +89,7 @@ class AnimePlayerAppVer3(QWidget):
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
         self.thread_pool.setExpiryTimeout(30000)
+        self.mpv_window = None
         self.view_state = None
         self.current_show_mode = None
         self.error_label = None
@@ -179,8 +182,8 @@ class AnimePlayerAppVer3(QWidget):
             logger=self.logger,
             utils_folder=self.temp_dir,
             sleep_fn=None,
-            max_cache_items=512,
-            enable_dumps=True
+            max_cache_items=256,
+            enable_dumps=False
         )
         self.api_adapter = APIAdapter(
             self.api_client,
@@ -217,8 +220,12 @@ class AnimePlayerAppVer3(QWidget):
             play_playlist_wrapper=self.play_playlist_wrapper,
             save_torrent_wrapper=self.save_torrent_wrapper,
             reset_offset=self.reset_offset,
-            get_search_by_title_animedia=self.get_search_by_title_animedia
+            get_search_by_title_animedia=self.get_search_by_title_animedia,
+            open_web=self.open_web_link,
         )
+
+        # init open router
+        self.router = OpenRouter(self)
 
         self.callbacks = self.generate_callbacks()
         days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
@@ -1479,13 +1486,15 @@ class AnimePlayerAppVer3(QWidget):
 
                 stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
                 if discovered_links:
-                    filename = self.playlist_manager.save_playlist(
-                        [sanitized_title],
-                        discovered_links,
-                        stream_video_url
-                    )
+                    bundle = self.playlist_manager.save_playlist_bundle([sanitized_title], discovered_links,
+                                                                        stream_video_url)
+
+                    # сохраним в структуре плейлистов для роутера
+                    playlist["streams_file"] = bundle.m3u_name if bundle.streams_count > 0 else None
+                    playlist["web_file"] = bundle.web_name if bundle.web_count > 0 else None
+
                     self.logger.debug(
-                        f"Playlist for title {sanitized_title} was sent for saving with filename; {filename}."
+                        f"Playlist for title {sanitized_title} was sent for saving with filename; {bundle}."
                     )
                 else:
                     self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
@@ -1744,6 +1753,8 @@ class AnimePlayerAppVer3(QWidget):
                 # можно положить рядом с temp/logs
                 log_file = str(Path("logs") / "mpv.log")
 
+            self.logger.info(f"DEV mpv player launch : {self.proxy_url} {self.mpv_log_enabled}")
+
             engine = MpvEngine(
                 proxy=mpv_kwargs.get("proxy"),
                 loglevel=("info" if str(self.mpv_verbose).lower() in ("info", "debug") else "warn"),
@@ -1815,6 +1826,28 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"open_standalone_mpv_player failed: {e}", exc_info=True)
             return False
 
+    def open_web_link(self, link: str, title_id: int | None = None, skip_data=None):
+        try:
+            if not title_id:
+                title_id = self.current_title_id
+
+            host = None
+            if title_id:
+                host = self.db_manager.get_player_host_by_title_id(title_id)
+            if not host:
+                host = self.stream_video_url  # fallback
+
+            full = self.playlist_manager.make_full_url(link, host)
+            if not full:
+                self.logger.error(f"open_web_link: empty url from link={link!r} host={host!r}")
+                return
+
+            self.logger.info(f"Opening web link in mini_browser: {full}")
+            self.router.open_web_urls([full])
+
+        except Exception as e:
+            self.logger.error(f"open_web_link error: {e}", exc_info=True)
+
     def play_link(self, link, title_id=None, skip_data=None):
         """
         Воспроизводит ссылку на эпизод.
@@ -1829,13 +1862,17 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.debug("Using full URL from link")
             else:
                 if title_id:
-                    self.stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
+                    host = self.db_manager.get_player_host_by_title_id(title_id) if title_id else self.stream_video_url
                     self.logger.debug(f"Using host from DB: {self.stream_video_url}")
 
                 if not link.startswith('/'):
                     link = '/' + link
 
-                open_link = f"https://{self.stream_video_url}{link}"
+                open_link = self.playlist_manager.make_full_url(link, host)
+
+            if not open_link:
+                self.logger.error("Empty open_link ...")
+                return
 
             # 1) mpv (если включен)
             if getattr(self, "use_mpv_player", "false") == "true":
@@ -1867,18 +1904,26 @@ class AnimePlayerAppVer3(QWidget):
         try:
             if not title_id:
                 title_id = self.current_title_id
-            if not self.sanitized_titles:
-                self.logger.error("No playlists available. Please save a playlist first.")
-                return
+
             if not file_name:
                 file_name = self.playlist_filename
                 if not file_name:
                     self.logger.error("No playlist filename available. Please save a playlist first.")
                     return
+
             file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
             if not os.path.exists(file_path):
                 self.logger.error(f"Playlist file does not exist: {file_path}")
                 return
+
+            # ✅ НОВОЕ: web playlist -> mini browser
+            if str(file_name).lower().endswith(".urls"):
+                self.logger.info(f"Opening web playlist via mini_browser: {file_path}")
+                # напрямую, без open_playlist(), чтобы не было циклов
+                self.router.open_web_file(file_path)
+                return
+
+            # дальше — твоя старая логика mpv/vlc
             self.logger.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
 
             if getattr(self, "use_mpv_player", "false") == "true":
@@ -1886,7 +1931,7 @@ class AnimePlayerAppVer3(QWidget):
                 if ok:
                     self.logger.debug("Playlist launched via MPV successfully")
                     return
-                self.logger.warning("MPV failed to launch playlist, falling back to VLC...")
+                self.logger.warning("MPV failed to launch playlist, falling back to VLC.")
 
             if self.use_libvlc == "true":
                 self.open_standalone_vlc_player(file_path, title_id, skip_data)
@@ -1897,5 +1942,59 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as e:
             self.logger.error(f"Error in play_playlist_wrapper: {e}", exc_info=True)
 
+    def get_mini_browser_command(self) -> list[str]:
+        """
+        DEV: запускаем app/qt_browser/mini_browser.py через текущий интерпретатор
+        """
+        app_dir = os.path.dirname(os.path.dirname(__file__))  # app/
+        mini_browser_py = os.path.join(app_dir, "qt_browser", "mini_browser.py")
+        return [sys.executable, mini_browser_py]
+
     def reset_offset(self):
         self.current_offset = 0
+
+    def ensure_playlist_bundle(self, title_id: int):
+        """
+        Гарантирует, что для title_id bundle создан, но НЕ пересоздаёт каждый рендер.
+        Пересоздаёт только если изменились links или host.
+        """
+        playlist = (self.playlists or {}).get(title_id)
+        if not playlist:
+            return None
+
+        links = playlist.get("links") or []
+        if not links:
+            playlist["streams_file"] = None
+            playlist["web_file"] = None
+            playlist["streams_count"] = 0
+            playlist["web_count"] = 0
+            playlist["bundle_key"] = None
+            return playlist
+
+        host = self.db_manager.get_player_host_by_title_id(title_id)
+        key = _calc_bundle_key(title_id, links, host)
+        prev_key = playlist.get("bundle_key")
+
+        # если ключ не изменился — bundle уже актуален, ничего не делаем
+        if prev_key == key:
+            if playlist.get("streams_file") is not None or playlist.get("web_file") is not None:
+                return playlist
+
+        sanitized_title = playlist.get("sanitized_title") or str(title_id)
+
+        bundle = self.playlist_manager.save_playlist_bundle(
+            [sanitized_title],
+            links,
+            host
+        )
+
+        # сохраняем в playlist кэш + метаданные
+        playlist["bundle_key"] = key
+        playlist["streams_count"] = bundle.streams_count
+        playlist["web_count"] = bundle.web_count
+
+        # если файл реально создан (count > 0) — сохраняем имя, иначе None
+        playlist["streams_file"] = bundle.m3u_name if bundle.streams_count > 0 else None
+        playlist["web_file"] = bundle.web_name if bundle.web_count > 0 else None
+
+        return playlist

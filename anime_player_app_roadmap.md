@@ -514,7 +514,16 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixes
 
 
+# 8.37 Qt mini browser for external player
+- [x] change logic for saving urls for mini browser
+- [x] add router for playlists
+- [x] change logic for open playlists and links
+- [x] add mini browser with proxy
+- [x] built in open urls in mini browser
+- [ ] ...
+
 ### 8.37 Fixes
+- [x] pretty folder for apps
 - [ ] fix get title from db by query
 - [ ] save franchise_id to titles table [title_franchises]
 - [ ] add dll hash on build, remove hardcode

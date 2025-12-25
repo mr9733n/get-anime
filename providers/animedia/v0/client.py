@@ -131,61 +131,107 @@ class AnimediaClient:
         path = parsed.path.lower()
         return any(path.endswith(ext) for ext in IMAGE_EXTS)
 
+    async def _cache_get_or_set(
+        self, key: str, value_factory: Optional[callable] = None
+    ) -> Optional[str]:
+        """
+        Возвращает значение из кеша по `key`.
+        Если его нет и передан `value_factory`, вызывается фабрика,
+        полученный результат сохраняется в кеш и возвращается.
+        Фабрика может быть `None` – тогда просто возвращается `None`.
+        Операция защищена `self._cache_lock`.
+        """
+        async with self._cache_lock:
+            if key in self._file_cache:
+                return self._file_cache[key]
+
+        # Если значение ещё не в кеше и есть фабрика – получаем его
+        if value_factory is None:
+            return None
+
+        new_value = await value_factory()
+        if new_value is None:
+            return None
+
+        async with self._cache_lock:
+            # ещё раз проверяем, чтобы не перезаписать, если кто‑то успел записать
+            if key not in self._file_cache:
+                self._file_cache[key] = new_value
+        return new_value
+
     async def _fetch_file_from_vlnk(self, vlnk_url: str) -> Optional[str]:
+        """
+        Скачивает файл по vlnk‑ссылке и кэширует результат.
+        Возвращает URL/путь к реальному файлу или None.
+        """
         vlnk_url = self._ensure_absolute_url(vlnk_url)
-        if vlnk_url is None:
+        if not vlnk_url:
             return None
 
         if self._is_image_placeholder(vlnk_url):
             self.logger.debug(f"Skipping image placeholder: {vlnk_url}")
             return None
 
-        async with self._cache_lock:
-            if vlnk_url in self._file_cache:
-                return self._file_cache[vlnk_url]
+        async def _download() -> Optional[str]:
+            """Фабрика, вызываемая только если значения нет в кеше."""
+            max_tries = 5
+            backoff = 1
 
-        max_tries = 5
-        backoff = 1
-        async with self.net_client.create_async_httpx_client(headers=self.headers, timeout=30, follow_redirects=True) as client:
-            for attempt in range(1, max_tries + 1):
-                try:
-                    resp = await client.get(vlnk_url)
-                    resp.raise_for_status()
-                    file_url = extract_file_from_html(resp.text, vlnk_url)
-                    if file_url:
-                        self._file_cache[vlnk_url] = file_url
-                        return file_url
-                    raise ValueError("file not found in response")
-                except httpx.HTTPStatusError as exc:
-                    if exc.response.status_code == 429:
-                        retry_after = exc.response.headers.get("Retry-After")
-                        wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
-                        self.logger.warning(
-                            f"429 Too Many Requests – waiting {wait}s (attempt {attempt})"
-                        )
-                    elif exc.response.status_code < 500:
-                        self.logger.warning(f"vlnk {vlnk_url} returned {exc.response.status_code}")
-                        return None
-                    else:
-                        wait = backoff
+            async with self.net_client.create_async_httpx_client(
+                headers=self.headers, timeout=30, follow_redirects=True
+            ) as client:
+                for attempt in range(1, max_tries + 1):
+                    try:
+                        resp = await client.get(vlnk_url)
+                        resp.raise_for_status()
+                        file_url = extract_file_from_html(resp.text, vlnk_url)
+                        if file_url:
+                            return file_url
+                        raise ValueError("file not found in response")
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429:
+                            retry_after = exc.response.headers.get("Retry-After")
+                            wait = (
+                                float(retry_after)
+                                if retry_after and retry_after.isdigit()
+                                else backoff
+                            )
+                            self.logger.warning(
+                                f"429 Too Many Requests – waiting {wait}s (attempt {attempt})"
+                            )
+                        elif exc.response.status_code < 500:
+                            self.logger.warning(
+                                f"vlnk {vlnk_url} returned {exc.response.status_code}"
+                            )
+                            return None
+                        else:
+                            wait = backoff
 
-                    if attempt == max_tries:
-                        self.logger.error(
-                            f"vlnk {vlnk_url} failed after {max_tries} attempts: {exc}"
-                        )
-                        return None
+                        if attempt == max_tries:
+                            self.logger.error(
+                                f"vlnk {vlnk_url} failed after {max_tries} attempts: {exc}"
+                            )
+                            return None
 
-                    await asyncio.sleep(wait)
-                    backoff *= 2
-        return None
+                        await asyncio.sleep(wait)
+                        backoff *= 2
+            return None
 
-    async def collect_episode_files(self, html: str, original_id: str) -> None | list[Any] | list[str]:
+        # <-- единственная точка доступа к кешу
+        return await self._cache_get_or_set(vlnk_url, _download)
+
+    async def collect_episode_files(
+            self, html: str, original_id: Optional[str]
+    ) -> List[str]:
+        """
+        Сканирует страницу, собирает ссылки и кэширует их.
+        Возвращает список готовых URL‑ов (строк).
+        """
         self._file_cache = {}
         try:
             soup = BeautifulSoup(html, "html.parser")
             raw_vlnks = self._extract_vlnks(soup)
-            vlnk_list = [self._ensure_absolute_url(v) for v in raw_vlnks]
-            vlnk_list = [v for v in vlnk_list if v]
+            vlnk_list = [self._ensure_absolute_url(v) for v in raw_vlnks if v]
 
             if not vlnk_list:
                 self.logger.warning("No data‑vlnk found on page")
@@ -195,32 +241,54 @@ class AnimediaClient:
             semaphore = asyncio.Semaphore(CONCURRENCY)
 
             async def limited_fetch(vlnk: str) -> Optional[str]:
+                """Обёртка, ограничивающая количество одновременных запросов."""
                 async with semaphore:
                     return await self._fetch_file_from_vlnk(vlnk)
 
             results: List[str] = []
-            try:
-                for i in range(0, len(vlnk_list), BATCH_SIZE):
-                    batch = vlnk_list[i:i + BATCH_SIZE]
-                    self.logger.debug(
-                        f"Processing batch {i // BATCH_SIZE + 1} ({len(batch)} items)"
-                    )
+
+            for i in range(0, len(vlnk_list), BATCH_SIZE):
+                batch = vlnk_list[i: i + BATCH_SIZE]
+                self.logger.debug(
+                    f"Processing batch {i // BATCH_SIZE + 1} ({len(batch)} items)"
+                )
+
+                if any(v.startswith("https://aser.pro") for v in batch):
+                    # Скачиваем только .m3u8‑файлы, остальные оставляем как есть
                     batch_results = await asyncio.gather(
-                        *[limited_fetch(v) for v in batch],
-                        return_exceptions=False,
+                        *(limited_fetch(v) for v in batch), return_exceptions=False
                     )
-                    results.extend(safe_str(url) for url in batch_results if url)
-                    await asyncio.sleep(INTER_BATCH_DELAY)
-                self.logger.info(f"collect_episode_files: {len(results)} files collected")
-                return results
-            finally:
-                if original_id is not None:
-                    status = self.cache.save_vlink(original_id, self._file_cache)
-                    if status is AniMediaCacheStatus.SAVED:
-                        self.logger.debug("vlink cache for id %s saved", original_id)
-                self._file_cache = {}
-        except Exception as e:
-            self.logger.error(f"Error collect_episode_files: {e}")
+                    results.extend(
+                        safe_str(url) for url in batch_results if url
+                    )
+                else:
+                    # Обычные ссылки – просто кэшируем их «как есть»
+                    for v in batch:
+                        # _cache_get_or_set без фабрики просто сохраняет значение,
+                        # если его ещё нет.
+                        cached = await self._cache_get_or_set(v, lambda: asyncio.sleep(0, result=v))
+                        # `cached` всегда будет строкой (или None)
+                        if cached:
+                            results.append(safe_str(cached))
+
+                await asyncio.sleep(INTER_BATCH_DELAY)
+
+            self.logger.info(f"collect_episode_files: {len(results)} files collected")
+
+            # Сохраняем кеш, если передан оригинальный id
+            if original_id:
+                status = self.cache.save_vlink(original_id, self._file_cache)
+                if status is AniMediaCacheStatus.SAVED:
+                    self.logger.debug("vlink cache for id %s saved", original_id)
+
+            return results
+
+        except Exception as exc:  # pragma: no cover
+            self.logger.error(f"Error collect_episode_files: {exc}")
+            return []
+        finally:
+            # гарантируем очистку кеша независимо от результата
+            self._file_cache = {}
 
     #-- New titles and announces
     async def _fetch_schedule(self, url: str, payload: dict[str, str] | None) -> str:

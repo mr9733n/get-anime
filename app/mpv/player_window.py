@@ -62,11 +62,18 @@ class VideoWindow(QMainWindow):
         super().__init__(parent)
         self._on_user_close = on_user_close
         self.setWindowTitle("Video")
+
         self.video = QFrame(self)
+
+        # ВАЖНО для Windows/mpv: гарантировать нативный HWND
+        self.video.setAttribute(Qt.WA_NativeWindow, True)
+        self.video.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
+
         self.video.setStyleSheet("background: black;")
         self.setCentralWidget(self.video)
 
     def win_id(self) -> int:
+        # winId будет валиден после show()/processEvents()
         return int(self.video.winId())
 
     def closeEvent(self, event):
@@ -79,24 +86,23 @@ class VideoWindow(QMainWindow):
 
 class PlayerWindow(QMainWindow):
     def __init__(
-        self,
-        engine: PlayerEngine,
-        *,
-        playlist: str | None = None,
-        title_id: int | None = None,
-        skip_data: str | None = None,
-        proxy: str | None = None,
-        autoplay: bool = True,
-        template: str | None = None,
+            self,
+            engine: PlayerEngine,
+            *,
+            playlist: str | None = None,
+            title_id: int | None = None,
+            skip_data: str | None = None,
+            proxy: str | None = None,
+            autoplay: bool = True,
+            template: str | None = None,
     ):
         super().__init__()
-
 
         self.engine = engine
         self.logger = logging.getLogger(__name__)
         self.apply_template(template)
 
-        # входные параметры как у VLC
+        # входные параметры
         self.title_id: int | None = title_id
         self.skip_data_cache: dict | None = None
         self.skip_opening = None
@@ -111,8 +117,11 @@ class PlayerWindow(QMainWindow):
         self._cur_index = 0
         self._switch_in_progress = None
         self._closing = False
-        self._early_error_retry = {}  # idx -> count
+        self._early_error_retry = {}
         self._repeat_enabled: bool = False
+
+        # НОВОЕ: флаг готовности движка
+        self._engine_ready = False
 
         # плейлист
         self.playlist_urls: list[str] = []
@@ -138,10 +147,12 @@ class PlayerWindow(QMainWindow):
         self.setCentralWidget(root)
         v = QVBoxLayout(root)
 
-        # video surface
+        # video surface - создаём но НЕ показываем сразу
         self.video_window = VideoWindow(on_user_close=self._on_video_window_user_close)
         self.video_window.hide()
-        QTimer.singleShot(0, lambda: self.engine.set_video_widget(self.video_window.win_id()))
+
+        # КРИТИЧНО: устанавливаем WID СИНХРОННО и ждём готовности
+        self._init_engine_wid()
 
         # URL / playlist row
         row_url = QHBoxLayout()
@@ -149,10 +160,8 @@ class PlayerWindow(QMainWindow):
         self.url.setPlaceholderText("URL / stream / path-to-playlist ...")
         btn_load = QPushButton("LOAD", root)
         btn_load.clicked.connect(self.on_load_clicked)
-
         btn_open = QPushButton("OPEN", root)
         btn_open.clicked.connect(self.on_open_file)
-
         row_url.addWidget(self.url, 1)
         row_url.addWidget(btn_load)
         row_url.addWidget(btn_open)
@@ -160,7 +169,6 @@ class PlayerWindow(QMainWindow):
 
         # controls row
         row_ctl = QHBoxLayout()
-
         self.btn_prev = QPushButton("PREV", root)
         self.btn_next = QPushButton("NEXT", root)
         self.btn_play = QPushButton("PLAY", root)
@@ -203,13 +211,11 @@ class PlayerWindow(QMainWindow):
         # progress
         row_prog = QHBoxLayout()
         self.lbl_time = QLabel("00:00 / 00:00", root)
-
         self.prog = ClickSlider(Qt.Horizontal, root)
         self.prog.setRange(0, 1000)
         self.prog.sliderPressed.connect(self._on_seek_press)
         self.prog.sliderReleased.connect(self._on_seek_release)
         self.prog.sliderMoved.connect(self._on_seek_move)
-
         row_prog.addWidget(self.lbl_time)
         row_prog.addWidget(self.prog, 1)
         v.addLayout(row_prog)
@@ -222,31 +228,62 @@ class PlayerWindow(QMainWindow):
         self.t = QTimer(self)
         self.t.setInterval(300)
         self.t.timeout.connect(self._tick)
-        QTimer.singleShot(100, self.t.start)
 
-        # применяем входные данные
-        if skip_data:
-            self._decode_skip_data(skip_data)
+        # размеры кнопок
+        for b in (self.btn_skip, self.btn_play, self.btn_prev, self.btn_stop,
+                  self.btn_next, self.btn_repeat, self.btn_playlist, self.btn_shot):
+            b.setFixedHeight(BTN_H)
+            b.setMinimumWidth(50)
+        self.vol.setFixedHeight(SLIDER_H)
+        self.prog.setFixedHeight(SLIDER_H)
+        self.lbl_time.setMinimumWidth(100)
 
-        if playlist:
-            self.url.setText(playlist)
-            self.load_playlist(playlist, self.title_id, skip_data=skip_data)
-        # else: пусть пользователь нажмёт Load
         self.playlist_widget.hide()
         self._seeking_until = 0.0
         self._switching_track = False
         self._last_switch_ts = 0.0
         self._last_switch_index = 0
 
-        for b in (self.btn_skip, self.btn_play, self.btn_prev, self.btn_stop,
-                  self.btn_next, self.btn_repeat, self.btn_playlist, self.btn_shot):
-            b.setFixedHeight(BTN_H)
-            b.setMinimumWidth(50)
+        # КРИТИЧНО: применяем входные данные ТОЛЬКО после инициализации движка
+        if playlist:
+            self.url.setText(playlist)
+            # Отложенная загрузка - даём UI время на инициализацию
+            QTimer.singleShot(150, lambda: self._deferred_playlist_load(playlist, title_id, skip_data))
 
-        self.vol.setFixedHeight(SLIDER_H)
-        self.prog.setFixedHeight(SLIDER_H)
+        # Запускаем UI таймер только после полной готовности
+        QTimer.singleShot(200, self.t.start)
 
-        self.lbl_time.setMinimumWidth(100)
+    def _init_engine_wid(self):
+        """
+        КРИТИЧЕСКАЯ ФУНКЦИЯ: устанавливает WID синхронно
+        Аналогия: подключаем проектор к плееру ДО нажатия Play
+        """
+        try:
+            # Форсируем обработку событий Qt чтобы окно точно создалось
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
+
+            win_id = self.video_window.win_id()
+            self.logger.info(f"Setting video widget WID: {win_id}")
+
+            self.engine.set_video_widget(win_id)
+            self._engine_ready = True
+            self.logger.info("Engine ready for playback")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize engine WID: {e}", exc_info=True)
+            self.on_error(f"Critical: Failed to initialize video output: {e}")
+            self._engine_ready = False
+
+    def _deferred_playlist_load(self, playlist: str, title_id: int | None, skip_data: str | None):
+        """Отложенная загрузка плейлиста после готовности движка"""
+        if not self._engine_ready:
+            self.logger.warning("Engine not ready, delaying playlist load")
+            QTimer.singleShot(200, lambda: self._deferred_playlist_load(playlist, title_id, skip_data))
+            return
+
+        self.logger.info(f"Loading playlist: {playlist}")
+        self.load_playlist(playlist, title_id, skip_data=skip_data)
 
     # -------------------------
     # helpers (из vlc_player.py)
@@ -386,10 +423,31 @@ class PlayerWindow(QMainWindow):
     def play_index(self, idx: int):
         if self._closing:
             return
+
+        # показать видео-окно при старте воспроизведения
+        if not self.video_window.isVisible():
+            self.video_window.show()
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
+
+        # если WID еще не ставили — ставим сейчас (после show)
+        if not self._engine_ready:
+            try:
+                win_id = self.video_window.win_id()
+                self.logger.info(f"Setting video widget WID (late): {win_id}")
+                self.engine.set_video_widget(win_id)
+                self._engine_ready = True
+            except Exception as e:
+                self.logger.error(f"Failed to init WID: {e}", exc_info=True)
+                self.on_error(f"Critical: Failed to initialize video output: {e}")
+                return
+
         if getattr(self, "_switch_in_progress", False):
             self.logger.warning("Switch already in progress, ignoring play_index(%s)", idx)
             return
+
         if not (0 <= idx < len(self.playlist_urls)):
+            self.logger.warning(f"Invalid playlist index: {idx}")
             return
 
         self._switch_in_progress = True
@@ -413,15 +471,42 @@ class PlayerWindow(QMainWindow):
         except Exception:
             pass
 
-        QTimer.singleShot(0, lambda u=url: self._do_load(u))
+        # Небольшая задержка для стабильности
+        QTimer.singleShot(300, lambda u=url: self._do_load(u))
 
     def _do_load(self, url: str):
+        """Загрузка и запуск воспроизведения"""
         if self._closing:
             return
+
+        if not self._engine_ready:
+            self.logger.error("Cannot load - engine not ready")
+            self._clear_switch_flag()
+            return
+
         try:
+            self.logger.info(f"Loading URL: {url}")
             self.engine.load(url)
+
+            # Даём движку время на загрузку метаданных
+            QTimer.singleShot(300, lambda: self._start_playback())
+
+        except Exception as e:
+            self.logger.error(f"Load failed: {e}", exc_info=True)
+            self.on_error(f"Failed to load: {e}")
+            self._clear_switch_flag()
+
+    def _start_playback(self):
+        """Запуск воспроизведения после загрузки"""
+        if self._closing:
+            return
+
+        try:
             self.engine.play()
             self._start_watchdog()
+        except Exception as e:
+            self.logger.error(f"Playback start failed: {e}", exc_info=True)
+            self.on_error(f"Failed to start playback: {e}")
         finally:
             QTimer.singleShot(400, self._clear_switch_flag)
 

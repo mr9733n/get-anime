@@ -544,6 +544,7 @@ class UIGenerator:
                     self.logger.warning(
                         f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'"
                     )
+
             watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids)
 
             if episode_links:
@@ -556,9 +557,16 @@ class UIGenerator:
                     watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
+
+                    link_lower = (link or "").lower()
+                    if ".m3u8" in link_lower:
+                        action = "play_m3u8"
+                    else:
+                        action = "open_web"
+
                     episodes_html += (
                         f'<p class="episodes">{watched_html}{blank_space * 2}'
-                        f'<a href="play_m3u8/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]" '
+                        f'<a href="{action}/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]" '
                         f'target="_blank" title="Watch episode">{episode_name}</a></p>'
                     )
                     self.logger.debug(f"play_m3u8/{title.title_id}/[{episode_skip_data_encoded}]/[{link_encoded}]")
@@ -575,9 +583,10 @@ class UIGenerator:
 
             if self.app.discovered_links:
                 self.app.playlists[title.title_id] = {
-                    'links': self.app.discovered_links,
+                    'links': list(self.app.discovered_links),
                     'sanitized_title': sanitized_name
                 }
+
             self.logger.debug(f"discovered_links: {len(self.app.discovered_links)}")
             self.logger.debug(f"sanitized_name: {sanitized_name}")
             return episodes_html
@@ -587,25 +596,37 @@ class UIGenerator:
             return ""
 
     def generate_play_all_html(self, title, skip_data_encoded):
-        """Generates M3U Playlist link with encoded skip data."""
+        """Generates Playlist link -
+        M3U with encoded skip data,
+        URL as is.
+        """
         try:
             self.app.stream_video_url = title.host_for_player
-            playlist = self.app.playlists.get(title.title_id)
-            if playlist:
-                sanitized_title = playlist['sanitized_title']
-                discovered_links = playlist['links']
-                if discovered_links:
-                    filename = self.app.playlist_manager.save_playlist([sanitized_title], discovered_links,
-                                                                       self.app.stream_video_url)
-                    self.logger.debug(
-                        f"Playlist for title {sanitized_title} was sent for saving with filename: {filename}.")
-                    return f'<a href="play_all/{title.title_id}/{filename}/[{skip_data_encoded}]" title="Watch all episodes">Play all</a>'
-                else:
-                    self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-                    return "No playlist available"
-            else:
+            playlist = self.app.ensure_playlist_bundle(title.title_id)
+            if not playlist:
                 return "No playlist available"
+
+            links = []
+
+            streams_file = playlist.get("streams_file")
+            web_file = playlist.get("web_file")
+            streams_count = int(playlist.get("streams_count") or 0)
+            web_count = int(playlist.get("web_count") or 0)
+
+            if streams_file and streams_count > 0:
+                links.append(
+                    f'<a href="play_all/{title.title_id}/{streams_file}/[{skip_data_encoded}]" '
+                    f'title="Watch all episodes">Play all</a>'
+                )
+
+            if web_file and web_count > 0:
+                links.append(
+                    f'<a href="play_all/{title.title_id}/{web_file}/[{skip_data_encoded}]" '
+                    f'title="Open player pages">Open web</a>'
+                )
+
+            return " / ".join(links) if links else "No playlist available"
+
         except Exception as e:
-            error_message = f"Error in generate_play_all_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error in generate_play_all_html: {str(e)}")
             return ""

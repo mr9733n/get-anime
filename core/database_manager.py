@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from core.save import SaveManager
 from core.process import ProcessManager
 from core.get import GetManager
+from core.delete import DeleteManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History, Title
 from app.qt.app_state_manager import AppStateManager
@@ -25,6 +26,7 @@ class DatabaseManager:
         self.save_manager = SaveManager(self.engine)
         self.process_manager = ProcessManager(self.save_manager)
         self.get_manager = GetManager(self.engine)
+        self.delete_manager = DeleteManager(self.engine)
         self.state_manager = StateManager(self.engine)
 
     def initialize_tables(self):
@@ -268,64 +270,5 @@ class DatabaseManager:
         return self.get_manager.get_player_host_by_title_id(title_id)
 
     def delete_titles(self, title_ids_input) -> dict:
-        """
-        Удаляет один или несколько тайтлов.
-        Принимает:
-            - строку вида "123, 456,789"
-            - список строк/чисел ["123", "456"]
-            - одно число 123
-
-        Возвращает:
-            {
-                "deleted": [список удалённых title_id],
-                "not_found": [список id, которых нет в БД],
-            }
-        """
-        if isinstance(title_ids_input, str):
-            parts = title_ids_input.split(",")
-            title_ids = [int(p.strip()) for p in parts if p.strip().isdigit()]
-        elif isinstance(title_ids_input, (list, tuple)):
-            title_ids = []
-            for x in title_ids_input:
-                if isinstance(x, int):
-                    title_ids.append(x)
-                elif isinstance(x, str) and x.strip().isdigit():
-                    title_ids.append(int(x))
-        elif isinstance(title_ids_input, int):
-            title_ids = [title_ids_input]
-        else:
-            raise ValueError(f"Unsupported type for title_ids_input: {type(title_ids_input)}")
-
-        if not title_ids:
-            return {"deleted": [], "not_found": []}
-
-        deleted = []
-        not_found = []
-
-        with self.Session as session:
-            titles = (
-                session.query(Title)
-                .filter(Title.title_id.in_(title_ids))
-                .all()
-            )
-
-            found_ids = {t.title_id for t in titles}
-            not_found = [tid for tid in title_ids if tid not in found_ids]
-
-            try:
-                for t in titles:
-                    session.delete(t)
-
-                session.commit()
-                deleted = list(found_ids)
-
-            except Exception as e:
-                session.rollback()
-                self.logger.error(f"Error deleting titles {title_ids}: {e}")
-                raise
-
-        return {
-            "deleted": deleted,
-            "not_found": not_found,
-        }
+        return self.delete_manager.delete_titles(title_ids_input)
 

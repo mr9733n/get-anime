@@ -37,9 +37,7 @@ from app.mpv.timing_config import (
     VIDEO_WIN_USER_CLOSE,
     TimingConfig, FORCE_RELOAD_CUR, NEXT_MEDIA, SWITCHING_TRACK, ZERO_DELAY
 )
-from utils.url_resolver import resolve_redirects, TTLCache
-from utils.net_client import NetClient
-from utils.config_manager import NetworkConfig, ConfigManager
+
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -107,6 +105,7 @@ class PlayerWindow(QMainWindow):
             title_id: int | None = None,
             skip_data: str | None = None,
             proxy: str | None = None,
+            resolver = None,
             autoplay: bool = True,
             template: str | None = None,
     ):
@@ -116,12 +115,7 @@ class PlayerWindow(QMainWindow):
 
         TimingConfig.info()
         # url resolver
-        self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
-
-        """Loads the configuration settings needed by the application."""
-        network_config = self.config_manager.network
-        self.net = NetClient(network_config)
-        self._resolver_cache = TTLCache(max_items=2048)
+        self.resolver = resolver
 
         self.apply_template(template)
         self.title_id: int | None = title_id
@@ -465,8 +459,8 @@ class PlayerWindow(QMainWindow):
         return urlunparse((u.scheme, new_host, u.path, u.params, u.query, u.fragment))
 
     def _maybe_rewrite_for_proxy(self, url: str) -> str:
-        if not self.proxy:
-            return url
+        # ФОЛБЕК: переписываем только libria.fun -> cache-rfn.libria.fun
+        # Использовать только при ошибке/ретрае, НЕ как обычный путь.
         return self.rewrite_libria_host(url, "cache-rfn.libria.fun")
 
     def _do_load(self, url: str):
@@ -480,26 +474,11 @@ class PlayerWindow(QMainWindow):
             return
 
         try:
-            if self.proxy:
-                client = self.net.get_httpx_client()
-
-                rr = resolve_redirects(
-                    url,
-                    client=client,
-                    timeout_s=10,
-                    max_hops=5,
-                    cache=self._resolver_cache,
-                )
-
+            if self.proxy and self.resolver:
+                rr = self.resolver.resolve(url)
                 for hop in rr.chain:
-                    self.logger.info(
-                        f"[resolve] {hop.status_code} {hop.url} -> {hop.location or '-'}"
-                    )
-
-                self.logger.info(
-                    f"[resolve] final_url={rr.final_url} host={rr.recommended_host}"
-                )
-
+                    self.logger.info(f"[resolve] {hop.status_code} {hop.url} -> {hop.location or '-'}")
+                self.logger.info(f"[resolve] final_url={rr.final_url} host={rr.recommended_host}")
                 url = rr.final_url
 
             self.logger.info(f"Loading URL: {url}")
@@ -685,15 +664,33 @@ class PlayerWindow(QMainWindow):
             cnt = self._early_error_retry.get(idx, 0)
             if cnt < 1:
                 self._early_error_retry[idx] = cnt + 1
-                url = self.playlist_urls[idx]
-                url2 = self._maybe_rewrite_for_proxy(url)
-                self.logger.warning(f"Retry with rewritten URL: {url2}")
-                self.engine.load(url2)
-                self.engine.play()
-                self.logger.warning(f"Early end-file error on idx={idx}, played_ms={played_ms}: retry current")
-                self._force_reload_current(resume_ms=0)
-                QTimer.singleShot(SWITCHING_TRACK, lambda: setattr(self, "_switching_track", False))
-                return
+
+                orig = self.playlist_urls[idx]
+                url2 = self._maybe_rewrite_for_proxy(orig)
+
+                # Ретрай делаем только если:
+                # - есть proxy (иначе смысла в resolve-layer почти нет)
+                # - и реально изменился URL (rewrite применился)
+                if self.proxy and url2 != orig:
+                    try:
+                        if self.resolver:
+                            rr2 = self.resolver.resolve(url2, timeout_s=10, max_hops=5)
+                            for hop in rr2.chain:
+                                self.logger.info(
+                                    f"[resolve:retry] {hop.status_code} {hop.url} -> {hop.location or '-'}")
+                            self.logger.warning(f"[retry] rewritten+resolved: {orig} -> {rr2.final_url}")
+                            url2 = rr2.final_url
+                        else:
+                            self.logger.warning(f"[retry] rewritten (no resolver): {orig} -> {url2}")
+
+                        self.engine.load(url2)
+                        self.engine.play()
+                        QTimer.singleShot(SWITCHING_TRACK, lambda: setattr(self, "_switching_track", False))
+                        return
+                    except Exception as e:
+                        self.logger.error(f"Retry failed: {e}", exc_info=True)
+                        # падаем дальше в обычный flow
+
         self.logger.info("EOF received, moving to next media")
         QTimer.singleShot(NEXT_MEDIA, self._next_media_safe)
 

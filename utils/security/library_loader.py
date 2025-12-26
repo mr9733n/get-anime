@@ -49,13 +49,3 @@ def load_library(lib_dir, lib_name):
     except OSError as e:
         raise RuntimeError(f"Error loading {lib_name} from {lib_path}: {e}")
 
-def calc_bundle_key(title_id: int, links: list[str], host: str | None) -> str:
-    try:
-        host = (host or "").strip()
-        # важно: порядок ссылок влияет на плейлист -> ключ должен учитывать порядок
-        payload = host + "\n" + "\n".join([str(x) for x in (links or [])])
-        key = hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()
-        logger.info(f"Created key: {key} for [tile_id: {title_id}] playlist.")
-        return key
-    except OSError as e:
-        raise RuntimeError(f"Error creating key for {title_id}: {e}")

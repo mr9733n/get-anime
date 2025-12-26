@@ -12,7 +12,7 @@ from typing import Callable, Optional
 from urllib.parse import urlparse
 
 from app.mpv.base_engine import PlaybackState
-from utils.library_loader import verify_library, load_library
+from utils.security.library_loader import verify_library, load_library
 
 LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
 LIB_NAME = "libmpv-2.dll"

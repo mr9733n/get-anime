@@ -10,7 +10,15 @@ hiddenimports = (
     collect_submodules('app.qt.ui_generator') +
     collect_submodules('app.qt.ui_s_generator') +
     collect_submodules('static.qt.layout_metadata') +
-    collect_submodules('app.qt.vlc_player') +
+
+    collect_submodules('app.qt_browser.mini_browser') + # TODO: check maybe don't needed
+    collect_submodules('app.vlc.vlc_player') + # TODO: check maybe don't needed
+    collect_submodules('app.mpv.base_engine') +
+    collect_submodules('app.mpv.main') + # TODO: check maybe don't needed
+    collect_submodules('app.mpv.playback_request') +
+    collect_submodules('app.mpv.player_window') +
+    collect_submodules('app.mpv.runner') +
+    collect_submodules('app.mpv.timing_config') +
 
     collect_submodules('app._animedia.animedia_client') +
     collect_submodules('app._animedia.animedia_utils') +
@@ -20,6 +28,7 @@ hiddenimports = (
     collect_submodules('core.database_manager') +
     collect_submodules('core.get') +
     collect_submodules('core.save') +
+    collect_submodules('core.delete') +
     collect_submodules('core.process') +
     collect_submodules('core.tables') +
     collect_submodules('core.utils') +
@@ -40,13 +49,24 @@ hiddenimports = (
     collect_submodules('providers.aniliberty.v1.transport') +
     collect_submodules('providers.aniliberty.v1.xml_parser') +
 
-    collect_submodules('utils.config_manager') +
-    collect_submodules('utils.library_loader') +
-    collect_submodules('utils.logging_handlers') +
-    collect_submodules('utils.playlist_manager') +
-    collect_submodules('utils.poster_manager') +
-    collect_submodules('utils.runtime_manager') +
-    collect_submodules('utils.torrent_manager')
+    collect_submodules('utils.config.config_manager') +
+    collect_submodules('utils.security.library_loader') +
+    collect_submodules('utils.logging.logging_handlers') +
+    collect_submodules('utils.playlists.playlist_manager') +
+    collect_submodules('utils.playlists.playlist_key') +
+    collect_submodules('utils.downloads.poster_manager') +
+    collect_submodules('utils.downloads.torrent_manager') +
+    collect_submodules('utils.runtime.runtime_manager') +
+    collect_submodules('utils.integrations.open_router') +
+    collect_submodules('utils.net.net_client') +
+    collect_submodules('utils.net.url_resolve_service') +
+    collect_submodules('utils.net.url_resolver') +
+    collect_submodules('utils.net.url_resolver_settings')
+
+
+
+
+
 )
 
 datas = collect_data_files('app') + collect_data_files('core') + collect_data_files('utils')

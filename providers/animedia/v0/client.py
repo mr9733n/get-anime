@@ -145,7 +145,6 @@ class AnimediaClient:
             if key in self._file_cache:
                 return self._file_cache[key]
 
-        # Если значение ещё не в кеше и есть фабрика – получаем его
         if value_factory is None:
             return None
 
@@ -154,7 +153,6 @@ class AnimediaClient:
             return None
 
         async with self._cache_lock:
-            # ещё раз проверяем, чтобы не перезаписать, если кто‑то успел записать
             if key not in self._file_cache:
                 self._file_cache[key] = new_value
         return new_value
@@ -217,7 +215,6 @@ class AnimediaClient:
                         backoff *= 2
             return None
 
-        # <-- единственная точка доступа к кешу
         return await self._cache_get_or_set(vlnk_url, _download)
 
     async def collect_episode_files(
@@ -253,41 +250,35 @@ class AnimediaClient:
                     f"Processing batch {i // BATCH_SIZE + 1} ({len(batch)} items)"
                 )
 
-                if any(v.startswith("https://aser.pro") for v in batch):
-                    # Скачиваем только .m3u8‑файлы, остальные оставляем как есть
+                batch = [v for v in batch if not self._is_image_placeholder(v)]
+                m3u8_batch = [v for v in batch if v.startswith("https://aser.pro")]
+                other_batch = [v for v in batch if not v.startswith("https://aser.pro")]
+
+                if m3u8_batch:
                     batch_results = await asyncio.gather(
-                        *(limited_fetch(v) for v in batch), return_exceptions=False
+                        *(limited_fetch(v) for v in m3u8_batch), return_exceptions=False
                     )
-                    results.extend(
-                        safe_str(url) for url in batch_results if url
-                    )
-                else:
-                    # Обычные ссылки – просто кэшируем их «как есть»
-                    for v in batch:
-                        # _cache_get_or_set без фабрики просто сохраняет значение,
-                        # если его ещё нет.
-                        cached = await self._cache_get_or_set(v, lambda: asyncio.sleep(0, result=v))
-                        # `cached` всегда будет строкой (или None)
-                        if cached:
-                            results.append(safe_str(cached))
+                    results.extend(safe_str(url) for url in batch_results if url)
+
+                for v in other_batch:
+                    cached = await self._cache_get_or_set(v, lambda: asyncio.sleep(0, result=v))
+                    if cached:
+                        results.append(safe_str(cached))
 
                 await asyncio.sleep(INTER_BATCH_DELAY)
 
             self.logger.info(f"collect_episode_files: {len(results)} files collected")
 
-            # Сохраняем кеш, если передан оригинальный id
             if original_id:
                 status = self.cache.save_vlink(original_id, self._file_cache)
                 if status is AniMediaCacheStatus.SAVED:
                     self.logger.debug("vlink cache for id %s saved", original_id)
 
             return results
-
         except Exception as exc:  # pragma: no cover
             self.logger.error(f"Error collect_episode_files: {exc}")
             return []
         finally:
-            # гарантируем очистку кеша независимо от результата
             self._file_cache = {}
 
     #-- New titles and announces

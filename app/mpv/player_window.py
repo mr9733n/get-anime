@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import json
 import math
@@ -12,17 +13,33 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QSlider, QLineEdit, QLabel, QFrame,
-    QListWidget, QListWidgetItem, QFileDialog, QMessageBox
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QApplication
 )
 
 from app.mpv.base_engine import PlayerEngine
-
+from app.mpv.timing_config import (
+    WID_INIT_DELAY,
+    ENGINE_READY_CHECK,
+    PLAYLIST_LOAD_DELAY,
+    UI_TIMER_START,
+    TRACK_SWITCH_DELAY,
+    METADATA_LOAD_WAIT,
+    PLAYBACK_START_WAIT,
+    WATCHDOG_PAUSE,
+    SEEKING_GUARD,
+    VIDEO_WIN_USER_CLOSE,
+    TimingConfig, FORCE_RELOAD_CUR, NEXT_MEDIA, SWITCHING_TRACK, ZERO_DELAY
+)
+from utils.url_resolver import resolve_redirects, TTLCache
+from utils.net_client import NetClient
+from utils.config_manager import NetworkConfig, ConfigManager
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -31,6 +48,7 @@ BTN_H = 25
 SLIDER_H = 16
 EPS = 0.25
 TAIL_GUARD = 3.0
+
 
 def fmt_ms(ms: int) -> str:
     ms = max(0, ms)
@@ -64,16 +82,12 @@ class VideoWindow(QMainWindow):
         self.setWindowTitle("Video")
 
         self.video = QFrame(self)
-
-        # ВАЖНО для Windows/mpv: гарантировать нативный HWND
         self.video.setAttribute(Qt.WA_NativeWindow, True)
         self.video.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
-
         self.video.setStyleSheet("background: black;")
         self.setCentralWidget(self.video)
 
     def win_id(self) -> int:
-        # winId будет валиден после show()/processEvents()
         return int(self.video.winId())
 
     def closeEvent(self, event):
@@ -97,12 +111,19 @@ class PlayerWindow(QMainWindow):
             template: str | None = None,
     ):
         super().__init__()
-
         self.engine = engine
         self.logger = logging.getLogger(__name__)
-        self.apply_template(template)
 
-        # входные параметры
+        TimingConfig.info()
+        # url resolver
+        self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
+
+        """Loads the configuration settings needed by the application."""
+        network_config = self.config_manager.network
+        self.net = NetClient(network_config)
+        self._resolver_cache = TTLCache(max_items=2048)
+
+        self.apply_template(template)
         self.title_id: int | None = title_id
         self.skip_data_cache: dict | None = None
         self.skip_opening = None
@@ -119,8 +140,6 @@ class PlayerWindow(QMainWindow):
         self._closing = False
         self._early_error_retry = {}
         self._repeat_enabled: bool = False
-
-        # НОВОЕ: флаг готовности движка
         self._engine_ready = False
 
         # плейлист
@@ -147,14 +166,12 @@ class PlayerWindow(QMainWindow):
         self.setCentralWidget(root)
         v = QVBoxLayout(root)
 
-        # video surface - создаём но НЕ показываем сразу
         self.video_window = VideoWindow(on_user_close=self._on_video_window_user_close)
         self.video_window.hide()
 
-        # КРИТИЧНО: устанавливаем WID СИНХРОННО и ждём готовности
-        self._init_engine_wid()
+        self.logger.info(f"Scheduling WID init with delay: {WID_INIT_DELAY}ms")
+        QTimer.singleShot(WID_INIT_DELAY, self._init_engine_wid)
 
-        # URL / playlist row
         row_url = QHBoxLayout()
         self.url = QLineEdit(root)
         self.url.setPlaceholderText("URL / stream / path-to-playlist ...")
@@ -167,7 +184,6 @@ class PlayerWindow(QMainWindow):
         row_url.addWidget(btn_open)
         v.addLayout(row_url)
 
-        # controls row
         row_ctl = QHBoxLayout()
         self.btn_prev = QPushButton("PREV", root)
         self.btn_next = QPushButton("NEXT", root)
@@ -203,12 +219,10 @@ class PlayerWindow(QMainWindow):
         row_ctl.addWidget(self.vol, 1)
         v.addLayout(row_ctl)
 
-        # playlist widget
         self.playlist_widget = QListWidget(root)
         self.playlist_widget.itemDoubleClicked.connect(self.on_playlist_double_click)
         v.addWidget(self.playlist_widget, stretch=0)
 
-        # progress
         row_prog = QHBoxLayout()
         self.lbl_time = QLabel("00:00 / 00:00", root)
         self.prog = ClickSlider(Qt.Horizontal, root)
@@ -220,16 +234,13 @@ class PlayerWindow(QMainWindow):
         row_prog.addWidget(self.prog, 1)
         v.addLayout(row_prog)
 
-        # events
         self.engine.on_eof = self.on_eof
         self.engine.on_error = self.on_error
 
-        # ui timer
         self.t = QTimer(self)
         self.t.setInterval(300)
         self.t.timeout.connect(self._tick)
 
-        # размеры кнопок
         for b in (self.btn_skip, self.btn_play, self.btn_prev, self.btn_stop,
                   self.btn_next, self.btn_repeat, self.btn_playlist, self.btn_shot):
             b.setFixedHeight(BTN_H)
@@ -243,51 +254,49 @@ class PlayerWindow(QMainWindow):
         self._switching_track = False
         self._last_switch_ts = 0.0
         self._last_switch_index = 0
-
-        # КРИТИЧНО: применяем входные данные ТОЛЬКО после инициализации движка
         if playlist:
             self.url.setText(playlist)
-            # Отложенная загрузка - даём UI время на инициализацию
-            QTimer.singleShot(150, lambda: self._deferred_playlist_load(playlist, title_id, skip_data))
+            self.logger.info(f"Scheduling playlist load with delay: {PLAYLIST_LOAD_DELAY}ms")
+            QTimer.singleShot(
+                PLAYLIST_LOAD_DELAY,
+                lambda: self._deferred_playlist_load(playlist, title_id, skip_data)
+            )
 
-        # Запускаем UI таймер только после полной готовности
-        QTimer.singleShot(200, self.t.start)
+        self.logger.info(f"Scheduling UI timer start with delay: {UI_TIMER_START}ms")
+        QTimer.singleShot(UI_TIMER_START, self.t.start)
 
     def _init_engine_wid(self):
-        """
-        КРИТИЧЕСКАЯ ФУНКЦИЯ: устанавливает WID синхронно
-        Аналогия: подключаем проектор к плееру ДО нажатия Play
-        """
+        """КРИТИЧЕСКАЯ ФУНКЦИЯ: устанавливает WID с задержкой"""
         try:
-            # Форсируем обработку событий Qt чтобы окно точно создалось
-            from PyQt5.QtWidgets import QApplication
             QApplication.processEvents()
-
             win_id = self.video_window.win_id()
             self.logger.info(f"Setting video widget WID: {win_id}")
-
             self.engine.set_video_widget(win_id)
-            self._engine_ready = True
-            self.logger.info("Engine ready for playback")
+            QTimer.singleShot(ENGINE_READY_CHECK, self._mark_engine_ready)
 
         except Exception as e:
             self.logger.error(f"Failed to initialize engine WID: {e}", exc_info=True)
             self.on_error(f"Critical: Failed to initialize video output: {e}")
             self._engine_ready = False
 
+    def _mark_engine_ready(self):
+        """Отмечает движок как готовый после проверки"""
+        self._engine_ready = True
+        self.logger.info("Engine marked as ready for playback")
+
     def _deferred_playlist_load(self, playlist: str, title_id: int | None, skip_data: str | None):
-        """Отложенная загрузка плейлиста после готовности движка"""
+        """Отложенная загрузка с проверкой готовности"""
         if not self._engine_ready:
-            self.logger.warning("Engine not ready, delaying playlist load")
-            QTimer.singleShot(200, lambda: self._deferred_playlist_load(playlist, title_id, skip_data))
+            self.logger.warning(f"Engine not ready, retrying in {ENGINE_READY_CHECK}ms")
+            QTimer.singleShot(
+                ENGINE_READY_CHECK,
+                lambda: self._deferred_playlist_load(playlist, title_id, skip_data)
+            )
             return
 
         self.logger.info(f"Loading playlist: {playlist}")
         self.load_playlist(playlist, title_id, skip_data=skip_data)
 
-    # -------------------------
-    # helpers (из vlc_player.py)
-    # -------------------------
     def is_url(self, path: str) -> bool:
         return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path))
 
@@ -299,22 +308,13 @@ class PlayerWindow(QMainWindow):
             return int(digits) if digits else 0
 
     def extract_from_link(self, url: str) -> Optional[Tuple[int, int]]:
-        """
-        Взято по смыслу из твоего vlc_player.extract_from_link()
-        Возвращает (episode_number, episode_quality) или None
-        """
         try:
-            # index.m3u8 формат
-            # .../<episode>/<quality>/.../index.m3u8
             m = re.search(r"/(\d+)/(\d+)/(?:[^/]+/)*index\.m3u8", url)
             if m:
                 return self._clean_int(m.group(1)), self._clean_int(m.group(2))
-
-            # generic: .../<episode>/<quality>/...
             parts = [p for p in url.split("/") if p.isdigit()]
             if len(parts) >= 2:
                 return self._clean_int(parts[-2]), self._clean_int(parts[-1])
-
             return None
         except Exception:
             return None
@@ -328,12 +328,10 @@ class PlayerWindow(QMainWindow):
 
     def load_playlist(self, path: str, title_id: int | None, skip_data: str | None = None) -> None:
         self.title_id = title_id
-
         if skip_data is None:
             skip_data = self._skip_data_b64
         else:
-            self._skip_data_b64 = skip_data  # обновили “источник истины”
-
+            self._skip_data_b64 = skip_data
         if skip_data:
             self._decode_skip_data(skip_data)
         else:
@@ -352,7 +350,6 @@ class PlayerWindow(QMainWindow):
             self.play_index(0)
 
     def load_playlist_from_url(self, url: str) -> None:
-        # Одиночная ссылка — как один эпизод
         if not self.is_url(url):
             self.on_error(f"Expected full URL, got: {url}")
             return
@@ -364,14 +361,11 @@ class PlayerWindow(QMainWindow):
         if not p.exists():
             self.on_error(f"Playlist file not found: {file_path}")
             return
-
         lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
         for line in lines:
             link = line.strip()
-            if not link:
+            if not link or link.startswith("#"):
                 continue
-            if link.startswith("#"):
-                continue  # #EXTM3U, #EXTINF, etc.
             if not self.is_url(link):
                 self.on_error(f"Expected full URL, got: {link}")
                 continue
@@ -382,25 +376,17 @@ class PlayerWindow(QMainWindow):
         src = src.strip()
         if not src:
             return
-
-        # URL — оставляем как было (одиночная ссылка)
         if self.is_url(src):
-            self.load_playlist(src, title_id, skip_data=None)  # оно само очистит urls/widget/index
+            self.load_playlist(src, title_id, skip_data=None)
             return
-
         p = Path(src)
         if not p.exists():
             self.on_error(f"File not found: {src}")
             return
-
         ext = p.suffix.lower()
-
-        # плейлист
         if ext in (".m3u", ".m3u8"):
             self.load_playlist(src, title_id, skip_data=None)
             return
-
-        # одиночный медиафайл (видео/аудио)
         self.playlist_urls = [str(p)]
         self.playlist_widget.clear()
         self.playlist_widget.addItem(str(p))
@@ -408,14 +394,14 @@ class PlayerWindow(QMainWindow):
         if self.autoplay:
             self.play_index(0)
 
-    # -------------------------
-    # playback controls
-    # -------------------------
     def on_load_clicked(self):
         self.load_source(self.url.text(), self.title_id)
 
     def on_open_file(self):
-        fn, _ = QFileDialog.getOpenFileName(self, "Open playlist file", "playlists", "Media / Playlists (*.m3u *.m3u8 *.mp4 *.mkv *.avi *.mov *.webm *.mp3 *.m4a *.flac *.wav)")
+        fn, _ = QFileDialog.getOpenFileName(
+            self, "Open playlist file", "playlists",
+            "Media / Playlists (*.m3u *.m3u8 *.mp4 *.mkv *.avi *.mov *.webm *.mp3 *.m4a *.flac *.wav)"
+        )
         if fn:
             self.url.setText(fn)
             self.load_source(fn, self.title_id)
@@ -424,13 +410,12 @@ class PlayerWindow(QMainWindow):
         if self._closing:
             return
 
-        # показать видео-окно при старте воспроизведения
+        # Показать окно ПЕРЕД проверкой WID
         if not self.video_window.isVisible():
             self.video_window.show()
-            from PyQt5.QtWidgets import QApplication
             QApplication.processEvents()
 
-        # если WID еще не ставили — ставим сейчас (после show)
+        # Проверка/установка WID если нужно
         if not self._engine_ready:
             try:
                 win_id = self.video_window.win_id()
@@ -461,21 +446,31 @@ class PlayerWindow(QMainWindow):
 
         url = self.playlist_urls[idx]
 
-        # показать видео-окно при старте воспроизведения
-        if not self.video_window.isVisible():
-            self.video_window.show()
-
         self._set_controls_enabled(False)
         try:
             self.t.stop()
         except Exception:
             pass
 
-        # Небольшая задержка для стабильности
-        QTimer.singleShot(300, lambda u=url: self._do_load(u))
+        self.logger.info(f"Scheduling track load with delay: {TRACK_SWITCH_DELAY}ms")
+        QTimer.singleShot(TRACK_SWITCH_DELAY, lambda u=url: self._do_load(u))
+
+    @staticmethod
+    def rewrite_libria_host(url: str, new_host: str) -> str:
+        u = urlparse(url)
+        if u.scheme not in ("http", "https"):
+            return url
+        if not u.netloc.endswith("libria.fun"):
+            return url
+        return urlunparse((u.scheme, new_host, u.path, u.params, u.query, u.fragment))
+
+    def _maybe_rewrite_for_proxy(self, url: str) -> str:
+        if not self.proxy:
+            return url
+        return self.rewrite_libria_host(url, "cache-rfn.libria.fun")
 
     def _do_load(self, url: str):
-        """Загрузка и запуск воспроизведения"""
+        """Загрузка с задержкой перед воспроизведением"""
         if self._closing:
             return
 
@@ -485,11 +480,33 @@ class PlayerWindow(QMainWindow):
             return
 
         try:
+            if self.proxy:
+                client = self.net.get_httpx_client()
+
+                rr = resolve_redirects(
+                    url,
+                    client=client,
+                    timeout_s=10,
+                    max_hops=5,
+                    cache=self._resolver_cache,
+                )
+
+                for hop in rr.chain:
+                    self.logger.info(
+                        f"[resolve] {hop.status_code} {hop.url} -> {hop.location or '-'}"
+                    )
+
+                self.logger.info(
+                    f"[resolve] final_url={rr.final_url} host={rr.recommended_host}"
+                )
+
+                url = rr.final_url
+
             self.logger.info(f"Loading URL: {url}")
             self.engine.load(url)
 
-            # Даём движку время на загрузку метаданных
-            QTimer.singleShot(300, lambda: self._start_playback())
+            self.logger.info(f"Waiting for metadata: {METADATA_LOAD_WAIT}ms")
+            QTimer.singleShot(METADATA_LOAD_WAIT, lambda: self._start_playback())
 
         except Exception as e:
             self.logger.error(f"Load failed: {e}", exc_info=True)
@@ -497,7 +514,7 @@ class PlayerWindow(QMainWindow):
             self._clear_switch_flag()
 
     def _start_playback(self):
-        """Запуск воспроизведения после загрузки"""
+        """Запуск воспроизведения с задержкой на очистку флага"""
         if self._closing:
             return
 
@@ -508,7 +525,9 @@ class PlayerWindow(QMainWindow):
             self.logger.error(f"Playback start failed: {e}", exc_info=True)
             self.on_error(f"Failed to start playback: {e}")
         finally:
-            QTimer.singleShot(400, self._clear_switch_flag)
+
+            self.logger.info(f"Clearing switch flag after: {PLAYBACK_START_WAIT}ms")
+            QTimer.singleShot(PLAYBACK_START_WAIT, self._clear_switch_flag)
 
     def _clear_switch_flag(self):
         if self._closing:
@@ -521,13 +540,39 @@ class PlayerWindow(QMainWindow):
         except Exception:
             pass
 
+    def _on_seek_release(self):
+        val = self.prog.value()
+        self._dragging = False
+
+        if not self.engine.is_seekable():
+            return
+        ok = self.engine.seek_ratio(val / 1000.0)
+
+        self._mark_seeking(SEEKING_GUARD if not ok else SEEKING_GUARD // 2)
+        self._after_seek_reset_watchdog()
+        self._pause_watchdog_temporarily(WATCHDOG_PAUSE)
+
+    def _pause_watchdog_temporarily(self, ms=None):
+        """Пауза watchdog с конфигурируемым временем"""
+        if ms is None:
+            ms = WATCHDOG_PAUSE
+        if self._wd_timer.isActive():
+            self._wd_timer.stop()
+            QTimer.singleShot(ms, self._start_watchdog)
+
+    def _mark_seeking(self, ms=None):
+        """Маркер seeking с конфигурируемым временем"""
+        if ms is None:
+            ms = SEEKING_GUARD
+        self._seeking_until = time.time() + (ms / 1000.0)
+
     def on_playlist_double_click(self, item: QListWidgetItem):
         row = self.playlist_widget.row(item)
         self.playlist_widget.setCurrentRow(row)
         self.play_index(row)
 
     def next_media(self):
-        self.logger.info(f"NEXT: cur={self.playlist_index} -> {self.playlist_index+1} len={len(self.playlist_urls)}")
+        self.logger.info(f"NEXT: cur={self.playlist_index} -> {self.playlist_index + 1} len={len(self.playlist_urls)}")
         if not self.playlist_urls:
             return
         nxt = self.playlist_index + 1
@@ -569,27 +614,18 @@ class PlayerWindow(QMainWindow):
                   self.prog, self.vol, self.url):
             w.setEnabled(enabled)
 
-    # -------------------------
-    # repeat
-    # -------------------------
     def toggle_repeat(self):
         self._repeat_enabled = not self._repeat_enabled
         if self._repeat_enabled:
             self.btn_repeat.setObjectName("ToggleOn")
         else:
             self.btn_repeat.setObjectName("")
-
-        # пересчитать стиль для кнопки (иначе Qt не всегда обновляет)
         self.btn_repeat.style().unpolish(self.btn_repeat)
         self.btn_repeat.style().polish(self.btn_repeat)
         self.btn_repeat.update()
 
-    # -------------------------
-    # UI update
-    # -------------------------
     def update_playlist_highlight(self):
         dark = bool(self._night)
-
         for i in range(self.playlist_widget.count()):
             item = self.playlist_widget.item(i)
             if i == self.playlist_index:
@@ -600,25 +636,18 @@ class PlayerWindow(QMainWindow):
     def _tick(self):
         if not self.isVisible():
             return
-
         st = self.engine.get_state()
-
         if hasattr(self.engine, "get_video_size"):
             sz = self.engine.get_video_size()
             if sz:
                 w, h = sz
-                # ограничим максимумом, чтобы не улетало на 4K
                 w = min(w, 1920)
                 h = min(h, 1080)
                 self.video_window.resize(w, h)
-
-        # volume reflect
         self.vol.blockSignals(True)
         self.vol.setValue(st.volume)
         self.vol.blockSignals(False)
-
         self.lbl_time.setText(f"{fmt_ms(st.time_ms)} / {fmt_ms(st.length_ms)}")
-
         if not self._dragging and st.length_ms > 0:
             ratio = st.time_ms / st.length_ms
             self.prog.setValue(int(ratio * 1000))
@@ -629,31 +658,13 @@ class PlayerWindow(QMainWindow):
     def _on_seek_move(self, val: int):
         pass
 
-    def _on_seek_release(self):
-        val = self.prog.value()
-        self._dragging = False
-
-        if not self.engine.is_seekable():
-            # поток не поддерживает seek (live HLS)
-            return
-        ok = self.engine.seek_ratio(val / 1000.0)
-
-        self._mark_seeking(3000 if not ok else 2000)
-        self._after_seek_reset_watchdog()
-        self._pause_watchdog_temporarily(3000 if not ok else 1500)
-
-    # -------------------------
-    # EOF / errors
-    # -------------------------
     def on_eof(self):
-        QTimer.singleShot(0, self._on_eof_gui)
+        QTimer.singleShot(ZERO_DELAY, self._on_eof_gui)
 
     def _on_eof_gui(self):
         if self._switching_track:
             return
         self._switching_track = True
-        # EOF может прилететь от предыдущего трека после loadfile/stop (гонка).
-        # Если EOF пришёл слишком быстро после смены трека — игнорируем.
         if time.time() - getattr(self, "_last_switch_ts", 0.0) < 0.7:
             self.logger.warning(
                 f"Ignoring stale EOF right after switch: dt={time.time() - self._last_switch_ts:.3f}s "
@@ -661,7 +672,6 @@ class PlayerWindow(QMainWindow):
             )
             self._switching_track = False
             return
-
         reason = getattr(self.engine, "last_end_reason", None)
         if reason is None:
             self.logger.warning("EOF reason is None -> treat as stale/ignore")
@@ -670,38 +680,32 @@ class PlayerWindow(QMainWindow):
         self.logger.info(f"EOF event: reason={reason} idx={self.playlist_index}")
         st = self.engine.get_state()
         played_ms = int(st.time_ms or 0)
-
-        # ранний error: один раз пробуем перезагрузить текущий вместо next
         if reason == "error" and played_ms < 5000 and self.playlist_urls:
             idx = self.playlist_index
             cnt = self._early_error_retry.get(idx, 0)
             if cnt < 1:
                 self._early_error_retry[idx] = cnt + 1
+                url = self.playlist_urls[idx]
+                url2 = self._maybe_rewrite_for_proxy(url)
+                self.logger.warning(f"Retry with rewritten URL: {url2}")
+                self.engine.load(url2)
+                self.engine.play()
                 self.logger.warning(f"Early end-file error on idx={idx}, played_ms={played_ms}: retry current")
-                self._force_reload_current(resume_ms=0)  # без seek
-                # отпускаем переключатель чуть раньше
-                QTimer.singleShot(400, lambda: setattr(self, "_switching_track", False))
+                self._force_reload_current(resume_ms=0)
+                QTimer.singleShot(SWITCHING_TRACK, lambda: setattr(self, "_switching_track", False))
                 return
-
         self.logger.info("EOF received, moving to next media")
-        QTimer.singleShot(200, self._next_media_safe)
+        QTimer.singleShot(NEXT_MEDIA, self._next_media_safe)
 
     def _next_media_safe(self):
         try:
             self.next_media()
         finally:
-            # отпускаем через короткое время, чтобы mpv успел перейти
-            QTimer.singleShot(400, lambda: setattr(self, "_switching_track", False))
+            QTimer.singleShot(SWITCHING_TRACK, lambda: setattr(self, "_switching_track", False))
 
     def on_error(self, msg: str):
-        # пока просто print + messagebox (позже добавим fallback VLC)
         self.logger.error(msg)
-        # не спамим messagebox на каждый чих — только по желанию
-        # QMessageBox.warning(self, "Player error", msg)
 
-    # -------------------------
-    # Skip credits (почти 1:1 с VLC)
-    # -------------------------
     def handle_skip_credits(self):
         self.perform_skip_credits()
 
@@ -716,7 +720,6 @@ class PlayerWindow(QMainWindow):
                     epn = int(skip_entry.get("episode_number"))
                 except Exception:
                     continue
-
                 if epn == int(episode_number):
                     try:
                         skip_opening = json.loads(skip_entry.get("skip_opening", "[]"))
@@ -731,7 +734,6 @@ class PlayerWindow(QMainWindow):
         self.skip_ending = skip_ending
 
     def get_playing_episode_number(self) -> Optional[int]:
-        # надежнее: берём текущий url и парсим как в extract_from_link
         if not self.playlist_urls:
             return None
         url = self.playlist_urls[self.playlist_index]
@@ -739,7 +741,6 @@ class PlayerWindow(QMainWindow):
         if parsed:
             ep, _q = parsed
             return int(ep)
-        # fallback:
         m = re.search(r"/\d+/(\d+)/", url)
         if m:
             return int(m.group(1))
@@ -770,47 +771,37 @@ class PlayerWindow(QMainWindow):
             episode_number = self.get_playing_episode_number()
             if episode_number is None:
                 return
-
             self.get_episode_skips(episode_number)
             if (self.skip_opening is None and self.skip_ending is None) and self.playlist_urls:
-                # fallback: плейлист обычно в порядке 1..N
                 self.get_episode_skips(self.playlist_index + 1)
             st = self.engine.get_state()
             if not self.engine.is_seekable():
                 return
             current_time = (st.time_ms or 0) / 1000.0
             total_length = max(((st.length_ms or 0) / 1000.0), 0.0)
-
             opening = _norm_pair(self.skip_opening)
             ending = _norm_pair(self.skip_ending)
-
             if opening:
                 start_o, end_o = opening
                 if current_time + EPS < end_o:
                     jump_to = min(end_o, max(total_length - TAIL_GUARD, 0.0))
                     ok = self.engine.seek_ms(int(jump_to * 1000))
-                    self._mark_seeking(3500 if not ok else 2500)
+                    self._mark_seeking(SEEKING_GUARD if not ok else SEEKING_GUARD // 2)
                     self._after_seek_reset_watchdog()
-                    self._pause_watchdog_temporarily(3500 if not ok else 1500)
+                    self._pause_watchdog_temporarily(WATCHDOG_PAUSE)
                     return
-
             if ending:
                 start_e, end_e = ending
                 if end_e > current_time + EPS >= start_e:
                     jump_to = min(end_e, max(total_length - TAIL_GUARD, 0.0))
                     ok = self.engine.seek_ms(int(jump_to * 1000))
-                    self._mark_seeking(3500 if not ok else 2500)
+                    self._mark_seeking(SEEKING_GUARD if not ok else SEEKING_GUARD // 2)
                     self._after_seek_reset_watchdog()
-                    self._pause_watchdog_temporarily(3500 if not ok else 1500)
+                    self._pause_watchdog_temporarily(WATCHDOG_PAUSE)
                     return
-
         except Exception:
-            # не валим приложение
             return
 
-    # -------------------------
-    # Watchdog (детект "залипания" и перезагрузка текущего)
-    # -------------------------
     def _start_watchdog(self):
         self.prevent_sleep()
         if not self._wd_timer.isActive():
@@ -825,32 +816,24 @@ class PlayerWindow(QMainWindow):
     def _resume_watchdog_check(self):
         if time.time() < getattr(self, "_seeking_until", 0.0):
             return
-
         st = self.engine.get_state()
         if not st.is_playing:
             return
         cur = int(st.time_ms or 0)
-        # если длины нет — не трогаем
         if int(st.length_ms or 0) <= 0:
             return
-
         if self._wd_last_time_ms is None:
             self._wd_last_time_ms = cur
             return
-
         if getattr(self.engine, "is_buffering_or_seeking", None):
             if self.engine.is_buffering_or_seeking():
                 return
-
-        # если время не двигается, считаем "залип"
         if abs(cur - self._wd_last_time_ms) < 50:
             self._wd_stuck_count += 1
         else:
             self._wd_stuck_count = 0
             self._wd_last_time_ms = cur
             return
-
-        # 2-3 тика подряд без движения — пробуем перезагрузить текущий
         if self._wd_stuck_count >= 3:
             self._wd_stuck_count = 0
             self._force_reload_current(resume_ms=cur)
@@ -865,11 +848,18 @@ class PlayerWindow(QMainWindow):
         self.engine.load(url)
         self.engine.play()
 
-        QTimer.singleShot(900, lambda: (self.engine.seek_ms(resume_ms), self._after_seek_reset_watchdog()))
+        def _try_seek():
+            if not self.engine.is_seekable():
+                return
 
-    # -------------------------
-    # Screenshot (как в VLC по смыслу)
-    # -------------------------
+            st = self.engine.get_state()
+            if not st.is_playing or st.time_ms <= 0:
+                return
+            self.engine.seek_ms(resume_ms)
+            self._after_seek_reset_watchdog()
+
+        QTimer.singleShot(FORCE_RELOAD_CUR, _try_seek)
+
     def take_screenshot(self):
         try:
             out_dir = Path.cwd() / "screenshots"
@@ -877,15 +867,11 @@ class PlayerWindow(QMainWindow):
             ts = datetime.now().strftime("%Y%m%d_%H-%M-%S")
             tid = self.title_id if self.title_id is not None else "noid"
             path = out_dir / f"screenshot_{tid}_{ts}.png"
-            # mpv_engine добавили screenshot()
             if hasattr(self.engine, "screenshot"):
                 self.engine.screenshot(str(path))
         except Exception:
             pass
 
-    # -------------------------
-    # Prevent sleep (1:1 с VLC)
-    # -------------------------
     def prevent_sleep(self):
         if os.name != "nt":
             return
@@ -916,22 +902,18 @@ class PlayerWindow(QMainWindow):
                 self._wd_timer.stop()
             except Exception:
                 pass
-
             try:
                 if getattr(self, "video_window", None):
-                    # Чтобы callback не сработал и не было рекурсии:
                     self.video_window._on_user_close = None
                     self.video_window.close()
             except Exception:
                 pass
-
             self.engine.shutdown()
         finally:
             super().closeEvent(event)
 
     def apply_template(self, template: str | None):
         night = (template or "").lower() in ("night", "dark", "no_background_night")
-
         if night:
             bg = "#151515"
             fg = "#eaeaea"
@@ -954,7 +936,6 @@ class PlayerWindow(QMainWindow):
             groove = "#bdbdbd"
             fill = "#6b6b6b"
             handle = "#ffffff"
-
         qss = f"""
         QListWidget {{
             background: {panel};
@@ -1003,7 +984,6 @@ class PlayerWindow(QMainWindow):
         QPushButton:pressed {{
             background: {btn_bg_pressed};
         }}
-        /* Активное состояние (например Repeat ON) */
         QPushButton#ToggleOn {{
             border: 2px solid {fill};
         }}
@@ -1011,7 +991,6 @@ class PlayerWindow(QMainWindow):
             background: transparent;
             font-weight: 600;
         }}
-        /* Progress / Volume sliders - VLC-like */
         QSlider::groove:horizontal {{
             height: 25px;
             background: {groove};
@@ -1024,7 +1003,7 @@ class PlayerWindow(QMainWindow):
         }}
         QSlider::handle:horizontal {{
             width: 25px;
-            margin: -1px 0;          /* делает "толстый" хэндл */
+            margin: -1px 0;
             background: {handle};
             border: 1px solid {border};
         }}
@@ -1041,14 +1020,6 @@ class PlayerWindow(QMainWindow):
         self._wd_last_time_ms = None
         self._wd_stuck_count = 0
 
-    def _pause_watchdog_temporarily(self, ms=1500):
-        if self._wd_timer.isActive():
-            self._wd_timer.stop()
-            QTimer.singleShot(ms, self._start_watchdog)
-
-    def _mark_seeking(self, ms=2000):
-        self._seeking_until = time.time() + (ms / 1000.0)
-
     def toggle_playlist_visibility(self):
         if self.playlist_widget.isVisible():
             self.playlist_widget.hide()
@@ -1060,4 +1031,4 @@ class PlayerWindow(QMainWindow):
     def _on_video_window_user_close(self):
         if self._closing:
             return
-        QTimer.singleShot(10, self.close)
+        QTimer.singleShot(VIDEO_WIN_USER_CLOSE, self.close)

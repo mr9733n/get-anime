@@ -31,7 +31,7 @@ from utils.playlist_manager import PlaylistManager
 from utils.torrent_manager import TorrentManager
 from utils.library_loader import verify_library
 from utils.open_router import OpenRouter, PlaylistTargets
-from utils.library_loader import _calc_bundle_key
+from utils.library_loader import calc_bundle_key
 
 
 VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
@@ -1972,7 +1972,7 @@ class AnimePlayerAppVer3(QWidget):
             return playlist
 
         host = self.db_manager.get_player_host_by_title_id(title_id)
-        key = _calc_bundle_key(title_id, links, host)
+        key = calc_bundle_key(title_id, links, host)
         prev_key = playlist.get("bundle_key")
 
         # если ключ не изменился — bundle уже актуален, ничего не делаем

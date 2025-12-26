@@ -49,7 +49,7 @@ def load_library(lib_dir, lib_name):
     except OSError as e:
         raise RuntimeError(f"Error loading {lib_name} from {lib_path}: {e}")
 
-def _calc_bundle_key(title_id: int, links: list[str], host: str | None) -> str:
+def calc_bundle_key(title_id: int, links: list[str], host: str | None) -> str:
     try:
         host = (host or "").strip()
         # важно: порядок ссылок влияет на плейлист -> ключ должен учитывать порядок

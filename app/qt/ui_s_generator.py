@@ -5,7 +5,7 @@ import re
 from typing import Tuple, Optional
 from urllib.parse import quote
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
-from utils.runtime_manager import restart_application, LogWindow
+from utils.runtime.runtime_manager import restart_application, LogWindow
 
 
 LINE_EDIT_STYLE = """

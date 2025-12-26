@@ -76,6 +76,12 @@ def _parse_expires_from_query(url: str) -> Optional[datetime]:
     return now + timedelta(seconds=n)
 
 
+def _is_hls_like(url: str) -> bool:
+    p = urlparse(url)
+    path = (p.path or "").lower()
+    return path.endswith(".m3u8") or path.endswith(".ts")
+
+
 def _recommended_host(url: str) -> Optional[str]:
     try:
         return urlparse(url).hostname
@@ -83,74 +89,110 @@ def _recommended_host(url: str) -> Optional[str]:
         return None
 
 
+def _parse_expires_from_headers(headers: httpx.Headers) -> Optional[datetime]:
+    """
+    Пытаемся вытащить TTL из Cache-Control: max-age или Expires.
+    """
+    now = datetime.now(timezone.utc)
+
+    cc = headers.get("Cache-Control") or headers.get("cache-control")
+    if cc:
+        parts = [p.strip().lower() for p in cc.split(",")]
+        for p in parts:
+            if p.startswith("max-age="):
+                try:
+                    sec = int(p.split("=", 1)[1])
+                    if sec > 0:
+                        return now + timedelta(seconds=sec)
+                except Exception:
+                    pass
+
+    exp = headers.get("Expires") or headers.get("expires")
+    if exp:
+        try:
+            # httpx использует email.utils.parsedate_to_datetime через Response,
+            # но тут проще: попросим httpx распарсить через response внизу.
+            # Поэтому здесь оставим None — а воспользуемся resp.headers + resp напрямую, если захочешь.
+            return None
+        except Exception:
+            return None
+
+    return None
+
+
 def resolve_redirects(
     url: str,
     *,
     client: httpx.Client,
-    timeout_s: float = 10.0,
     max_hops: int = 5,
-    user_agent: str = "MiniResolver/1.0",
     cache: Optional[TTLCache] = None,
     default_cache_ttl: timedelta = timedelta(minutes=7),
     min_cache_ttl: timedelta = timedelta(minutes=1),
     max_cache_ttl: timedelta = timedelta(minutes=30),
+    # NEW:
+    use_head: Optional[bool] = None,     # None = auto
+    head_timeout_s: float = 1.5,
+    get_timeout_s: float = 8.0,
+    skip_hosts: Optional[set[str]] = None,
 ) -> ResolveResult:
-    """
-    MVP redirect-resolve:
-    - HEAD (fallback GET stream=True) без auto-redirect
-    - вручную идем по Location
-    - max_hops ограничивает цепочку
-    """
-    cache_key = f"{url}||proxy={client or ''}"
+    cache_key = url
     if cache is not None:
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-    headers = {
-        "User-Agent": user_agent,
-        "Accept": "*/*",
-        "Connection": "close",
-    }
+    host0 = _recommended_host(url) or ""
 
-    proxies = None
-    if client:
-        # httpx принимает либо строку, либо dict.
-        # Для простоты: одна строка на все схемы.
-        proxies = client
+    # fast-skip по trusted host
+    if skip_hosts and host0 in skip_hosts:
+        now = datetime.now(timezone.utc)
+        expires_at = now + default_cache_ttl
+        result = ResolveResult(
+            original_url=url,
+            final_url=url,
+            chain=[],
+            recommended_host=host0 or None,
+            cache_until=expires_at,
+        )
+        if cache is not None:
+            cache.set(cache_key, result, expires_at)
+        return result
+
+    # авто: для .m3u8/.ts сразу GET (HEAD часто висит через proxy/CDN)
+    if use_head is None:
+        use_head = not _is_hls_like(url)
 
     chain: List[Hop] = []
     current = url
     now = datetime.now(timezone.utc)
 
-    # Важно: verify оставляем дефолтным (True).
-    # Если твой прокси — MITM и ломает TLS, решай это отдельно (или поставь verify=False только для resolver-а, если осознанно).
-
     for _ in range(max_hops + 1):
-        # 1) пробуем HEAD
         resp = None
-        try:
-            resp = client.request("HEAD", current, timeout=timeout_s, follow_redirects=False)
-        except Exception:
-            resp = None
 
-        # 2) если HEAD не работает/не информативен — fallback на GET stream и закрываем сразу
-        if resp is None or resp.status_code in (405, 400, 403) or (resp.status_code < 200 and resp.status_code not in (301, 302, 303, 307, 308)):
+        if use_head:
             try:
-                with client.stream("GET", current, timeout=timeout_s) as r:
-                    # нам важны только заголовки/код
+                resp = client.request("HEAD", current, timeout=head_timeout_s, follow_redirects=False)
+            except Exception:
+                resp = None
+
+        # если HEAD выключен или не удался/неинформативен — GET(stream) и закрываем
+        if (
+            resp is None
+            or resp.status_code in (405, 400, 403)
+            or (resp.status_code < 200 and resp.status_code not in (301, 302, 303, 307, 308))
+        ):
+            try:
+                with client.stream("GET", current, timeout=get_timeout_s) as r:
                     resp = r
                     _ = r.status_code
-            except Exception as e:
-                # если совсем не получилось — считаем текущий финальным (лучше вернуть что есть, чем падать)
-                result = ResolveResult(
+            except Exception:
+                return ResolveResult(
                     original_url=url,
                     final_url=current,
                     chain=chain,
                     recommended_host=_recommended_host(current),
                     cache_until=None,
                 )
-                return result
 
         status = resp.status_code
         location = resp.headers.get("Location")
@@ -158,15 +200,16 @@ def resolve_redirects(
         chain.append(Hop(url=current, status_code=status, location=location))
 
         if status in (301, 302, 303, 307, 308) and location:
-            # Location может быть относительным
-            nxt = urljoin(current, location)
-            current = nxt
+            current = urljoin(current, location)
             continue
 
         # не редирект — финал
         final_url = current
-        # кэш TTL: expires=... или дефолт
+
+        # TTL: сначала query expires=..., потом Cache-Control max-age, потом дефолт
         expires_at = _parse_expires_from_query(final_url)
+        if expires_at is None:
+            expires_at = _parse_expires_from_headers(resp.headers)
         if expires_at is None:
             expires_at = now + default_cache_ttl
 
@@ -191,11 +234,10 @@ def resolve_redirects(
         return result
 
     # если упёрлись в max_hops — возвращаем то, что есть сейчас
-    result = ResolveResult(
+    return ResolveResult(
         original_url=url,
         final_url=current,
         chain=chain,
         recommended_host=_recommended_host(current),
         cache_until=None,
     )
-    return result

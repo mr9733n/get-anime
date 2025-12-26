@@ -2,7 +2,7 @@
 import re
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlparse, urlunparse, parse_qs
+from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, parse_qsl, urlencode
 from typing import Iterable, Union, Optional, Literal, List, Dict, Any
 from bs4 import BeautifulSoup
 
@@ -51,6 +51,39 @@ def _strip_host(url: str) -> str:
     path = parsed.path
     return path if path.startswith("/") else f"/{path}"
 
+
+def _canon_query(query: str) -> str:
+    q = parse_qsl(query, keep_blank_values=True)
+    q.sort()
+    return urlencode(q, doseq=True)
+
+def dedup_key(u: str) -> str:
+    p = urlparse(u)
+    host = (p.netloc or "").lower()
+    path = p.path or ""
+
+    # VK: важны oid + id + hash (и ещё иногда 'hd'/'autoplay' можно игнорить)
+    if host.endswith(("vkvideo.ru", "vk.com")) and path.endswith("/video_ext.php"):
+        qs = parse_qs(p.query)
+        oid = (qs.get("oid", [""])[0])
+        vid = (qs.get("id", [""])[0])
+        h = (qs.get("hash", [""])[0])
+        # если вдруг какого-то нет — падаем на общий ключ
+        if oid and vid and h:
+            return f"{p.scheme}://{host}{path}?oid={oid}&id={vid}&hash={h}"
+
+    # По умолчанию: полный URL, но query канонизируем (чтобы порядок параметров не влиял)
+    return urlunparse((p.scheme, host, path, p.params, _canon_query(p.query), ""))
+
+def dedup_urls(urls: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for u in urls:
+        key = dedup_key(u)
+        if key not in seen:
+            seen.add(key)
+            out.append(u)  # сохраняем оригинал
+    return out
 
 def dedup_and_sort(urls: List[str]) -> List[str]:
     """

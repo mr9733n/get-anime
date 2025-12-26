@@ -15,7 +15,7 @@ from providers.animedia.v0.legacy_mapper import (
     replace_spaces_to_underline,
     replace_brackets,
     build_base_dict,
-    extract_id_from_url,
+    extract_id_from_url, dedup_urls,
 )
 
 MAX_CONCURRENT = 3
@@ -66,24 +66,15 @@ class AnimediaAdapter:
             raw_files = await self.client.collect_episode_files(html=html, original_id=original_id)
 
         stream_video_host = extract_video_host(raw_files)
-        # -------------------- 4️⃣ Делим ссылки на m3u8 и остальные --------------------
+
         m3u8_links: List[str] = [lnk for lnk in raw_files if lnk.endswith(".m3u8")]
         other_links: List[str] = [lnk for lnk in raw_files if not lnk.endswith(".m3u8")]
 
-        # -------------------- 5️⃣ Дедупликация и сортировка только для .m3u8 --------------------
-        if m3u8_links:
-            sorted_m3u8 = dedup_and_sort(m3u8_links)
-            # проверка на дубликаты (можно убрать в продакшн)
-            assert len(sorted_m3u8) == len(set(sorted_m3u8)), "Дубликаты в sorted_links"
-        else:
-            sorted_m3u8 = []
+        sorted_m3u8 = dedup_and_sort(m3u8_links) if m3u8_links else []
+        other_links = dedup_urls(other_links)
 
-        # -------------------- 6️⃣ Итоговый список в нужном порядке --------------------
-        # Сначала все .m3u8‑ссылки (уже отсортированные), потом остальные в том порядке,
-        # в котором они пришли.
         sorted_links = sorted_m3u8 + other_links
 
-        # -------------------- 7️⃣ Формируем эпизоды --------------------
         episodes = episodes_dict(sorted_links)
 
         return build_base_dict(

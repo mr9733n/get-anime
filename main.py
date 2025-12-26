@@ -11,12 +11,13 @@ import logging.config
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
-from core.database_manager import DatabaseManager
+
 from app.qt.app import AnimePlayerAppVer3
-from utils.library_loader import verify_library, load_library
 from app.qt.app_state_manager import AppStateManager
-from utils.runtime_manager import test_exception
-from utils.config_manager import ConfigManager
+from core.database_manager import DatabaseManager
+from utils.security.library_loader import verify_library, load_library
+from utils.runtime.runtime_manager import test_exception
+from utils.config.config_manager import ConfigManager
 
 APP_MINOR_VERSION = '0.3.8'
 APP_MAJOR_VERSION = '0.3'

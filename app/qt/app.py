@@ -24,15 +24,17 @@ from providers.aniliberty.v1.adapter import APIAdapter
 from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
 from providers.animedia.v0.qt_async_worker import AsyncWorker
 from providers.animedia.v0.adapter import AnimediaAdapter
-from utils.config_manager import ConfigManager
-from utils.net_client import NetClient
-from utils.poster_manager import PosterManager
-from utils.playlist_manager import PlaylistManager
-from utils.torrent_manager import TorrentManager
-from utils.library_loader import verify_library
-from utils.open_router import OpenRouter, PlaylistTargets
-from utils.library_loader import calc_bundle_key
-
+from utils.config.config_manager import ConfigManager
+from utils.downloads.poster_manager import PosterManager
+from utils.downloads.torrent_manager import TorrentManager
+from utils.playlists.playlist_manager import PlaylistManager
+from utils.playlists.playlist_key import calc_bundle_key
+from utils.integrations.open_router import OpenRouter, PlaylistTargets
+from utils.net.net_client import NetClient
+from utils.net.url_resolve_service import UrlResolveService
+from utils.net.url_resolver import TTLCache
+from utils.net.url_resolver_config import ResolverConfig
+from utils.security.library_loader import verify_library
 
 VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
 PROVIDER_ANILIBERTY = "aniliberty"
@@ -130,6 +132,11 @@ class AnimePlayerAppVer3(QWidget):
         network_config = self.config_manager.network
         self.net_client = NetClient(network_config)
         self.logger.info(f"Network client initialized. Proxy enabled: {network_config.proxy_enabled}")
+        self.url_resolver = UrlResolveService(
+            net=self.net_client,
+            cache=TTLCache(max_items=2048),
+            cfg=ResolverConfig(),
+        )
 
         self.base_al_url = self.config_manager.get_setting('Settings', 'base_al_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
@@ -1682,24 +1689,35 @@ class AnimePlayerAppVer3(QWidget):
         """
         vlc_kwargs = {"current_template": self.current_template}
 
-        if self.proxy_enabled == "true":
-            vlc_kwargs["proxy"] = self.proxy_url
-
         if self.log_enabled == "true":
             vlc_kwargs["log"] = self.log_enabled
             vlc_kwargs["log_level"] = self.verbose
 
         self.vlc_window = VLCPlayer(**vlc_kwargs)
 
+        final_path = playlist_path
+        if self.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
+                ("http://", "https://")):
+            rr = self.url_resolver.resolve(playlist_path)
+            if rr and getattr(rr, "final_url", None):
+                final_path = rr.final_url
+
         self.logger.debug(
             f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}"
         )
-        self.vlc_window.load_playlist(playlist_path, title_id, skip_data)
+        self.vlc_window.load_playlist(final_path, title_id, skip_data)
         self.vlc_window.show()
         self.vlc_window.timer.start()
 
     def open_standalone_vlc_player(self, playlist_path, title_id, skip_data=None):
         """Launch VLC player as a separate process."""
+        final_path = playlist_path
+        if self.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
+                ("http://", "https://")):
+            rr = self.url_resolver.resolve(playlist_path)
+            if rr and getattr(rr, "final_url", None):
+                final_path = rr.final_url
+
         if getattr(sys, 'frozen', False):
             # TODO: add other platforms
             vlc_player_executable_name = self.config_manager.get_vlc_player_executable_name()
@@ -1714,16 +1732,15 @@ class AnimePlayerAppVer3(QWidget):
                     sys.exit(1)
 
             cmd = [vlc_player_executable,
-                   "--playlist", playlist_path,
+                   "--playlist", final_path,
                    "--title_id", str(title_id),
                    "--template", self.current_template]
+
             if skip_data:
                 cmd.extend(["--skip_data", skip_data])
             if self.prod_key is not None:
                 cmd.extend(["--prod_key", str(self.prod_key)])
-            # TODO: fix this
-            if self.proxy_enabled == "true":
-                cmd.extend(["--proxy", str(self.proxy_url)])
+
             if self.log_enabled == "true":
                 cmd.extend(["--log", str(self.log_enabled)])
                 cmd.extend(["--verbose", str(self.verbose)])
@@ -1732,7 +1749,7 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")
         else:
             # TODO: DEVELOPMENT Version
-            self.open_vlc_player(playlist_path, title_id, skip_data)
+            self.open_vlc_player(final_path, title_id, skip_data)
 
     def open_mpv_player(self, playlist_path, title_id, skip_data=None):
         """
@@ -1756,7 +1773,7 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.info(f"DEV mpv player launch : {self.proxy_url} {self.mpv_log_enabled}")
 
             engine = MpvEngine(
-                proxy=mpv_kwargs.get("proxy"),
+                proxy=None,
                 loglevel=("info" if str(self.mpv_verbose).lower() in ("info", "debug") else "warn"),
                 log_file=log_file
             )
@@ -1767,6 +1784,7 @@ class AnimePlayerAppVer3(QWidget):
                 title_id=title_id,
                 skip_data=skip_data,
                 proxy=mpv_kwargs.get("proxy"),
+                resolver=self.url_resolver,
                 autoplay=True,
                 template=self.current_template,  # важно!
             )
@@ -1804,9 +1822,6 @@ class AnimePlayerAppVer3(QWidget):
 
                 if self.prod_key is not None:
                     cmd.extend(["--prod_key", str(self.prod_key)])
-
-                if self.proxy_enabled == "true":
-                    cmd.extend(["--proxy", str(self.proxy_url)])
 
                 # mpv лог/verbose (опционально)
                 if self.mpv_log_enabled == "true":

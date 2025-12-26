@@ -42,7 +42,7 @@ class VideoWindow(QWidget):
 
 
 class VLCPlayer(QWidget):
-    def __init__(self, parent=None, current_template="default", proxy=None, log=None, log_level="2"):
+    def __init__(self, parent=None, current_template="default", log=None, log_level="2"):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.current_template = current_template
@@ -52,7 +52,6 @@ class VLCPlayer(QWidget):
         self.skip_ending = None
         self.is_buffering = None
         self.title_id = None
-        self.proxy = proxy
         self.log = log
         self.verbose = log_level
 
@@ -65,7 +64,6 @@ class VLCPlayer(QWidget):
         self.video_window = None
 
         log_path = Path("logs/vlc.log").resolve()
-        cfg_path = Path("config/vlcrc").resolve()
 
         args = [
             "--network-caching=2000",
@@ -78,11 +76,6 @@ class VLCPlayer(QWidget):
             args.append(f"--verbose={self.verbose}")
             args.append("--file-logging")
             args.append(f"--logfile={log_path}")
-
-        if self.proxy:
-            self.logger.debug(f"Initializing VLC with proxy: {self.proxy!r}")
-            args.append(f"--config={cfg_path}")
-            args.append(f"--http-proxy={self.proxy}")
 
         self.instance = vlc.Instance(*args)
         if not self.instance:
@@ -835,7 +828,6 @@ if __name__ == "__main__":
     parser.add_argument('--title_id', type=int, help='Title ID')
     parser.add_argument('--skip_data', help='Base64 encoded skip data')
     parser.add_argument('--template', default="default", help='UI template name')
-    parser.add_argument('--proxy', help='Use SOCK proxy')
     parser.add_argument('--log', help='Use logs')
     parser.add_argument('--verbose', help='Verbose level')
     parser.add_argument('--prod_key')
@@ -855,7 +847,7 @@ if __name__ == "__main__":
             logging.getLogger().error("Anime Player VLC player is already running!")
             sys.exit(1)
 
-        player = VLCPlayer(current_template=args.template, proxy=args.proxy, log=args.log, log_level=args.verbose)
+        player = VLCPlayer(current_template=args.template, log=args.log, log_level=args.verbose)
 
         if args.playlist:
             player.load_playlist(args.playlist, args.title_id, args.skip_data)

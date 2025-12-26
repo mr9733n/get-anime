@@ -512,7 +512,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Done
 - [x] Smoke testing 
 - [x] Fixes
-
+- [x] Remove proxy
+- [x] If proxy enabled in app uses url resolver
+- [ ] Ass tests
 
 # 8.37 Qt mini browser for external player
 - [x] change logic for saving urls for mini browser
@@ -522,8 +524,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] built in open urls in mini browser
 - [ ] ...
 
-### 8.37 Fixes
-- [x] pretty folder for apps
+### 8.37 Features and Fixes
+- [x] pretty folders for apps
+- [x] pretty folders for utils
+- [x] Add Url Resolver
+- [x] Remove proxy from VLC, use url resolver
+- [x] Fix dedup links for mini browser
+- [x] Move delete title to core/delete
+- [ ] Change delete logic to unlink -> move to delete table
+- [ ] Add Screen for deleted titles with permanent delete func
+- [ ] Fix highlighting episode in VLC playlist
+- [ ] Add Screen for downloading titles from AniMedia
 - [ ] fix get title from db by query
 - [ ] save franchise_id to titles table [title_franchises]
 - [ ] add dll hash on build, remove hardcode

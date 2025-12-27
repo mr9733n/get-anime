@@ -514,7 +514,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixes
 - [x] Remove proxy
 - [x] If proxy enabled in app uses url resolver
-- [ ] Ass tests
+- [ ] Add tests
 
 # 8.37 Qt mini browser for external player
 - [x] change logic for saving urls for mini browser
@@ -531,14 +531,24 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Remove proxy from VLC, use url resolver
 - [x] Fix dedup links for mini browser
 - [x] Move delete title to core/delete
+- [x] Change logic downloading/saving posters
+- [x] Show posters on AM Schedule
+- [x] Add retry_manger for AM
+- [x] Remove unused placeholders
+- [x] Move AM screen to UIAMGenerator 
+- [x] Add logic for AM titles
+- [x] Add Screen for all titles from AniMedia 
+- [x] Add force download to poster
+- [x] Small refactor of AniMedia client
+- [x] Pretty UI in UIAMGenerator 
+- [x] 
+- [ ] Add Screen for deleted titles with permanent delete func 
 - [ ] Change delete logic to unlink -> move to delete table
-- [ ] Add Screen for deleted titles with permanent delete func
 - [ ] Fix highlighting episode in VLC playlist
-- [ ] Add Screen for downloading titles from AniMedia
 - [ ] fix get title from db by query
+- [ ] fix switching template
 - [ ] save franchise_id to titles table [title_franchises]
 - [ ] add dll hash on build, remove hardcode
-
 
 ### 8.37 Refactoring AniMedia client v0
 - [ ] add transport layer

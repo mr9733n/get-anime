@@ -17,8 +17,10 @@ class AniMediaCacheConfig:
     base_dir: Path
     vlink_key: str = "am_vlink_cache"
     schedule_key: str = "am_schedule_cache"
+    all_titles_key: str = "am_all_titles_cache"
     vlink_ttl: int = 24 * 60 * 60   # 24h
     schedule_ttl: int = 1 * 60 * 60  # 1h
+    all_titles_ttl: int = 24 * 60 * 60  # 24h
 
 
 class AniMediaCacheStatus(Enum):
@@ -43,8 +45,12 @@ class AniMediaCacheManager(Generic[T]):
     def _serialize_items(self, items: Mapping[ItemKey, dict]) -> str:
         return json.dumps({"items": items}, ensure_ascii=False, indent=2)
 
-    def _serialize(self, ts: int | None, data: T) -> str:
-        payload = {"last_updated": int(time.time()) if ts is None else ts, "data": data}
+    def _serialize(self, key: str | None, ts: int | None, data: T) -> str:
+        payload = {
+            "key": str(key) if key is not None else "",
+            "last_updated": int(time.time()) if ts is None else ts,
+            "data": data,
+        }
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     def _write_atomic(self, path: Path, content: str) -> None:
@@ -116,7 +122,7 @@ class AniMediaCacheManager(Generic[T]):
     def save(self, key: str, data: T) -> AniMediaCacheStatus:
         path = self._file(key)
         try:
-            serialized = self._serialize(ts=None, data=data)
+            serialized = self._serialize(key=key, ts=None, data=data)
             self._write_atomic(path, serialized)
         except Exception as exc:
             raise IOError(f"Failed to write cache for key {key!r}") from exc
@@ -124,10 +130,8 @@ class AniMediaCacheManager(Generic[T]):
 
     def save_vlink(self, original_id: str, vlink_dict: dict[str, str]) -> AniMediaCacheStatus:
         """
-        Сохраняет словарь ссылок для одного title‑id.
         vlink_dict: {source_url: target_url, …}
         """
-        # сохраняем только один элемент, а не весь большой словарь
         return self.save_item(self.cfg.vlink_key, original_id, vlink_dict)
 
     def save_item(self, key: str, item_id: ItemKey, data: T) -> AniMediaCacheStatus:

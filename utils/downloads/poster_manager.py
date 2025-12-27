@@ -9,6 +9,7 @@ import threading
 
 from PIL import Image, UnidentifiedImageError
 
+
 MAX_RETRIES = 3
 RETRY_DELAY = 10  # seconds
 MAX_IMAGE_SIZE_KB = 5000
@@ -27,12 +28,16 @@ class PosterManager:
 
     def write_poster_links(self, links):
         """
-        Add poster URLs (with title_id) to the list and start downloading in the background.
+        links: Iterable[tuple[int, str, PosterSize]]
         """
-        for title_id, link in links:
-            if link not in map(lambda x: x[1], self.poster_links):
-                self.poster_links.append((title_id, link))
-                self.logger.debug(f"Added poster link for title ID {title_id}: {link[-41:]}")
+        existing_keys = {(tid, sk) for (tid, _, sk) in self.poster_links}
+
+        for title_id, link, size_key in links:
+            key = (title_id, size_key)
+            if key not in existing_keys:
+                self.poster_links.append((title_id, link, size_key))
+                existing_keys.add(key)
+                self.logger.debug(f"Added poster link for title_id={title_id}, size_key={size_key}: {link[-41:]}")
 
         self.start_background_download()
 
@@ -50,16 +55,25 @@ class PosterManager:
     def _process_save_queue(self):
         """Worker thread that processes save operations and terminates when queue is empty"""
         try:
+            empty_hits = 0
             while True:
                 try:
-                    title_id, content, hash_value = self.save_queue.get(timeout=1.0)
+                    item = self.save_queue.get(timeout=2.0)
                 except queue.Empty:
-                    self.logger.info("[!] Save queue is empty, terminating thread")
-                    break
+                    empty_hits += 1
+                    if empty_hits >= 5:
+                        self.logger.info("[!] Save queue is empty, terminating thread")
+                        break
+                    continue
+
+                empty_hits = 0
+                title_id, size_key, content, hash_value = item
                 try:
                     if self.save_callback:
-                        self.save_callback(title_id, content, hash_value)
+                        self.save_callback(title_id, content, hash_value, size_key)
                         self.logger.info(f"[*] Saved poster for title_id: {title_id}")
+                    else:
+                        self.logger.warning("[!] save_callback is not set; skipping save")
                     time.sleep(0.5)
                 except Exception as e:
                     self.logger.error(f"Error saving poster for title_id {title_id}: {e}")
@@ -88,7 +102,7 @@ class PosterManager:
         """
         items_queued = False
         while self.poster_links:
-            title_id, link = self.poster_links.pop(0)
+            title_id, link, size_key = self.poster_links.pop(0)
             retries = 0
             while retries < MAX_RETRIES:
                 try:
@@ -163,7 +177,7 @@ class PosterManager:
                         f"Hash: {hash_value}..."
                     )
 
-                    self.save_queue.put((title_id, content, hash_value))
+                    self.save_queue.put((title_id, size_key, content, hash_value))
                     items_queued = True
                     self.logger.debug(f"Queued poster save for title_id: {title_id}")
                     break

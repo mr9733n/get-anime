@@ -143,11 +143,12 @@ class UIManager:
         btn.setMenu(menu)
         btn.setPopupMode(QToolButton.MenuButtonPopup)
 
-        def sync_width():
-            menu.setFixedWidth(btn.width())
+        # TODO: setFixedWidth
+        # def sync_width():
+        #   menu.setFixedWidth(btn.width())
 
         def on_show_event(e):
-            sync_width()
+            # sync_width()
             QToolButton.showEvent(btn, e)
 
         btn.showEvent = on_show_event

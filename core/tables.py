@@ -257,9 +257,18 @@ class Poster(Base):
     __tablename__ = 'posters'
     poster_id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    poster_blob = Column(LargeBinary, nullable=False)  # Поле для хранения бинарных данных изображения
-    hash_value = Column(String(32), nullable=True)  # MD5
+    # original
+    poster_blob = Column(LargeBinary, nullable=True)
+    hash_value = Column(String(32), nullable=True)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
+    # medium
+    medium_blob = Column(LargeBinary, nullable=True)
+    medium_hash = Column(String(32), nullable=True)
+    medium_updated_at = Column(DateTime, nullable=True)
+    # small / thumb
+    thumb_blob = Column(LargeBinary, nullable=True)
+    thumb_hash = Column(String(32), nullable=True)
+    thumb_updated_at = Column(DateTime, nullable=True)
 
     title = relationship("Title", back_populates="posters")
 

@@ -13,17 +13,19 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextBrowser, QApplication, QL
 from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedMemory
 from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
+from app.qt.ui_am_generator import UIAMGenerator
 from app.vlc.vlc_player import VLCPlayer
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
+from providers.animedia.v0.client import AniMediaClient
 from static.layout_metadata import all_layout_metadata
 from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
 from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
 from providers.animedia.v0.qt_async_worker import AsyncWorker
-from providers.animedia.v0.adapter import AnimediaAdapter
+from providers.animedia.v0.adapter import AniMediaAdapter
 from utils.config.config_manager import ConfigManager
 from utils.downloads.poster_manager import PosterManager
 from utils.downloads.torrent_manager import TorrentManager
@@ -35,6 +37,7 @@ from utils.net.url_resolve_service import UrlResolveService
 from utils.net.url_resolver import TTLCache
 from utils.net.url_resolver_config import ResolverConfig
 from utils.security.library_loader import verify_library
+from utils.parsing.animedia import parse_schedule_line
 
 VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
 PROVIDER_ANILIBERTY = "aniliberty"
@@ -43,7 +46,12 @@ SHOW_DEFAULT = "default"
 SHOW_SYSTEM = "system"
 SHOW_ONE_TITLE = "one_title"
 SHOW_AM_SCHEDULE = "animedia_schedule"
+SHOW_AM_TITLES = "animedia_titles"
+SCHEDULE_KEY: str = "am_schedule_cache"
+ALL_TITLES_KEY: str = "am_all_titles_cache"
 DEFAULT_TEMPLATE = "default"
+DOWNLOAD_AFTER_AGE = 7 # Days
+FINAL_AGE = 90 # Days
 APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
@@ -66,6 +74,8 @@ class ViewState:
     title_id: Optional[int] = None
     title_ids: Optional[List[int]] = None
     day_of_week: Optional[int] = None
+    am_offset: int = 0
+    am_page_size: int = 12
 
 
 class APIClientError(Exception):
@@ -93,6 +103,7 @@ class AnimePlayerAppVer3(QWidget):
         self.thread_pool.setExpiryTimeout(30000)
         self.mpv_window = None
         self.view_state = None
+        self._am_total_count = None
         self.current_show_mode = None
         self.error_label = None
         self.tray_icon = None
@@ -169,7 +180,13 @@ class AnimePlayerAppVer3(QWidget):
 
         self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=Path(self.temp_dir))
         self.animedia_cache = AniMediaCacheManager(self.animedia_cache_cfg.base_dir)
-        self.animedia_adapter = AnimediaAdapter(self.base_am_url, self.net_client, self.animedia_cache, self.animedia_cache_cfg)
+        self.animedia_client = AniMediaClient(
+            base_url=self.base_am_url,
+            net_client=self.net_client,
+            cache=self.animedia_cache,
+            cache_cfg=self.animedia_cache_cfg,
+            logger=self.logger)
+        self.animedia_adapter = AniMediaAdapter(self.base_am_url, self.animedia_client, self.logger)
 
         # Initialize TorrentManager with the correct paths
         self.torrent_manager = TorrentManager(
@@ -204,9 +221,9 @@ class AnimePlayerAppVer3(QWidget):
             net_client=self.net_client
         )
 
-        self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
         self.state_manager = AppStateManager(self.db_manager)
-
+        self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
+        self.ui_am_generator = UIAMGenerator(self, self.db_manager, self.current_template)
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
 
@@ -229,6 +246,8 @@ class AnimePlayerAppVer3(QWidget):
             reset_offset=self.reset_offset,
             get_search_by_title_animedia=self.get_search_by_title_animedia,
             open_web=self.open_web_link,
+            refresh_display=self.refresh_display,
+            reload_poster=self.get_poster_or_placeholder
         )
 
         # init open router
@@ -344,6 +363,9 @@ class AnimePlayerAppVer3(QWidget):
             if state.show_mode == SHOW_AM_SCHEDULE:
                 self.display_animedia_schedule_screen()
                 return
+            elif state.show_mode == SHOW_AM_TITLES:
+                self.display_animedia_titles_screen()
+                return
             elif state.show_mode == SHOW_SYSTEM:
                 self.display_titles(show_mode=SHOW_SYSTEM)
                 return
@@ -388,6 +410,7 @@ class AnimePlayerAppVer3(QWidget):
             current_titles = self.total_titles if self.total_titles else set()
             status, new_title_ids = self.check_and_update_schedule(day, current_titles)
             self.current_title_id = None
+
             if status and new_title_ids:
                 self.display_titles_for_day(day, force_reload=False)
             else:
@@ -398,13 +421,14 @@ class AnimePlayerAppVer3(QWidget):
     def generate_callbacks(self):
         callbacks = {
             "get_search_by_title": self.get_search_by_title,
-            "get_search_by_title_al": self.get_search_by_title_aniliberty,
+            "get_search_by_title_all": self.get_search_by_title_aniliberty,
             "get_search_by_title_am": self.get_search_by_title_animedia,
             "get_update_title": self.get_update_title,
-            "get_update_title_al": self.get_update_title_aniliberty,
+            "get_update_title_all": self.get_update_title_aniliberty,
             "get_update_title_am": self.get_update_title_animedia,
             "get_random_title": self.get_random_title,
             "get_animedia_new_titles": self.get_animedia_new_titles,
+            "get_animedia_all_titles": self.get_animedia_all_titles,
             "refresh_display": self.refresh_display,
             "save_playlist_wrapper": self.save_playlist_wrapper,
             "play_playlist_wrapper": self.play_playlist_wrapper,
@@ -526,6 +550,8 @@ class AnimePlayerAppVer3(QWidget):
                 self._restore_titles(title_ids, show_mode)
             elif show_mode == SHOW_AM_SCHEDULE:
                 self.display_animedia_schedule_screen()
+            elif show_mode == SHOW_AM_TITLES:
+                self.display_animedia_titles_screen()
             elif show_mode == SHOW_SYSTEM:
                 self.display_titles(show_mode=SHOW_SYSTEM)
             else:
@@ -535,6 +561,32 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as exc:
             self.logger.exception("Error restoring app state: %s", exc)
 
+    def _navigate_animedia_mode(self, show_mode: str, go_forward: bool) -> bool:
+        st = self.view_state or ViewState(show_mode=show_mode)
+
+        # total_count уже посчитан при display_* и лежит в self._am_total_count
+        total_count = int(self._am_total_count or 0)
+
+        new_offset = self._calc_offset(st.am_offset, total_count, st.am_page_size, go_forward)
+
+        self.set_view_state(ViewState(
+            show_mode=show_mode,
+            am_offset=new_offset,
+            am_page_size=st.am_page_size,
+        ))
+
+        display_fn = self._animedia_display_for_mode(show_mode)
+        if not display_fn:
+            return False
+        display_fn()
+        return True
+
+    def _animedia_display_for_mode(self, mode: str):
+        return {
+            SHOW_AM_SCHEDULE: self.display_animedia_schedule_screen,
+            SHOW_AM_TITLES: self.display_animedia_titles_screen,
+        }.get(mode)
+
     def navigate_pagination(self, go_forward=True):
         """
         Навигация по страницам текущих результатов (любых списков тайтлов)
@@ -542,6 +594,10 @@ class AnimePlayerAppVer3(QWidget):
         try:
             show_mode = getattr(self, 'current_show_mode', 'default')
             batch_size = 12  # TODO: default size = 12
+
+            if show_mode in (SHOW_AM_SCHEDULE, SHOW_AM_TITLES):
+                if self._navigate_animedia_mode(show_mode, go_forward):
+                    return
 
             if self.current_title_ids:
                 total_count = len(self.current_title_ids)
@@ -646,6 +702,14 @@ class AnimePlayerAppVer3(QWidget):
             self.ui_manager.hide_loader()
             self.ui_manager.set_buttons_enabled(True)
 
+    @staticmethod
+    def _calc_offset(offset: int, total: int, page_size: int, go_forward: bool) -> int:
+        if total <= 0:
+            return 0
+        if go_forward:
+            return 0 if offset + page_size >= total else offset + page_size
+        return max(0, offset - page_size)
+
     def _update_pagination_offset(self, total_count, batch_size, go_forward=True):
         """
         Обновляет текущий offset для пагинации на основе направления навигации.
@@ -687,8 +751,86 @@ class AnimePlayerAppVer3(QWidget):
         if pagination_widget:
             pagination_widget.setVisible(total_pages > 1)
 
+    def _warmup_animedia_titles_and_posters(self, key: str, data_json: list[dict]) -> None:
+        """
+        1) гарантирует, что для каждого original_id есть TitleProviderMap (animedia, external_id -> title_id)
+        2) ставит постеры в очередь на скачивание через PosterManager (ему нужен title_id)
+        """
+        for block in data_json or []:
+            for line in (block.get("titles") or []):
+                title, time_part, ep_part, rating, poster_url, original_id = parse_schedule_line(key, line)
+
+                if not original_id:
+                    self.logger.debug(f"SKIP line (no original_id): key={key}, line={line}")
+                    continue
+
+                data = {
+                    "provider": PROVIDER_ANIMEDIA,
+                    "original_id": original_id,
+                    "title": title,
+                    "poster_url": poster_url,
+                    "poster_slot": "small" if key == SCHEDULE_KEY else "medium",
+                    "rating": rating,
+                }
+                self.db_manager.process_animedia_titles(data)
+
+    def display_animedia_titles_screen(self, titles_json=None):
+        st = self.view_state
+        if not st or st.show_mode != SHOW_AM_TITLES:
+            st = ViewState(show_mode=SHOW_AM_TITLES, am_offset=0, am_page_size=12)
+            self.set_view_state(st)
+        else:
+            # не перезатираем, просто гарантируем show_mode
+            self.set_view_state(ViewState(
+                show_mode=SHOW_AM_TITLES,
+                am_offset=st.am_offset,
+                am_page_size=st.am_page_size,
+            ))
+            st = self.view_state
+
+        if not titles_json:
+            status, cached = self.animedia_cache.load(
+                self.animedia_cache.cfg.all_titles_key,
+                self.animedia_cache.cfg.all_titles_ttl
+            )
+            if status is AniMediaCacheStatus.VALID and cached:
+                titles_json = cached
+            else:
+                self.logger.info("No valid schedule cache to restore")
+                titles_json = []
+                self.get_animedia_all_titles()
+
+        visible_schedule = self._slice_animedia_titles(titles_json, st.am_offset, st.am_page_size)
+        # ВАЖНО: прогреваем маппинг и очередь постеров до отрисовки
+        try:
+            self._warmup_animedia_titles_and_posters(
+                key=ALL_TITLES_KEY,
+                data_json=titles_json
+            )
+
+        except Exception as e:
+            self.logger.error(f"Animedia warmup failed: {e}")
+
+        total_count = self._count_animedia_items(titles_json)
+        self._am_total_count = total_count
+        self.current_offset = st.am_offset  # чтобы _setup_pagination_ui показывал правильную страницу
+        self._setup_pagination_ui(total_count, st.am_page_size, description="AniMedia — all titles")
+
+        self.display_titles_in_ui(visible_schedule, show_mode=SHOW_AM_TITLES)
+
     def display_animedia_schedule_screen(self, schedule_json=None):
-        self.set_view_state(ViewState(show_mode=SHOW_AM_SCHEDULE))
+        st = self.view_state
+        if not st or st.show_mode != SHOW_AM_SCHEDULE:
+            st = ViewState(show_mode=SHOW_AM_SCHEDULE, am_offset=0, am_page_size=12)
+            self.set_view_state(st)
+        else:
+            # не перезатираем, просто гарантируем show_mode
+            self.set_view_state(ViewState(
+                show_mode=SHOW_AM_SCHEDULE,
+                am_offset=st.am_offset,
+                am_page_size=st.am_page_size,
+            ))
+            st = self.view_state
 
         if not schedule_json:
             status, cached = self.animedia_cache.load(
@@ -702,26 +844,78 @@ class AnimePlayerAppVer3(QWidget):
                 schedule_json = []
                 self.get_animedia_new_titles()
 
-        self.display_titles_in_ui(schedule_json, show_mode=SHOW_AM_SCHEDULE)
+        visible_schedule = self._slice_animedia_titles(schedule_json, st.am_offset, st.am_page_size)
+        # ВАЖНО: прогреваем маппинг и очередь постеров до отрисовки
+        try:
+            self._warmup_animedia_titles_and_posters(
+                key=SCHEDULE_KEY,
+                data_json=schedule_json
+            )
+
+        except Exception as e:
+            self.logger.error(f"Animedia warmup failed: {e}")
+
+        total_count = self._count_animedia_items(schedule_json)
+        self._am_total_count = total_count
+        self.current_offset = st.am_offset  # чтобы _setup_pagination_ui показывал правильную страницу
+        self._setup_pagination_ui(total_count, st.am_page_size, description="AniMedia — расписание")
+
+        self.display_titles_in_ui(visible_schedule, show_mode=SHOW_AM_SCHEDULE)
+
+    @staticmethod
+    def _count_animedia_items(data_json: list[dict]) -> int:
+        total = 0
+        for block in data_json or []:
+            total += len(block.get("titles") or [])
+        return total
+
+    @staticmethod
+    def _slice_animedia_titles(data_json: list[dict], offset: int, limit: int) -> list[dict]:
+        """
+        data_json: [{page: int, titles: [str, ...]}, ...]
+        Возвращает такой же формат, но titles обрезаны по глобальному offset/limit.
+        """
+        if not data_json or limit <= 0:
+            return []
+
+        out: list[dict] = []
+        remain_skip = offset
+        remain_take = limit
+
+        for block in data_json:
+            titles = block.get("titles") or []
+            if not titles:
+                continue
+
+            if remain_skip >= len(titles):
+                remain_skip -= len(titles)
+                continue
+
+            start = remain_skip
+            chunk = titles[start:start + remain_take]
+            remain_take -= len(chunk)
+            remain_skip = 0
+
+            out.append({"page": block.get("page"), "titles": chunk})
+
+            if remain_take <= 0:
+                break
+
+        return out
 
     def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:
+            special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
             self.clear_previous_posters()
 
             factory = TitleDisplayFactory(self)
 
-            if len(titles) == 1:
-                title_widget, _ = factory.create(SHOW_ONE_TITLE, titles[0])
-                self.posters_layout.addWidget(title_widget, 0, 0, 1, 2)
-                self.logger.debug(f"Displayed one title.")
-            elif show_mode == SHOW_SYSTEM:
-                system_widget, _ = factory.create(SHOW_SYSTEM, titles)
-                self.posters_layout.addWidget(system_widget, 0, 0, 1, 2)
-                self.logger.debug(f"Displayed {show_mode}")
-            elif show_mode == SHOW_AM_SCHEDULE:
-                animedia_schedule_widget, _ = factory.create(SHOW_AM_SCHEDULE, titles)
-                self.posters_layout.addWidget(animedia_schedule_widget, 0, 0, 1, 2)
-                self.logger.debug(f"Displayed {show_mode}")
+            if show_mode in special_modes:
+                widget, _ = factory.create(show_mode, titles)  # titles тут целиком список блоков/данных
+                self.posters_layout.addWidget(widget, 0, 0, 1, 2)
+            elif len(titles) == 1:
+                widget, _ = factory.create(SHOW_ONE_TITLE, titles[0])
+                self.posters_layout.addWidget(widget, 0, 0, 1, 2)
             else:
                 for index, title in enumerate(titles):
                     title_widget, num_columns = factory.create(show_mode, title)
@@ -928,10 +1122,17 @@ class AnimePlayerAppVer3(QWidget):
 
     def create_animedia_schedule_browser(self, schedule):
         """
-        Прокси-метод, который делегирует создание animedia_schedule_browser в UISGenerator.
+        Прокси-метод, который делегирует создание animedia_schedule_browser в UIAMGenerator.
         """
         self.logger.debug(f"Пытаемся создать animedia_schedule_browser с параметрами: {len(schedule)}")
-        return self.ui_s_generator.create_animedia_schedule_browser(schedule)
+        return self.ui_am_generator.create_animedia_schedule_browser(schedule)
+
+    def create_animedia_titles_browser(self, titles):
+        """
+        Прокси-метод, который делегирует создание animedia_titles_browser в UIAMGenerator.
+        """
+        self.logger.debug(f"Пытаемся создать animedia_titles_browser с параметрами: {len(titles)}")
+        return self.ui_am_generator.create_animedia_titles_browser(titles)
 
     def create_title_browser(self, title, show_mode=SHOW_DEFAULT):
         """
@@ -1056,15 +1257,6 @@ class AnimePlayerAppVer3(QWidget):
         if not isinstance(data, list):
             self.logger.error(f"Ожидался список, получен: {type(data).__name__}")
             return parsed_data
-
-        #titles_db_list = self.db_manager.get_titles_search_query(title_ids)
-        #external_to_internal = {}
-        #for db_title in titles_db_list:
-        #    internal_id = db_title.get("title_id")
-        #    for prov in db_title.get("providers", []):
-        #        ext_id = int(prov.get("external_id"))
-        #        if ext_id:
-        #            external_to_internal[ext_id] = internal_id
 
         for day_info in data:
             if not isinstance(day_info, dict):
@@ -1233,19 +1425,47 @@ class AnimePlayerAppVer3(QWidget):
         """Обновление только через AniMedia."""
         return self._update_titles(provider_filter=PROVIDER_ANIMEDIA)
 
-    def get_animedia_new_titles(self):
+    def get_animedia_all_titles(self):
         self.ui_manager.show_loader("Loading AniMedia schedule...")
         self.ui_manager.set_buttons_enabled(False)
 
         self._animedia_worker = AsyncWorker(
             self.animedia_adapter.get_all_titles,
             max_titles=60,
+            pages=5,
         )
-        self._animedia_worker.finished.connect(self._on_animedia_titles)
+        self._animedia_worker.finished.connect(self._on_animedia_all_titles)
         self._animedia_worker.error.connect(self._on_animedia_error)
         self._animedia_worker.start()
 
-    def _on_animedia_titles(self, data):
+    def get_animedia_new_titles(self):
+        self.ui_manager.show_loader("Loading AniMedia schedule...")
+        self.ui_manager.set_buttons_enabled(False)
+
+        self._animedia_worker = AsyncWorker(
+            self.animedia_adapter.get_new_titles,
+            max_titles=60,
+        )
+        self._animedia_worker.finished.connect(self._on_animedia_new_titles)
+        self._animedia_worker.error.connect(self._on_animedia_error)
+        self._animedia_worker.start()
+
+    def _on_animedia_all_titles(self, data):
+        try:
+            if not data:
+                self.show_error_notification("AniMedia", "No data received.")
+                return
+
+            self.display_animedia_titles_screen(data)
+
+        except Exception as e:
+            self.logger.error(f"Error in _on_animedia_all_titles: {e}")
+            self.show_error_notification("AniMedia", "Failed to show schedule. Check logs.")
+        finally:
+            self.ui_manager.hide_loader()
+            self.ui_manager.set_buttons_enabled(True)
+
+    def _on_animedia_new_titles(self, data):
         try:
             if not data:
                 self.show_error_notification("AniMedia", "No data received.")
@@ -1254,7 +1474,7 @@ class AnimePlayerAppVer3(QWidget):
             self.display_animedia_schedule_screen(data)
 
         except Exception as e:
-            self.logger.error(f"Error in _on_animedia_titles: {e}")
+            self.logger.error(f"Error in _on_animedia_new_titles: {e}")
             self.show_error_notification("AniMedia", "Failed to show schedule. Check logs.")
         finally:
             self.ui_manager.hide_loader()
@@ -1586,43 +1806,51 @@ class AnimePlayerAppVer3(QWidget):
         link = url.toString()
         self.link_handler.handle(link)
 
-    def get_poster_or_placeholder(self, title_id):
+    def get_poster_or_placeholder(self, title_id: int, size_key: str = "original", force_download: bool = False,) -> bytes:
         """
         Получает постер для тайтла или плейсхолдер, если постер не найден.
         Инициирует скачивание постера только если существующий постер устарел или отсутствует.
         """
         try:
-            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id)
-            need_download = True
-            if poster_data and not is_placeholder:
-                poster_date = self.db_manager.get_poster_last_updated(title_id)
+            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id, size_key=size_key)
+            need_download = False
 
-                if poster_date:
-                    if poster_date.tzinfo is None:
-                        poster_date = poster_date.replace(tzinfo=timezone.utc)
+            if force_download:
+                need_download = True
+                self.logger.debug(f"Force download requested for title_id={title_id}, size_key={size_key}")
+            else:
+                if not poster_data or is_placeholder:
+                    need_download = True
+                else:
+                    poster_date = self.db_manager.get_poster_last_updated(title_id, size_key=size_key)
+                    if poster_date:
+                        if poster_date.tzinfo is None:
+                            poster_date = poster_date.replace(tzinfo=timezone.utc)
 
-                    current_time = datetime.now(timezone.utc)
-                    week_age = timedelta(days=7)
-                    final_age = timedelta(days=90)
-                    poster_age = current_time - poster_date
+                        current_time = datetime.now(timezone.utc)
+                        week_age = timedelta(days=DOWNLOAD_AFTER_AGE)
+                        final_age = timedelta(days=FINAL_AGE)
+                        poster_age = current_time - poster_date
 
-                    if poster_age < week_age or poster_age > final_age:
-                        need_download = False
                         if poster_age < week_age:
                             self.logger.debug(
-                                f"Poster for title_id {title_id} is current (updated on {poster_date}). Skipping download."
+                                f"Poster for title_id={title_id} size_key={size_key} is fresh ({poster_date}). Skipping download."
+                            )
+                        elif poster_age < final_age:
+                            need_download = True
+                            self.logger.debug(
+                                f"Poster for title_id={title_id} size_key={size_key} is stale ({poster_date}). Scheduling download."
                             )
                         else:
                             self.logger.debug(
-                                f"Poster for title_id {title_id} is considered final (older than {final_age.days} days). Skipping download."
+                                f"Poster for title_id={title_id} size_key={size_key} is final ({poster_date}). Skipping download considered final (older than 90 days)."
                             )
-
             if need_download:
-                poster_link = self.db_manager.get_poster_link(title_id)
+                poster_link = self.db_manager.get_poster_link(title_id, size_key)
                 if poster_link:
                     processed_link = self.perform_poster_link(poster_link)
                     if processed_link:
-                        self.poster_manager.write_poster_links([(title_id, processed_link)])
+                        self.poster_manager.write_poster_links([(title_id, processed_link, size_key)])
                         self.logger.debug(f"Added poster for title_id {title_id} to download queue.")
 
             return poster_data
@@ -1654,7 +1882,8 @@ class AnimePlayerAppVer3(QWidget):
                 standardized_url = self.standardize_url(poster_url)
                 self.logger.debug(f"Constructed poster URL → {standardized_url[-41:]}")
 
-            cached_urls = [url for _, url in self.poster_manager.poster_links]
+            cached_urls = [url for (_, url, _) in self.poster_manager.poster_links]
+
             if standardized_url in cached_urls:
                 self.logger.debug(
                     f"Poster URL already cached: {standardized_url}. Skipping fetch."

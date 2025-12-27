@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, parse_qsl, urlencode
 from typing import Iterable, Union, Optional, Literal, List, Dict, Any
-from bs4 import BeautifulSoup
 
 
 def safe_str(value: bytes | str) -> str:
@@ -57,23 +56,22 @@ def _canon_query(query: str) -> str:
     q.sort()
     return urlencode(q, doseq=True)
 
+
 def dedup_key(u: str) -> str:
     p = urlparse(u)
     host = (p.netloc or "").lower()
     path = p.path or ""
 
-    # VK: важны oid + id + hash (и ещё иногда 'hd'/'autoplay' можно игнорить)
     if host.endswith(("vkvideo.ru", "vk.com")) and path.endswith("/video_ext.php"):
         qs = parse_qs(p.query)
         oid = (qs.get("oid", [""])[0])
         vid = (qs.get("id", [""])[0])
         h = (qs.get("hash", [""])[0])
-        # если вдруг какого-то нет — падаем на общий ключ
         if oid and vid and h:
             return f"{p.scheme}://{host}{path}?oid={oid}&id={vid}&hash={h}"
 
-    # По умолчанию: полный URL, но query канонизируем (чтобы порядок параметров не влиял)
     return urlunparse((p.scheme, host, path, p.params, _canon_query(p.query), ""))
+
 
 def dedup_urls(urls: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -82,8 +80,9 @@ def dedup_urls(urls: list[str]) -> list[str]:
         key = dedup_key(u)
         if key not in seen:
             seen.add(key)
-            out.append(u)  # сохраняем оригинал
+            out.append(u)
     return out
+
 
 def dedup_and_sort(urls: List[str]) -> List[str]:
     """
@@ -124,21 +123,6 @@ def add_720(url: str) -> Literal[b""]:
     return _insert_quality(url, "720")
 
 
-def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
-    """Ищет в HTML строку `file = "..."` и возвращает абсолютный URL."""
-    soup = BeautifulSoup(html, "html.parser")
-    for script in soup.find_all("script"):
-        txt = script.string or script.get_text()
-        m = re.search(r'file\s*[:=]\s*["\']([^"\']+)["\']', txt)
-        if m:
-            return urljoin(base_url, m.group(1))
-    return None
-
-
-def _text_or_none(tag) -> Optional[str]:
-    return tag.get_text(strip=True) if tag else None
-
-
 def to_timestamp(iso_date: str | None) -> int:
     """Конвертирует ISO‑строку в unix‑timestamp (UTC)."""
     if not iso_date:
@@ -153,146 +137,6 @@ def to_timestamp(iso_date: str | None) -> int:
         return int(dt.timestamp())
     except Exception:
         return 0
-
-
-def _parse_season_and_updated(li_tag) -> tuple[Optional[str], int]:
-    """
-    Принимает <li>‑элемент «Сезон года: …», возвращает:
-    - season_name – только название сезона в нижнем регистре,
-    - updated_ts – timestamp даты выхода (если есть).
-    """
-    if not li_tag:
-        return None, 0
-
-    season_a = li_tag.select_one("a")
-    season_full = season_a.get_text(strip=True) if season_a else ""
-    season_name = season_full.split()[0].lower() if season_full else None
-
-    # пример: "Осень 2025, выходит с 2 октября 2025"
-    raw = li_tag.get_text(separator=" ", strip=True)
-    m = re.search(r"выходит с\s+(\d{1,2}\s+\w+\s+\d{4})", raw, re.IGNORECASE)
-    if not m:
-        return season_name, 0
-
-    date_str = m.group(1)                     # "2 октября 2025"
-    months = {
-        "января": "01", "февраля": "02", "марта": "03",
-        "апреля": "04", "мая": "05", "июня": "06",
-        "июля": "07", "августа": "08", "сентября": "09",
-        "октября": "10", "ноября": "11", "декабря": "12",
-    }
-    day, month_ru, year = date_str.split()
-    month = months.get(month_ru.lower())
-    if not month:
-        return season_name, 0
-    iso = f"{year}-{month}-{day.zfill(2)}T00:00:00+00:00"
-    try:
-        ts = int(datetime.fromisoformat(iso).timestamp())
-    except Exception:
-        ts = 0
-    return season_name, ts
-
-
-def _parse_type_info(soup) -> dict:
-    """
-    Извлекает:
-    - full_string  → «ТВ (12 эп.), 24 мин.»
-    - episodes → 12
-    - lenght → 24
-    """
-    result = {
-        "type_full": None,
-        "episodes": 0,
-        "length": None,
-    }
-
-    # <div class="spanser"><span>9</span> <i>из</i> 12+</div>
-    spanser = soup.select_one("div.spanser")
-    if spanser:
-        cur = spanser.select_one("span")
-        txt = spanser.get_text(separator=" ", strip=True)
-        m = re.search(r"из\s+(\d+)\+?", txt)
-        total = int(m.group(1)) if m else 0
-        result["episodes"] = total
-        result["type_full"] = f"ТВ ({total} эп.)"
-
-    # Длительность эпизода – не отдается
-    # lenght = int(0)
-    # result["lenght"] = lenght
-    # result["type_full"] += f", {lenght} мин."
-    return result
-
-
-def parse_title_page(html: str, base_url: str) -> Dict[str, Optional[str]]:
-    """Извлекает все требуемые поля из HTML страницы тайтла."""
-    soup = BeautifulSoup(html, "html.parser")
-
-    # ── названия ──
-    header = soup.select_one("header.pmovie__header")
-    name_ru = _text_or_none(header.select_one("h1"))
-    name_en = _text_or_none(header.select_one("div.pmovie__main-info"))
-    name_alter = _text_or_none(header.select_one("div.courssp"))
-
-    # ── жанры ──
-    genres = [
-        a.get_text(strip=True)
-        for a in soup.select("div.animli a")
-    ]
-
-    # ── список <ul> с метаданными ──
-    meta = {  # ключ → CSS‑селектор внутри <li>
-        "year": "li:has(span:-soup-contains('Год')) a",
-        "status": "li:has(span:-soup-contains('Статус')) a",
-        "type": "li:has(span:-soup-contains('Тип')) a",
-        "studio": "li:has(span:-soup-contains('Студия')) a",
-    }
-    extracted = {}
-    for field, selector in meta.items():
-        extracted[field] = _text_or_none(soup.select_one(selector))
-
-    # ── рейтинг ──
-    rating = _text_or_none(soup.select_one(
-        "div.item-slide__ext-rating.item-slide__ext-rating--imdb"
-    ))
-    # TODO: add Chinese rating. But it displays not for every title
-    # rating_kp = _text_or_none(soup.select_one(
-    #    "div.item-slide__ext-rating.item-slide__ext-rating--kp"
-    # ))
-
-    # ── описание ──
-    description = _text_or_none(soup.select_one(
-        "div.pmovie__text.full-text.clearfix p"
-    ))
-
-    # ── постер ──
-    poster_tag = soup.select_one("div.pmovie__img img")
-    poster = urljoin(base_url, poster_tag["src"]) if poster_tag else None
-
-    # ── сезон и дата выхода ──
-    season_li = soup.select_one("li:has(span:-soup-contains('Сезон года'))")
-    season_name, updated_ts = _parse_season_and_updated(season_li)
-
-    # ── типовая информация (эпизоды, длительность) ──
-    type_info = _parse_type_info(soup)
-
-    return {
-        "name_ru": name_ru,
-        "name_en": name_en,
-        "alternative": name_alter,
-        "genres": genres,
-        "season": season_name,
-        "updated": updated_ts,
-        "year": int(extracted["year"]),
-        "status": extracted["status"],
-        "type": extracted["type"],
-        "studio": extracted["studio"],
-        "rating": float(rating),
-        "description": description,
-        "poster": poster,
-        "type_full": type_info["type_full"],
-        "episodes": type_info["episodes"],
-        "length": type_info["length"],
-    }
 
 
 def episodes_dict(sorted_links: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -435,8 +279,8 @@ def build_base_dict(
         },
         "genres": meta.get("genres") or [],
         "posters": {
-            "small": {"url": meta.get("poster_small") or ""},
-            "medium": {"url": meta.get("poster_medium") or ""},
+            "small": {},
+            "medium": {},
             "original": {"url": meta.get("poster") or ""}
         },
         "updated": updated_ts,

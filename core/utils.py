@@ -1,4 +1,5 @@
 # utils.py
+import hashlib
 import json
 import logging
 import os
@@ -6,6 +7,8 @@ import os
 from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
+
+from core.types import POSTER_SIZES, POSTER_FIELDS
 from core.tables import Poster, Template
 
 class PlaceholderManager:
@@ -13,42 +16,46 @@ class PlaceholderManager:
         self.logger = logging.getLogger(__name__)
         self.Session = sessionmaker(bind=engine)()
 
+    @staticmethod
+    def calc_hash(data: bytes) -> str:
+        return hashlib.md5(data).hexdigest()
+
     def save_placeholders(self):
-        # Добавляем заглушки изображений, если они не добавлены
         placeholders = [
-            {'title_id': 1, 'file_name': 'background.png'},
-            {'title_id': 2, 'file_name': 'no_image.png'},
-            # TODO: remove unused images
-            {'title_id': 3, 'file_name': 'rating_star_blank.png'},
-            {'title_id': 4, 'file_name': 'rating_star.png'},
-            {'title_id': 5, 'file_name': 'watch_me.png'},
-            {'title_id': 6, 'file_name': 'watched.png'},
-            {'title_id': 7, 'file_name': 'reload.png'},
-            {'title_id': 8, 'file_name': 'download_red.png'},
-            {'title_id': 9, 'file_name': 'download_green.png'},
-            {'title_id': 10, 'file_name': 'need_to_see_red.png'},
-            {'title_id': 11, 'file_name': 'need_to_see_green.png'}
+            {"title_id": 1, "file_name": "background.png", "size_key": "original"},
+            {"title_id": 2, "file_name": "no_image.png", "size_key": "original"},
+            {"title_id": 2, "file_name": "no_image_medium.png", "size_key": "medium"},
+            {"title_id": 2, "file_name": "no_image_small.png", "size_key": "small"},
         ]
 
         with self.Session as session:
-            for placeholder in placeholders:
+            for ph in placeholders:
                 try:
-                    placeholder_poster = session.query(Poster).filter_by(title_id=placeholder['title_id']).first()
-                    if not placeholder_poster:
-                        with open(f'static/{placeholder["file_name"]}', 'rb') as image_file:
-                            poster_blob = image_file.read()
-                            placeholder_poster = Poster(
-                                title_id=placeholder['title_id'],
-                                poster_blob=poster_blob,
-                                last_updated=datetime.now(timezone.utc)
-                            )
-                            session.add(placeholder_poster)
-                            session.commit()
-                            self.logger.info(f"Placeholder image '{placeholder['file_name']}' was added to posters table.")
+                    title_id = ph["title_id"]
+                    size_key: PosterSize = ph["size_key"]
+                    fields = POSTER_FIELDS[size_key]
+
+                    poster = session.query(Poster).filter_by(title_id=title_id).first()
+                    if not poster:
+                        poster = Poster(title_id=title_id)
+                        session.add(poster)
+                        session.flush()
+
+                    with open(f'static/{ph["file_name"]}', "rb") as f:
+                        blob = f.read()
+                    hash_value = self.calc_hash(blob)
+                    now = datetime.now(timezone.utc)
+
+                    setattr(poster, fields.blob, blob)
+                    setattr(poster, fields.hash, hash_value)
+                    setattr(poster, fields.updated, now)
+
+                    session.commit()
+                    self.logger.info(f"Placeholder {ph['file_name']} saved for title_id={title_id} size={size_key}")
 
                 except Exception as e:
                     session.rollback()
-                    self.logger.error(f"Error initializing '{placeholder['file_name']}' image in posters table: {e}")
+                    self.logger.error(f"Error initializing placeholder {ph}: {e}")
 
 class TemplateManager:
     def __init__(self, engine):

@@ -3,8 +3,11 @@ import ast
 import base64
 from urllib.parse import urlparse, parse_qs, unquote
 from PyQt5.QtCore import QTimer
+from typing import Callable, Optional, Any
 
 from providers.animedia.v0.cache_manager import AniMediaCacheManager
+
+Handler = Callable[[list[str]], Any]
 
 
 class LinkActionHandler:
@@ -20,7 +23,9 @@ class LinkActionHandler:
                  save_torrent_wrapper,
                  reset_offset,
                  get_search_by_title_animedia,
-                 open_web):
+                 open_web,
+                 refresh_display,
+                 reload_poster):
 
         self.logger = logger
         self.db_manager = db_manager
@@ -33,10 +38,11 @@ class LinkActionHandler:
         self.reset_offset = reset_offset
         self.get_search_by_title_animedia = get_search_by_title_animedia
         self.open_web_link = open_web
-
+        self.refresh_display = refresh_display
+        self.get_poster_or_placeholder = reload_poster
         self.animedia_cache = animedia_cache
 
-        self.dispatch = {
+        self.dispatch: dict[str, Handler] = {
             'display_info': self._handle_display_info,
             'am_search': self._handle_am_search,
             'filter_by_franchise': self._handle_filter_by_franchise,
@@ -57,9 +63,11 @@ class LinkActionHandler:
             'play_m3u8': self._handle_play_m3u8,
             'download_torrent': self._handle_torrent_download,
             'open_web': self._handle_open_web,
+            'refresh_display': self._handle_refresh_display,
+            'reload_poster': self._handle_reload_poster,
         }
 
-    def handle(self, link):
+    def handle(self, link: str) -> Optional[Any]:
         try:
             parts = link.split('/')
             action = parts[0]
@@ -74,7 +82,7 @@ class LinkActionHandler:
             self.logger.error(f"Error handling link: {e}")
             return None
 
-    def _handle_torrent_download(self, parts):
+    def _handle_torrent_download(self, parts: list[str]) -> None:
         """
         Обрабатывает ссылки на скачивание торрентов.
 
@@ -123,22 +131,22 @@ class LinkActionHandler:
         except Exception as e:
             self.logger.error(f"Error handling torrent download: {e}", exc_info=True)
 
-    def _handle_display_info(self, parts):
+    def _handle_display_info(self, parts: list[str]) -> None:
         title_id = int(parts[1])
         QTimer.singleShot(100, lambda: self.display_info(title_id))
 
-    def _handle_am_search(self, parts):
+    def _handle_am_search(self, parts: list[str]) -> None:
         title = str(parts[1])
         original_id = str(parts[2])
         self.animedia_cache.invalidate_item(self.animedia_cache.cfg.vlink_key, original_id)
         QTimer.singleShot(100, lambda: self.get_search_by_title_animedia(title))
 
-    def _handle_filter_by_franchise(self, parts):
+    def _handle_filter_by_franchise(self, parts: list[str]) -> None:
         title_ids = ast.literal_eval(parts[1])
         self.logger.debug(f"Filtering by franchise for title_ids: {title_ids}")
         QTimer.singleShot(100, lambda: self.display_titles(title_ids=title_ids))
 
-    def _handle_filter_by_genre(self, parts):
+    def _handle_filter_by_genre(self, parts: list[str]) -> None:
         genre_id = parts[1]
         self.logger.debug(f"Filtering by genre: {genre_id}")
         title_ids = self.db_manager.get_titles_by_genre(genre_id)
@@ -151,7 +159,7 @@ class LinkActionHandler:
         else:
             self.logger.warning(f"No titles found with genre: '{genre_id}'")
 
-    def _handle_filter_by_team_member(self, parts):
+    def _handle_filter_by_team_member(self, parts: list[str]) -> None:
         team_member = parts[1]
         self.logger.debug(f"Filtering by team_member: {team_member}")
         title_ids = self.db_manager.get_titles_by_team_member(team_member)
@@ -162,7 +170,7 @@ class LinkActionHandler:
         else:
             self.logger.warning(f"No titles found with team_member: '{team_member}'")
 
-    def _handle_filter_by_year(self, parts):
+    def _handle_filter_by_year(self, parts: list[str]) -> None:
         year = int(parts[1])
         self.logger.debug(f"Filtering by year: {year}")
         title_ids = self.db_manager.get_titles_by_year(year)
@@ -172,7 +180,7 @@ class LinkActionHandler:
                                                                title_ids=title_ids))
         else:
             self.logger.warning(f"No titles found with year: '{year}'")
-    def _handle_filter_by_status(self, parts):
+    def _handle_filter_by_status(self, parts: list[str]) -> None:
         status_code = int(parts[1])
         self.logger.debug(f"Filtering by status: {status_code}, type: {type(status_code)}")
         title_ids = self.db_manager.get_titles_by_status(status_code)
@@ -183,7 +191,7 @@ class LinkActionHandler:
                                                                title_ids=title_ids))
         else:
             self.logger.warning(f"No titles found with status: '{status_code}'")
-    def _handle_filter_by_provider(self, parts):
+    def _handle_filter_by_provider(self, parts: list[str]) -> None:
         provider_code = parts[1]
         self.logger.debug(f"Filtering by provider: {provider_code}")
         title_ids = self.db_manager.get_title_ids_by_provider(provider_code)
@@ -195,7 +203,7 @@ class LinkActionHandler:
         else:
             self.logger.warning(f"No titles found with provider: '{provider_code}'")
 
-    def _handle_reload_template(self, parts):
+    def _handle_reload_template(self, parts: list[str]) -> None:
         template_name = parts[1]
         self.db_manager.save_template(template_name)
         QTimer.singleShot(100, lambda: self.display_titles(start=True))
@@ -206,7 +214,7 @@ class LinkActionHandler:
             self.reset_offset()
             QTimer.singleShot(100, lambda: self.display_titles(start=True))
 
-    def _handle_set_download_status(self, parts):
+    def _handle_set_download_status(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             user_id = int(parts[1])
             title_id = int(parts[2])
@@ -224,7 +232,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid set_download_status/ link structure: {parts}")
 
-    def _handle_set_need_to_see(self, parts):
+    def _handle_set_need_to_see(self, parts: list[str]) -> None:
         if len(parts) >= 3:
             user_id = int(parts[1])
             title_id = int(parts[2])
@@ -238,7 +246,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid set_need_to_see/ link structure: {parts}")
 
-    def _handle_set_watch_status(self, parts):
+    def _handle_set_watch_status(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             user_id = int(parts[1])
             title_id = int(parts[2])
@@ -256,7 +264,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid set_watch_status/ link structure: {parts}")
 
-    def _handle_set_watch_all_episodes_status(self, parts):
+    def _handle_set_watch_all_episodes_status(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             user_id = int(parts[1])
             title_id = int(parts[2])
@@ -274,7 +282,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid set_watch_all_episodes_status/ link structure: {parts}")
 
-    def _handle_set_rating(self, parts):
+    def _handle_set_rating(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             title_id = int(parts[1])
             rating_name = str(parts[2])
@@ -285,7 +293,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid set_rating/ link structure: {parts}")
 
-    def _handle_play_all(self, parts):
+    def _handle_play_all(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             title_id = int(parts[1])
             filename = parts[2]
@@ -297,7 +305,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid play_all link structure: {parts}")
 
-    def _handle_play_m3u8(self, parts):
+    def _handle_play_m3u8(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             try:
                 title_id = int(parts[1])
@@ -315,7 +323,7 @@ class LinkActionHandler:
         else:
             self.logger.error(f"Invalid play_m3u8 link structure: {parts}")
 
-    def _handle_open_web(self, parts):
+    def _handle_open_web(self, parts: list[str]) -> None:
         if len(parts) >= 4:
             try:
                 title_id = int(parts[1])
@@ -327,8 +335,34 @@ class LinkActionHandler:
                 link = decoded_link
                 self.logger.info(f"Sending video link: {link} to Qt Browser")
                 self.open_web_link(decoded_link, title_id=title_id, skip_data=None)
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
+                QTimer.singleShot(10, lambda: self.display_info(title_id))
             except (ValueError, SyntaxError) as e:
                 self.logger.error(f"Error parsing: {e}")
         else:
             self.logger.error(f"Invalid open_web link structure: {parts}")
+
+    def _handle_refresh_display(self, parts: list[str]) -> None:
+        if len(parts) >= 2:
+            try:
+                screen = str(parts[1])
+                self.logger.info(f"Refreshing {screen} screen...")
+                QTimer.singleShot(10, lambda: self.refresh_display())
+            except (ValueError, SyntaxError) as e:
+                self.logger.error(f"Error refreshing screen: {e}")
+        else:
+            self.logger.error(f"Invalid open_web link structure: {parts}")
+
+    def _handle_reload_poster(self, parts: list[str]) -> None:
+        if len(parts) >= 3:
+            try:
+                title_id = int(parts[1])
+                size_key = str(parts[2])
+                self.logger.info(f"Force download poster size: {size_key} for title_id: {title_id} ...")
+                QTimer.singleShot(0, lambda: self.refresh_display())
+                QTimer.singleShot(5, lambda: self.get_poster_or_placeholder(title_id=title_id, size_key=size_key, force_download=True))
+                QTimer.singleShot(800, lambda: self.refresh_display())
+            except (ValueError, SyntaxError) as e:
+                self.logger.error(f"Error refreshing screen: {e}")
+        else:
+            self.logger.error(f"Invalid open_web link structure: {parts}")
+

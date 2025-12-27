@@ -5,6 +5,7 @@ import re
 import ast
 import json
 import logging
+from cgitb import small
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -354,3 +355,63 @@ class ProcessManager:
                     except Exception as e:
                         self.logger.error(f"Ошибка при сохранении торрента в базе данных: {e}")
         return True
+
+    def process_animedia_titles(self, data):
+        self.logger.debug(
+            f"[AM] process_animedia_titles: "
+            f"external_id={data.get('original_id')} "
+            f"title={data.get('title')} "
+            f"rating={data.get('rating')} ({type(data.get('rating'))})"
+        )
+        try:
+            slot = data.get("poster_slot")  # "small" | "medium"
+            poster = data.get("poster_url")
+            posters = {
+                "small": {"url": ""},
+                "medium": {"url": ""},
+                "original": {},
+            }
+            if slot in ("small", "medium"):
+                posters[slot]["url"] = poster or ""
+
+            stub_raw = {
+                "provider": data.get("provider"),
+                "external_id": data.get("original_id"),
+                "code": "",
+
+                "names": {"ru": data.get("title") or "", "en": "", "alternative": ""},
+                "franchises": [],
+                "announce": "",
+                "status": {"string": "", "code": None},
+                "posters": posters,
+                'rating': {
+                    'name': data.get("provider"),
+                    'score': data.get("rating", 0.0)
+                },
+
+                "updated": 0,
+                "last_change": 0,
+
+                "type": {"full_string": "", "code": None, "string": "", "episodes": None, "length": ""},
+                "genres": [],
+                "team": {"voice": [], "translator": [], "timing": []},
+
+                # важно: чтобы process_titles не споткнулся о .get("season", {}).get(...)
+                "season": {},
+
+                "description": "",
+                "in_favorites": 0,
+                "blocked": {"copyrights": False, "geoip": False, "geoip_list": []},
+                "player": {"host": "", "alternative_player": ""},
+            }
+
+            ok, title_id = self.process_titles(stub_raw)
+            if not ok or not title_id:
+                return None
+            return True
+        except Exception as e:
+            self.logger.error(
+                f"Error with processing AniMedia titles data: {e}",
+                exc_info=True
+            )
+            return None

@@ -1,4 +1,5 @@
 # ui_generator.py
+import html
 import json
 import base64
 import logging
@@ -9,6 +10,7 @@ from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import QByteArray, QBuffer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
+from utils.media.image_manager import guess_mime, convert_image
 
 
 class UIGenerator:
@@ -52,28 +54,6 @@ class UIGenerator:
         """Генерирует HTML для отображения информации о тайтле, используя фабрику HTML.
         """
         return self.title_html_factory.generate_html(title, show_mode)
-
-    def prepare_generate_poster_html(self, title_id):
-        try:
-            poster_data = self.app.get_poster_or_placeholder(title_id)
-            pixmap = QPixmap()
-            if not pixmap.loadFromData(poster_data):
-                self.logger.error(f"Error: Failed to load image data for title_id: {title_id}")
-                return None
-
-            byte_array = QByteArray()
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.WriteOnly)
-            if not pixmap.save(buffer, 'PNG'):
-                self.logger.error(f"Error: Failed to save image as PNG for title_id: {title_id}")
-                return None
-
-            poster_base64 = base64.b64encode(byte_array.data()).decode('utf-8')
-            return poster_base64
-
-        except Exception as e:
-            self.logger.error(f"Error processing poster for title_id: {title_id} - {e}")
-            return None
 
     def generate_provider_html(self, title_id):
         """Generates HTML to display provider"""
@@ -273,24 +253,51 @@ class UIGenerator:
             self.logger.error(error_message)
             return ""
 
-    def generate_poster_html(self, title, need_image=False, need_background=False, need_placeholder=False):
-        """Generates HTML for the poster in Base64 format or returns a placeholder."""
+    def generate_poster_html(
+            self,
+            title,
+            need_image: bool = False,
+            need_background: bool = False,
+            need_placeholder: bool = False,
+    ) -> str:
+        """Generates HTML/CSS for poster using data-url. WEBP -> PNG fallback for Qt5."""
         try:
             if need_placeholder:
-                poster_base64 = self.prepare_generate_poster_html(2)
+                title_id = 2
+                alt = "placeholder"
             else:
-                poster_base64 = self.prepare_generate_poster_html(title.title_id)
-            if need_image:
-                return f'<img src="data:image/png;base64,{poster_base64}" alt="{title.title_id}.{title.code}" style=\"float: left; margin-right: 20px;\"" />'
-            elif need_background:
-                return f'background-image: url("data:image/png;base64,{poster_base64}");'
+                title_id = getattr(title, "title_id", None)
+                if not title_id:
+                    return ""
+                code = getattr(title, "code", "") or ""
+                alt = f"{title_id}.{code}"
 
-            # TODO: fix this return: no static files in production version
-            return f"background-image: url('static/background.png');"
+            size_key = "original"
+            blob = self.app.get_poster_or_placeholder(title_id, size_key=size_key)
+            if not blob:
+                return ""
+            mime = guess_mime(blob) or "application/octet-stream"
+            if "webp" in mime.lower():
+                converted = convert_image(blob)  # bytes PNG
+                if not converted:
+                    return ""
+                blob = converted
+                mime = "image/png"
+            b64 = base64.b64encode(blob).decode("ascii")
+            data_url = f"data:{mime};base64,{b64}"
+            if need_image:
+                return (
+                    f'<img src="{data_url}" '
+                    f'alt="{html.escape(alt)}" '
+                    f'style="float:left; margin-right:20px;" />'
+                )
+            if need_background:
+                return f'background-image: url("{data_url}");'
+            return ""
         except Exception as e:
-            self.logger.error(f"Error processing poster for title_id: {title.title_id} - {e}")
-            # TODO: fix this return: no static files in production version
-            return f"background-image: url('static/background.png');"
+            tid = getattr(title, "title_id", "?")
+            self.logger.error(f"Error processing poster for title_id: {tid} - {e}", exc_info=True)
+            return ""
 
     def generate_genres_html(self, title):
         """Генерирует HTML для отображения жанров с поддержкой кликабельных ссылок."""

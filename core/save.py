@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker, aliased
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
     Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio, Provider, TitleProviderMap
+from core.types import PosterSize, POSTER_FIELDS
 
 
 class SaveManager:
@@ -19,37 +20,45 @@ class SaveManager:
         self.logger = logging.getLogger(__name__)
         self.Session = sessionmaker(bind=engine)()
 
-    def save_poster(self, title_id, poster_blob, hash_value=None):
+    def save_poster(self, title_id: int, poster_blob: bytes, hash_value: str | None, size_key: PosterSize = "original",
+    ) -> None:
+        """
+        Save poster blob/hash/updated for the given size_key into posters table.
+        Creates Poster row if missing.
+        """
         with self.Session as session:
             try:
-                current_time = datetime.now(timezone.utc)
+                now = datetime.now(timezone.utc)
+                fields = POSTER_FIELDS[size_key]
 
+                poster = session.query(Poster).filter_by(title_id=title_id).first()
+                if not poster:
+                    poster = Poster(title_id=title_id)
+                    session.add(poster)
+                    session.flush()
+
+                # если есть hash — сравниваем с тем, что уже лежит именно в этом size_key
                 if hash_value:
-                    existing_poster = session.query(Poster).filter_by(
-                        title_id=title_id,
-                        hash_value=hash_value
-                    ).first()
-
-                    if existing_poster:
-                        existing_poster.last_updated = current_time
+                    current_hash = getattr(poster, fields.hash)
+                    if current_hash == hash_value:
+                        # контент тот же — просто обновим timestamp для этого размера
+                        setattr(poster, fields.updated, now)
+                        session.commit()
                         self.logger.debug(
                             f"Poster already exists with same hash. Updated timestamp. title_id: {title_id}")
-                        session.commit()
                         return
 
-                new_poster = Poster(
-                    title_id=title_id,
-                    poster_blob=poster_blob,
-                    hash_value=hash_value,
-                    last_updated=current_time
-                )
-                session.add(new_poster)
+                # иначе пишем новую версию (в этом размере)
+                setattr(poster, fields.blob, poster_blob)
+                setattr(poster, fields.hash, hash_value)
+                setattr(poster, fields.updated, now)
+                session.commit()
                 self.logger.debug(f"New poster version saved to database. title_id: {title_id}")
 
-                session.commit()
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+                raise
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
         with self.Session as session:

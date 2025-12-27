@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
     Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio
+from core.types import PosterSize, POSTER_FIELDS
 
 
 class GetManager:
@@ -159,72 +160,75 @@ class GetManager:
                 self.logger.error(f"Ошибка при получении статистики из базы данных: {e}")
                 return {}
 
-    def get_poster_link(self, title_id):
+    def get_poster_link(self, title_id, size_key: PosterSize = "original"):
         with self.Session as session:
             try:
-                self.logger.debug(f"Processing poster link for title_id: {title_id}")
-                poster_link = session.query(Title.poster_path_original).filter(Title.title_id == title_id).scalar()
+                self.logger.debug(f"Processing poster link for title_id: {title_id}, size_key: {size_key}")
+
+                if size_key == "small":
+                    col = Title.poster_path_small
+                elif size_key == "medium":
+                    col = Title.poster_path_medium
+                else:
+                    col = Title.poster_path_original
+
+                poster_link = session.query(col).filter(Title.title_id == title_id).scalar()
 
                 if poster_link:
-                    self.logger.debug(f"Poster link found for title_id: {title_id}, link: {poster_link}")
+                    self.logger.debug(f"Poster link found for title_id: {title_id}, size_key: {size_key}")
                     return poster_link
 
-                self.logger.warning(f"No poster link found for title_id: {title_id}")
+                self.logger.warning(f"No poster link found for title_id: {title_id}, size_key: {size_key}")
                 return None
-
             except Exception as e:
-                self.logger.error(f"Error fetching poster from database: {e}")
+                self.logger.error(f"Error fetching poster link from database: {e}")
                 return None
 
-    def get_poster_blob(self, title_id):
+    def get_poster_blob(self, title_id, size_key: PosterSize = "original"):
         """
-        Retrieves the poster blob for a given title_id.
-        If check_exists_only is True, returns a boolean indicating whether the poster exists.
+        Retrieves the poster blob for a given title_id and size_key.
+        Returns: (blob, is_placeholder)
         """
         with self.Session as session:
             try:
-                poster = session.query(Poster).filter_by(title_id=title_id) \
-                    .order_by(Poster.last_updated.desc()).first()
+                fields = POSTER_FIELDS[size_key]
+
+                poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
-                    # TODO: remove unused logic
-                    if title_id in [3, 4, 5, 6, 7, 8, 9, 10, 11]:
-                        # No need log message for rating stars images
-                        # 3, 4 : rating images
-                        # 5, 6 : watch images
-                        # 7 : reload image
-                        # 8, 9 : download image
-                        # 10, 11 : need to see image
-                        return poster.poster_blob, False
-                    else:
-                        self.logger.debug(f"Poster image was found in database. title_id: {title_id}")
-                        return poster.poster_blob, False
+                    blob = getattr(poster, fields.blob)
+                    if blob:
+                        self.logger.debug(f"Poster found in DB. title_id={title_id}, size_key={size_key}")
+                        return blob, False
 
-                placeholder_poster = session.query(Poster).filter_by(title_id=2).first()
-                if placeholder_poster:
-                    self.logger.debug(
-                    f"Poster image was not found in database for title_id: {title_id}. Using placeholder.")
-                    return placeholder_poster.poster_blob, True
-                self.logger.warning(f"No poster found for title_id: {title_id} and no placeholder available.")
+                # fallback placeholder (title_id=2)
+                placeholder = session.query(Poster).filter_by(title_id=2).first()
+                if placeholder:
+                    ph_blob = getattr(placeholder, fields.blob)
+                    if ph_blob:
+                        self.logger.debug(
+                            f"Poster not found for title_id={title_id}, size_key={size_key}. Using placeholder."
+                        )
+                        return ph_blob, True
+
+                self.logger.warning(f"No poster for title_id={title_id} and no placeholder available.")
                 return None, False
+
             except Exception as e:
-                self.logger.error(f"Error fetching poster from database: {e}")
+                self.logger.error(f"Error fetching poster blob from database: {e}")
                 return None, False
 
-    def get_poster_last_updated(self, title_id):
+    def get_poster_last_updated(self, title_id, size_key: PosterSize = "original"):
         """
         Получает дату последнего обновления постера для указанного title_id.
-
-        Args:
-            title_id: ID тайтла
-
-        Returns:
-            datetime: Дата последнего обновления или None, если постер не найден
+        Args: title_id: ID тайтла
+        Returns: datetime: Дата последнего обновления или None, если постер не найден
         """
         with self.Session as session:
             try:
-                poster = session.query(Poster).filter_by(title_id=title_id).order_by(Poster.last_updated.desc()).first()
+                fields = POSTER_FIELDS[size_key]
+                poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if poster:
-                    return poster.last_updated
+                    return getattr(poster, fields.updated)
                 return None
             except Exception as e:
                 self.logger.error(f"Ошибка при получении даты обновления постера: {e}")

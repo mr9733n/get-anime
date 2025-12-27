@@ -335,7 +335,6 @@ CREATE TABLE title_provider_map (
 
 CREATE UNIQUE INDEX uq_title_provider_external
 ON title_provider_map (provider_id, external_title_id);
-
 ```
  
 19. Migration for Fix providers
@@ -360,7 +359,6 @@ SELECT
     END AS external_title_id
 FROM titles t
 JOIN providers p ON p.code = t.provider;
-
 ```
 
 21. Set to lower
@@ -392,12 +390,11 @@ SELECT season_key, season_code, COUNT(*)
 FROM titles
 GROUP BY season_key, season_code
 ORDER BY season_key, season_code;
-
 ```
 
 24. Check after normalisation season
 ```sql
- SELECT season_key, season_code, COUNT(*)
+SELECT season_key, season_code, COUNT(*)
 FROM titles
 GROUP BY season_key, season_code
 ORDER BY season_key, season_code;
@@ -407,4 +404,46 @@ FROM titles
 WHERE season_key='unknown'
 GROUP BY season_string
 ORDER BY COUNT(*) DESC;
+```
+
+25. New poster fields
+```sql
+ALTER TABLE posters ADD COLUMN thumb_blob BLOB;
+ALTER TABLE posters ADD COLUMN thumb_hash TEXT;
+ALTER TABLE posters ADD COLUMN thumb_updated_at INTEGER;
+
+ALTER TABLE posters ADD COLUMN medium_blob BLOB;
+ALTER TABLE posters ADD COLUMN medium_hash TEXT;
+ALTER TABLE posters ADD COLUMN medium_updated_at INTEGER;
+```
+
+26. Poster migration
+```sql
+BEGIN TRANSACTION;
+ALTER TABLE posters RENAME TO posters_old;
+CREATE TABLE posters (
+    poster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_id INTEGER NOT NULL,
+    poster_blob BLOB NULL,
+    hash_value VARCHAR(32) NULL,
+    last_updated DATETIME,
+    medium_blob BLOB NULL,
+    medium_hash VARCHAR(32) NULL,
+    medium_updated_at DATETIME NULL,
+    thumb_blob BLOB NULL,
+    thumb_hash VARCHAR(32) NULL,
+    thumb_updated_at DATETIME NULL,
+    FOREIGN KEY(title_id) REFERENCES titles(title_id)
+);
+
+INSERT INTO posters (
+    poster_id, title_id,
+    poster_blob, hash_value, last_updated
+)
+SELECT
+    poster_id, title_id,
+    poster_blob, hash_value, last_updated
+FROM posters_old;
+DROP TABLE posters_old;
+COMMIT;
 ```

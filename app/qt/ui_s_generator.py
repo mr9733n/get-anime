@@ -1,10 +1,7 @@
 # ui_s_generator.py
-import html
 import logging
-import re
-from typing import Tuple, Optional
-from urllib.parse import quote
 from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
+
 from utils.runtime.runtime_manager import restart_application, LogWindow
 
 
@@ -169,35 +166,6 @@ class UISGenerator:
         except Exception as e:
             self.logger.error(f"Ошибка при переключении шаблона: {e}")
 
-    def create_animedia_schedule_browser(self, schedule):
-        try:
-            animedia_schedule_layout = QVBoxLayout()
-
-            container_widget = QWidget(self.app)
-            container_layout = QVBoxLayout(container_widget)
-
-            animedia_schedule_browser = QTextBrowser(container_widget)
-            animedia_schedule_browser.anchorClicked.connect(self.app.on_link_click)
-            animedia_schedule_browser.setOpenExternalLinks(True)
-            animedia_schedule_browser.setStyleSheet("""
-                text-align: left;
-                border: 1px solid #444;
-                color: #000;
-                font-size: 12pt;
-                font-weight: normal;
-                background: rgba(255, 255, 255, 0.5);
-            """)
-
-            animedia_schedule_browser.setHtml(self._generate_animedia_schedule_html(schedule))
-
-            container_layout.addWidget(animedia_schedule_browser)
-            animedia_schedule_layout.addWidget(container_widget)
-
-            return animedia_schedule_layout
-        except Exception as e:
-            self.logger.error(f"Error create_animedia_schedule_browser: {e}")
-            return None
-
     def create_system_browser(self, statistics, template):
         """Создает системный экран, отображающий количество всех тайтлов и франшиз."""
         try:
@@ -313,101 +281,6 @@ class UISGenerator:
             self.db_manager.save_studio_to_db(title_ids, studio_name)
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
-
-    @staticmethod
-    def _parse_line(s: str) -> Tuple[str, str, str, Optional[str], str]:
-        """
-        Возвращает:
-            title, time_part, ep_part, poster_url, original_id
-        """
-        m = re.search(r"(https?://\S+\.(?:webp|jpg|jpeg|png))", s, flags=re.IGNORECASE)
-        poster = m.group(1) if m else None
-        core = s[:m.start()].strip() if m else s
-        parts = [p.strip() for p in core.split("\u00B7")]
-        title = parts[0] if len(parts) > 0 else ""
-        time_part = parts[1] if len(parts) > 1 else ""
-        ep_part = parts[2] if len(parts) > 2 else ""
-        original_id = parts[3] if len(parts) > 3 else ""
-
-        return title, time_part, ep_part, poster, original_id
-
-    def _generate_animedia_schedule_html(self, schedule):
-        if not schedule:
-            return "<div style='padding:20px; font-size:14pt;'>Нет данных расписания AniMedia.</div>"
-
-        rows = []
-        rows.append("""
-        <style>
-        .am-title {
-            color: #1f2933;        /* тёплый тёмно-серый, не чёрный */
-            font-weight: 600;     /* вместо 600 */
-            font-size: 14pt; 
-            text-decoration: none;
-        }
-        .am-title:hover {
-            text-decoration: underline;
-        }
-        .am-meta {
-            margin-left: 6px;
-            font-size: 12pt;
-            font-weight: 600;
-        }
-        .am-time {
-            color: #4b5563;        /* спокойный серо-графитовый */
-        }
-        .am-ep {
-            color: #6b7280;        /* светлее времени */
-        }
-        </style>
-
-        <div style="padding:18px;">
-          <div style="font-size:20pt; font-weight:bold; margin-bottom:10px;">
-            AniMedia — обновления
-          </div>
-          <div style="opacity:0.8; margin-bottom:18px; font-weight:bold;">
-            Нажми на название, чтобы выполнить поиск в AniMedia.
-          </div>
-        """)
-
-        for block in schedule:
-            page = block.get("page")
-            titles = block.get("titles") or []
-            if not titles:
-                continue
-
-            if not page == 0:
-                rows.append(f"<div style='margin:16px 0 8px; font-size:14pt; font-weight:bold;'>Новые серии аниме [{page}]</div>")
-            else:
-                rows.append(f"<div style='margin:16px 0 8px; font-size:14pt; font-weight:bold;'>Сегодня выйдет</div>")
-            rows.append("<ul style='margin-left:16px; line-height:1.4;'>")
-
-            for line in titles:
-                title, time_part, ep_part, poster, original_id = self._parse_line(line)
-                safe_title = html.escape(title)
-                href = "am_search/" + quote(title) + "/" + original_id
-
-                time_html = f"<span class='am-time'>{html.escape(time_part)}</span>" if time_part else ""
-                ep_html = f"<span class='am-ep'>{html.escape(ep_part)}</span>" if ep_part else ""
-
-                meta_html = ""
-                if time_html or ep_html:
-                    meta_html = f"<span class='am-meta'> {time_html}{' — ' if time_html and ep_html else ''}{ep_html}</span>"
-
-                # TODO: download posters
-                # img_html = f"<img src='{poster}' width='42' style='vertical-align:middle; margin-right:8px; border-radius:4px;'/>" if poster else ""
-                img_html = ""
-
-                rows.append(
-                    f"<li style='margin:6px 0;'>"
-                    f"{img_html}"
-                    f"<a href='{href}' class='am-title'>{safe_title}</a>"
-                    f"{meta_html}"
-                    f"</li>"
-                )
-
-            rows.append("</ul>")
-        rows.append("</div>")
-        return "\n".join(rows)
 
     def _generate_statistics_html(self, statistics, template):
         """Создает HTML-контент для отображения статистики."""

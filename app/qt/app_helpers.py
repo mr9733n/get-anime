@@ -48,9 +48,16 @@ class TitleDisplayFactory:
     def create_animedia_schedule_widget(self, schedule):
         """Create animedia schedule widget"""
         animedia_schedule_widget = QWidget(self.app)
-        system_layout = self.app.create_animedia_schedule_browser(schedule)
-        animedia_schedule_widget.setLayout(system_layout)
+        animedia_layout = self.app.create_animedia_schedule_browser(schedule)
+        animedia_schedule_widget.setLayout(animedia_layout)
         return animedia_schedule_widget
+
+    def create_animedia_titles_widget(self, titles):
+        """Create animedia tiles widget"""
+        animedia_titles_widget = QWidget(self.app)
+        animedia_layout = self.app.create_animedia_titles_browser(titles)
+        animedia_titles_widget.setLayout(animedia_layout)
+        return animedia_titles_widget
 
     def create_default_widget(self, title):
         """Создает виджет по умолчанию."""
@@ -165,7 +172,7 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            titles_html, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
+            _, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             poster_html = self.app.ui_generator.generate_poster_html(title, need_placeholder=True)
             template = Template(one_title_html)
             html_content = template.render(

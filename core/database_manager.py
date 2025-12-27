@@ -10,7 +10,9 @@ from core.get import GetManager
 from core.delete import DeleteManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History, Title
+from core.types import PosterSize
 from app.qt.app_state_manager import AppStateManager
+
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -124,8 +126,8 @@ class DatabaseManager:
     def process_torrents(self, title_data):
         return self.process_manager.process_torrents(title_data)
 
-    def save_poster(self, title_id, poster_blob, hash_value):
-        return self.save_manager.save_poster(title_id, poster_blob, hash_value)
+    def save_poster(self, title_id, poster_blob, hash_value, size_key: PosterSize = "original"):
+        return self.save_manager.save_poster(title_id, poster_blob, hash_value, size_key)
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
         return self.save_manager.save_need_to_see(user_id, title_id, need_to_see)
@@ -174,18 +176,18 @@ class DatabaseManager:
         """Need to see Titles without episodes"""
         return self.get_manager.get_need_to_see_from_db(batch_size, offset, title_id)
 
-    def get_poster_link(self, title_id):
-        return self.get_manager.get_poster_link(title_id)
+    def get_poster_last_updated(self, title_id, size_key: PosterSize = "original"):
+        return self.get_manager.get_poster_last_updated(title_id, size_key)
 
-    def get_poster_last_updated(self, title_id):
-        return self.get_manager.get_poster_last_updated(title_id)
+    def get_poster_link(self, title_id, size_key: PosterSize = "original"):
+        return self.get_manager.get_poster_link(title_id, size_key)
 
-    def get_poster_blob(self, title_id):
+    def get_poster_blob(self, title_id, size_key: PosterSize = "original"):
         """
         Retrieves the poster blob for a given title_id.
         If check_exists_only is True, returns a boolean indicating whether the poster exists.
         """
-        return self.get_manager.get_poster_blob(title_id)
+        return self.get_manager.get_poster_blob(title_id, size_key)
 
     def get_torrents_from_db(self, title_id):
         return self.get_manager.get_torrents_from_db(title_id)
@@ -272,3 +274,5 @@ class DatabaseManager:
     def delete_titles(self, title_ids_input) -> dict:
         return self.delete_manager.delete_titles(title_ids_input)
 
+    def process_animedia_titles(self, data):
+        return self.process_manager.process_animedia_titles(data)

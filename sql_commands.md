@@ -417,33 +417,88 @@ ALTER TABLE posters ADD COLUMN medium_hash TEXT;
 ALTER TABLE posters ADD COLUMN medium_updated_at INTEGER;
 ```
 
-26. Poster migration
+26. Fixes for Poster Migration
 ```sql
-BEGIN TRANSACTION;
+SELECT DISTINCT p.title_id
+FROM posters p
+LEFT JOIN titles t ON t.title_id = p.title_id
+WHERE t.title_id IS NULL;
+```
+
+26.1 Poster migration
+```sql
+-- (опционально) чтобы не споткнуться о FK в процессе копирования
+PRAGMA foreign_keys = OFF;
+
 ALTER TABLE posters RENAME TO posters_old;
+
 CREATE TABLE posters (
     poster_id INTEGER PRIMARY KEY AUTOINCREMENT,
     title_id INTEGER NOT NULL,
     poster_blob BLOB NULL,
-    hash_value VARCHAR(32) NULL,
-    last_updated DATETIME,
+    hash_value TEXT NULL,
+    last_updated DATETIME NULL,
     medium_blob BLOB NULL,
-    medium_hash VARCHAR(32) NULL,
+    medium_hash TEXT NULL,
     medium_updated_at DATETIME NULL,
     thumb_blob BLOB NULL,
-    thumb_hash VARCHAR(32) NULL,
+    thumb_hash TEXT NULL,
     thumb_updated_at DATETIME NULL,
     FOREIGN KEY(title_id) REFERENCES titles(title_id)
 );
 
+-- ВАЖНО: если сироты нельзя удалять, то в posters с FK они не вставятся.
+-- Поэтому либо вставляй только валидные...
 INSERT INTO posters (
     poster_id, title_id,
-    poster_blob, hash_value, last_updated
+    poster_blob, hash_value, last_updated,
+    medium_blob, medium_hash, medium_updated_at,
+    thumb_blob, thumb_hash, thumb_updated_at
 )
 SELECT
+    p.poster_id, p.title_id,
+    p.poster_blob, p.hash_value, p.last_updated,
+    p.medium_blob, p.medium_hash, p.medium_updated_at,
+    p.thumb_blob, p.thumb_hash, p.thumb_updated_at
+FROM posters_old p
+WHERE EXISTS (SELECT 1 FROM titles t WHERE t.title_id = p.title_id);
+
+-- ...а сирот сохрани отдельно:
+CREATE TABLE IF NOT EXISTS posters_orphans (
+    poster_id INTEGER PRIMARY KEY,
+    title_id INTEGER NOT NULL,
+    poster_blob BLOB NULL,
+    hash_value TEXT NULL,
+    last_updated DATETIME NULL,
+    medium_blob BLOB NULL,
+    medium_hash TEXT NULL,
+    medium_updated_at DATETIME NULL,
+    thumb_blob BLOB NULL,
+    thumb_hash TEXT NULL,
+    thumb_updated_at DATETIME NULL,
+    orphaned_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
+);
+
+INSERT INTO posters_orphans (
     poster_id, title_id,
-    poster_blob, hash_value, last_updated
-FROM posters_old;
+    poster_blob, hash_value, last_updated,
+    medium_blob, medium_hash, medium_updated_at,
+    thumb_blob, thumb_hash, thumb_updated_at
+)
+SELECT
+    p.poster_id, p.title_id,
+    p.poster_blob, p.hash_value, p.last_updated,
+    p.medium_blob, p.medium_hash, p.medium_updated_at,
+    p.thumb_blob, p.thumb_hash, p.thumb_updated_at
+FROM posters_old p
+WHERE NOT EXISTS (SELECT 1 FROM titles t WHERE t.title_id = p.title_id);
+
 DROP TABLE posters_old;
-COMMIT;
+
+PRAGMA foreign_keys = ON;
+```
+
+26.2 Delete orphans
+```sql
+DROP TABLE posters_orphans;
 ```

@@ -35,8 +35,8 @@ class UIAMGenerator:
                 reload_poster_href=f"reload_poster/",
                 parse_key=SCHEDULE_KEY,
                 poster_size_key="small",
-                poster_w=64,
-                poster_h=90,
+                poster_w=80,
+                poster_h=112,
                 section_title_fn=self._section_title_schedule,
                 meta_fn=lambda time_part, ep_part, rating: self._meta_join(time_part, ep_part),
             )
@@ -56,8 +56,8 @@ class UIAMGenerator:
                 reload_poster_href=f"reload_poster/",
                 parse_key=ALL_TITLES_KEY,
                 poster_size_key="medium",
-                poster_w=207,
-                poster_h=290,
+                poster_w=213,
+                poster_h=300,
                 section_title_fn=self._section_title_titles,
                 meta_fn=lambda time_part, ep_part, rating: self._meta_join(
                     (f"★ {rating:.1f}" if isinstance(rating, float) and rating > 0 else None),
@@ -201,7 +201,7 @@ class UIAMGenerator:
                 h=poster_h,
             )
 
-            meta_text = meta_fn(time_part or "", ep_part or "", str(rating))
+            meta_text = meta_fn(time_part or "", ep_part or "", rating)
 
             card_html = self._render_card(
                 href=href,

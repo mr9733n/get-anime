@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from core.types import POSTER_SIZES, POSTER_FIELDS
+from core.types import POSTER_SIZES, POSTER_FIELDS, PosterSize
 from core.tables import Poster, Template
 
 class PlaceholderManager:

@@ -1,5 +1,4 @@
 # save.py
-import ast
 import json
 import logging
 import re
@@ -13,6 +12,7 @@ from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Fran
     TitleGenreRelation, \
     Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio, Provider, TitleProviderMap
 from core.types import PosterSize, POSTER_FIELDS
+from utils.media.image_manager import normalize_poster_blob_if_needed, sha256, make_small_poster
 
 
 class SaveManager:
@@ -20,7 +20,12 @@ class SaveManager:
         self.logger = logging.getLogger(__name__)
         self.Session = sessionmaker(bind=engine)()
 
-    def save_poster(self, title_id: int, poster_blob: bytes, hash_value: str | None, size_key: PosterSize = "original",
+    def save_poster(
+            self,
+            title_id: int,
+            poster_blob: bytes,
+            hash_value: str | None,
+            size_key: PosterSize = "original",
     ) -> None:
         """
         Save poster blob/hash/updated for the given size_key into posters table.
@@ -31,45 +36,72 @@ class SaveManager:
                 now = datetime.now(timezone.utc)
                 fields = POSTER_FIELDS[size_key]
 
+                # original < w=455px
+                try:
+                    new_blob, changed = normalize_poster_blob_if_needed(poster_blob, size_key=size_key)
+                    if changed:
+                        poster_blob = new_blob
+                        hash_value = sha256(poster_blob)
+                except Exception as e:
+                    self.logger.warning(
+                        f"Poster normalize failed (kept original bytes). title_id={title_id} size={size_key} err={e}",
+                        exc_info=True
+                    )
+
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
                 if not poster:
                     poster = Poster(title_id=title_id)
                     session.add(poster)
                     session.flush()
 
-                # если есть hash — сравниваем с тем, что уже лежит именно в этом size_key
                 if hash_value:
                     current_hash = getattr(poster, fields.hash)
                     if current_hash == hash_value:
-                        # контент тот же — просто обновим timestamp для этого размера
                         setattr(poster, fields.updated, now)
                         session.commit()
                         self.logger.debug(
-                            f"Poster already exists with same hash. Updated timestamp. title_id: {title_id}")
+                            f"Poster already exists with same hash. Updated timestamp. title_id={title_id}"
+                        )
                         return
 
-                # иначе пишем новую версию (в этом размере)
                 setattr(poster, fields.blob, poster_blob)
                 setattr(poster, fields.hash, hash_value)
                 setattr(poster, fields.updated, now)
+
+                # create small w=80px from original
+                if size_key == "original":
+                    original_changed = (hash_value is None) or (current_hash != hash_value)
+                    if original_changed and getattr(poster, POSTER_FIELDS["small"].blob) is None:
+                        try:
+                            small_blob = make_small_poster(poster_blob, target_w=80)
+                            setattr(poster, POSTER_FIELDS["small"].blob, small_blob)
+                            setattr(poster, POSTER_FIELDS["small"].hash, sha256(small_blob))
+                            setattr(poster, POSTER_FIELDS["small"].updated, now)
+                            self.logger.debug(
+                                f"Generated missing small poster (80px) from original. title_id={title_id}"
+                            )
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to generate small poster (kept as is). title_id={title_id} err={e}",
+                                exc_info=True
+                            )
+
                 session.commit()
-                self.logger.debug(f"New poster version saved to database. title_id: {title_id}")
+                self.logger.debug(f"New poster version saved to database. title_id={title_id}")
 
             except Exception as e:
                 session.rollback()
-                self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}")
+                self.logger.error(f"Ошибка при сохранении постера в базу данных: {e}", exc_info=True)
                 raise
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
         with self.Session as session:
             try:
-                # Получение всех существующих записей для данного title_id
                 existing_statuses = session.query(History).filter(
                     History.user_id == user_id,
                     History.title_id == title_id
                 ).all()
                 if existing_statuses:
-                    # Обновление флага need_to_see для всех записей
                     for existing_status in existing_statuses:
                         existing_status.need_to_see = need_to_see
                         self.logger.debug(
@@ -81,7 +113,6 @@ class SaveManager:
                         need_to_see=1
                     )
                     session.add(new_add)
-                # Фиксация изменений в базе данных
                 session.commit()
             except Exception as e:
                 session.rollback()
@@ -96,14 +127,12 @@ class SaveManager:
                     self.logger.error("Invalid episode_ids provided for bulk update.")
                     raise ValueError("Episode IDs must be a non-empty list.")
 
-                # Получение всех существующих записей для данных episode_ids
                 existing_statuses = session.query(History).filter(
                     History.user_id == user_id,
                     History.title_id == title_id,
                     History.episode_id.in_(episode_ids)
                 ).all()
 
-                # Обновление существующих записей
                 existing_episode_ids = set()
                 for existing_status in existing_statuses:
                     existing_status.previous_watched_at = existing_status.last_watched_at
@@ -111,10 +140,8 @@ class SaveManager:
                     existing_status.last_watched_at = datetime.now(timezone.utc)
                     existing_status.watch_change_count += 1
                     existing_episode_ids.add(existing_status.episode_id)
-
                     self.logger.debug(f"BULK Updated watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {existing_status.episode_id} STATUS: {is_watched}")
 
-                # Добавление новых записей для эпизодов, которых нет в базе данных
                 new_episode_ids = set(episode_ids) - existing_episode_ids
                 new_adds = []
                 for episode_id in new_episode_ids:
@@ -127,13 +154,8 @@ class SaveManager:
                         watch_change_count=1 if is_watched else 0
                     )
                     new_adds.append(new_add)
-
                     self.logger.debug(f"BULK Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, STATUS: {is_watched}")
-
-                # Добавляем новые записи в сессию
                 session.bulk_save_objects(new_adds)
-
-                # Фиксация изменений в базе данных
                 session.commit()
             except Exception as e:
                 session.rollback()
@@ -168,7 +190,6 @@ class SaveManager:
                         existing_status.last_download_at = now
                         existing_status.download_change_count += 1
                     else:
-                        # title-level
                         existing_status.previous_watched_at = existing_status.last_watched_at
                         existing_status.is_watched = is_watched
                         existing_status.last_watched_at = now
@@ -185,7 +206,6 @@ class SaveManager:
                         episode_id=episode_id if is_episode else None,
                         torrent_id=torrent_id if is_torrent else None,
 
-                        # ВАЖНО: title-level тоже должен сохранять is_watched
                         is_watched=is_watched if (is_episode or is_title_level) else False,
                         last_watched_at=now if (is_episode or is_title_level) else None,
                         watch_change_count=1 if (is_episode or is_title_level) else 0,
@@ -214,9 +234,9 @@ class SaveManager:
         - Делим на max_external, получаем долю от 0 до 1.
         - Умножаем на max_cmers и округляем до ближайшего целого.
         """
-        value = min(value, max_external)          # обрезка
-        fraction = value / max_external            # доля от 0 до 1
-        return int(round(fraction * max_cmers))    # перевод в шкалу CMERS
+        value = min(value, max_external)
+        fraction = value / max_external
+        return int(round(fraction * max_cmers))
 
     def _upsert_rating(
         self,
@@ -328,15 +348,12 @@ class SaveManager:
         """
         with self.Session as session:
             try:
-                # Convert timestamps if they exist
                 if 'updated' in title_fields:
                     title_fields['updated'] = datetime.fromtimestamp(title_fields['updated'], tz=timezone.utc)
                 if 'last_change' in title_fields:
                     title_fields['last_change'] = datetime.fromtimestamp(title_fields['last_change'], tz=timezone.utc)
                 external_id_str = str(external_id)
                 provider_code = self.normalize_provider_code(provider_code)
-
-                # 1. находим/создаём провайдера
                 provider = (
                     session.query(Provider)
                     .filter_by(code=provider_code)
@@ -345,9 +362,7 @@ class SaveManager:
                 if provider is None:
                     provider = Provider(code=provider_code, name=provider_code)
                     session.add(provider)
-                    session.flush()  # provider_id
-
-                # 2. ищем маппинг
+                    session.flush()
                 link = (
                     session.query(TitleProviderMap)
                     .filter_by(
@@ -356,9 +371,7 @@ class SaveManager:
                     )
                     .one_or_none()
                 )
-
                 if link is not None:
-                    # есть существующий title — обновляем
                     title = link.title
                     is_updated = False
                     for key, value in title_fields.items():
@@ -369,11 +382,9 @@ class SaveManager:
                         session.commit()
                         self.logger.debug(f"Updated title_id: {title.title_id} for {provider_code}:{external_id}")
                 else:
-                    # создаём новый title
                     title = Title(**title_fields)
                     session.add(title)
-                    session.flush()  # получаем title.title_id
-
+                    session.flush()
                     link = TitleProviderMap(
                         title_id=title.title_id,
                         provider_id=provider.provider_id,
@@ -382,9 +393,7 @@ class SaveManager:
                     session.add(link)
                     session.commit()
                     self.logger.debug(f"Created title_id: {title.title_id} for {provider_code}:{external_id}")
-
                 return title.title_id
-
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error saving title with mapping: {e}")
@@ -398,19 +407,14 @@ class SaveManager:
                 franchise_id = franchise_data['franchise_id']
                 franchise_name = franchise_data['franchise_name']
                 self.logger.debug(f"Saving franchise_id: {franchise_id} for {title_id}, {franchise_name}")
-
-                # Проверка существования франшизы в базе данных
                 existing_franchise = session.query(Franchise).filter_by(title_id=title_id).first()
-
                 if existing_franchise:
                     self.logger.debug(f"Franchise for title_id {title_id} already exists. Updating...")
-                    # Обновление существующей франшизы
                     existing_franchise.franchise_id = franchise_id
                     existing_franchise.franchise_name = franchise_name
                     existing_franchise.last_updated = datetime.now(timezone.utc)
                     franchise = existing_franchise
                 else:
-                    # Создание новой франшизы
                     new_franchise = Franchise(
                         title_id=title_id,
                         franchise_id=franchise_id,
@@ -418,35 +422,28 @@ class SaveManager:
                         last_updated=datetime.now(timezone.utc)
                     )
                     session.add(new_franchise)
-                    session.flush()  # Получаем ID новой франшизы для использования в релизах
+                    session.flush()
                     franchise = new_franchise
-
                 current = None
                 for fr in franchise_data.get("franchise_releases", []):
                     if fr.get("release_id") == external_id:
                         current = fr
                         break
-
-                # если не нашли — либо выходим, либо сохраняем только Franchise без релизов
                 if not current:
                     session.commit()
                     return True
-
                 release = current.get("release") or {}
                 names = release.get("names") or {}
-
                 existing_release = (
                     session.query(FranchiseRelease)
                     .filter_by(franchise_id=franchise.id, title_id=title_id)
                     .one_or_none()
                 )
-
                 if existing_release:
                     r = existing_release
                 else:
                     r = FranchiseRelease(franchise_id=franchise.id, title_id=title_id)
                     session.add(r)
-
                 r.ext_fr_id = current.get("franchise_id")
                 r.ext_fr_rel_id = current.get("franchise_release_id")
                 r.ext_rel_id = current.get("release_id")
@@ -456,11 +453,9 @@ class SaveManager:
                 r.name_en = names.get("en")
                 r.name_alternative = names.get("alternative")
                 r.last_updated = datetime.now(timezone.utc)
-
                 session.commit()
                 self.logger.debug(f"Successfully saved franchise for title_id: {title_id}")
                 return True
-
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении франшизы в базе данных: {e}")
@@ -470,28 +465,21 @@ class SaveManager:
         with self.Session as session:
             try:
                 for genre in genres:
-                    # Проверяем, существует ли жанр в таблице Genre
                     existing_genre = session.query(Genre).filter_by(name=genre).first()
-
-                    # Если жанр не существует, добавляем его
                     if not existing_genre:
                         new_genre = Genre(name=genre, last_updated=datetime.now(timezone.utc))
                         session.add(new_genre)
-                        session.commit()  # Коммитим, чтобы получить genre_id для следующего этапа
+                        session.commit()
                         genre_id = new_genre.genre_id
                     else:
                         genre_id = existing_genre.genre_id
-
-                    # Добавляем связь в таблицу TitleGenreRelation
                     existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
                                                                                     genre_id=genre_id).first()
                     if not existing_relation:
                         new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.now(timezone.utc))
                         session.add(new_relation)
-
                 session.commit()
                 self.logger.debug(f"Successfully saved genres for title_id: {title_id}")
-
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении жанров для title_id {title_id}: {e}")
@@ -499,61 +487,41 @@ class SaveManager:
     def save_team_members(self, title_id, team_data):
         with self.Session as session:
             try:
-                # Сначала получим все существующие связи для этого тайтла
                 existing_relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
-
-                # Создадим словарь для быстрого поиска существующих связей
                 existing_relations_dict = {relation.team_member_id: relation for relation in existing_relations}
-
-                # Список для отслеживания обработанных team_member_id
                 processed_team_member_ids = set()
-
                 for role, members_str in team_data.items():
                     try:
-                        # Convert the string representation of list into an actual list
                         members = ast.literal_eval(members_str)
                     except (SyntaxError, ValueError) as e:
                         self.logger.error(f"Failed to decode team data for role '{role}' in title_id {title_id}: {e}")
                         continue
-
                     for member_name in members:
-                        # Проверяем, существует ли уже участник с таким именем и ролью
                         existing_member = session.query(TeamMember).filter_by(name=member_name, role=role).first()
                         if not existing_member:
-                            # Создаем нового участника команды
                             new_member = TeamMember(name=member_name, role=role, last_updated=datetime.now(timezone.utc))
                             session.add(new_member)
-                            session.flush()  # Получаем ID нового участника
+                            session.flush()
                             team_member = new_member
                         else:
                             team_member = existing_member
-
-                        # Добавляем ID в список обработанных
                         processed_team_member_ids.add(team_member.id)
-
-                        # Проверяем, существует ли уже связь между тайтлом и участником
                         if team_member.id in existing_relations_dict:
-                            # Обновляем существующую связь
                             relation = existing_relations_dict[team_member.id]
                             relation.last_updated = datetime.now(timezone.utc)
                         else:
-                            # Создаем новую связь
                             title_team_relation = TitleTeamRelation(
                                 title_id=title_id,
                                 team_member_id=team_member.id,
                                 last_updated=datetime.now(timezone.utc)
                             )
                             session.add(title_team_relation)
-
-                # Опционально: удаляем связи, которые не были обработаны (члены команды, удаленные из тайтла)
                 for relation in existing_relations:
                     if relation.team_member_id not in processed_team_member_ids:
                         session.delete(relation)
-
                 session.commit()
                 self.logger.debug(f"Successfully saved team members for title_id: {title_id}")
                 return True
-
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Ошибка при сохранении участников команды в базе данных: {e}")
@@ -568,33 +536,22 @@ class SaveManager:
         if not isinstance(episode_data, dict):
             self.logger.error(f"Invalid episode data: {episode_data}")
             return
-
-        # копируем, чтобы не менять оригинал
         data = episode_data.copy()
-
-        # обязательные поля для поиска
         title_id = data["title_id"]
         episode_no = data["episode_number"]
         episode_uuid = data["uuid"]
-
         with self.Session as session:
             try:
-                # ищем по естественному ключу, а не по uuid
                 ep = (
                     session.query(Episode)
                     .filter_by(title_id=title_id, episode_number=episode_no)
                     .first()
                 )
-
                 if not ep:
                     ep = session.query(Episode).filter_by(uuid=episode_uuid).first()
-
-                # ---------- если запись уже есть ----------
                 if ep:
                     updated = False
                     protected = {"episode_id", "title_id", "episode"}  # не меняем
-
-                    # корректируем created_timestamp, если он был «нулевым»
                     if (
                             ep.created_timestamp == datetime.fromtimestamp(0, tz=timezone.utc)
                             and data.get("created_timestamp")
@@ -602,23 +559,16 @@ class SaveManager:
                     ):
                         ep.created_timestamp = data["created_timestamp"]
                         updated = True
-
-                    # обновляем остальные поля
                     for key, value in data.items():
                         if key in protected or not hasattr(ep, key):
                             continue
-
                         cur = getattr(ep, key)
-
-                        # сравнение datetime с учётом tz
                         if isinstance(cur, datetime) and isinstance(value, datetime):
                             if cur.tzinfo is None:
                                 cur = cur.replace(tzinfo=timezone.utc)
-
                         if cur != value:
                             setattr(ep, key, value)
                             updated = True
-
                     if updated:
                         session.commit()
                         self.logger.debug(
@@ -628,23 +578,16 @@ class SaveManager:
                         self.logger.debug(
                             f"No changes for episode {episode_no}"
                         )
-
-                # ---------- если записи нет ----------
                 else:
-                    # если created_timestamp не задан – ставим «сейчас»
                     if not data.get("created_timestamp"):
                         data["created_timestamp"] = datetime.now(timezone.utc)
-
-                    # uuid генерируем, если его нет (можно оставить из API)
                     data.setdefault("uuid", str(uuid.uuid4()))
-
                     new_ep = Episode(**data)
                     session.add(new_ep)
                     session.commit()
                     self.logger.debug(
                         f"Inserted new episode {episode_no} for title_id={title_id}"
                     )
-
             except Exception as exc:
                 session.rollback()
                 self.logger.error(f"Error saving episode: {exc}")
@@ -652,20 +595,16 @@ class SaveManager:
     def save_schedule(self, day_of_week, title_id, last_updated=None):
         with self.Session as session:
             try:
-                # Check if the entry already exists
                 existing_schedule = session.query(Schedule).filter_by(day_of_week=day_of_week,
                                                                       title_id=title_id).first()
                 if existing_schedule:
-                    # If it exists, update the last_updated field
                     existing_schedule.last_updated = last_updated or datetime.now(timezone.utc)
                     self.logger.debug(
                         f"Schedule entry for day {day_of_week} and title_id {title_id} already exists. Updating last_updated.")
                 else:
-                    # If it doesn't exist, create a new schedule entry
                     schedule_entry = Schedule(day_of_week=day_of_week, title_id=title_id, last_updated=last_updated)
                     session.add(schedule_entry)
                     self.logger.debug(f"Adding new schedule entry for day {day_of_week} and title_id {title_id}.")
-
                 session.commit()
             except Exception as e:
                 session.rollback()
@@ -677,10 +616,7 @@ class SaveManager:
         dict:       upsert одной записи + ОБЯЗАТЕЛЬНОЕ удаление покрытых диапазонов,
                     чтобы 1–4 сразу чистил 1–3 даже "в производстве"
         """
-
         T = Torrent
-
-        # ---------- utils ----------
         def _to_bytes(size_string: str) -> int:
             if not size_string:
                 return 0
@@ -697,15 +633,10 @@ class SaveManager:
 
         def _prep_one(p: dict) -> dict:
             q = dict(p)
-
-            # нормализация/преобразования
             if isinstance(q.get('torrent_metadata'), dict):
                 q['torrent_metadata'] = json.dumps(q['torrent_metadata'], ensure_ascii=False)
-
             if not isinstance(q.get('uploaded_timestamp'), datetime):
                 q['uploaded_timestamp'] = datetime.now(timezone.utc)
-
-            # total_size
             if q.get('total_size') is None:
                 q['total_size'] = _to_bytes(q.get('size_string') or "")
             else:
@@ -713,19 +644,13 @@ class SaveManager:
                     q['total_size'] = int(q['total_size'])
                 except Exception:
                     q['total_size'] = _to_bytes(q.get('size_string') or "")
-
-            # resolution из quality/resolution
             if not q.get('resolution'):
                 m = re.search(r'(\d{3,4})p', ((q.get('quality') or '') + ' ' + (q.get('resolution') or '')), re.I)
                 if m:
                     q['resolution'] = f"{m.group(1)}p"
-
-            # строковые нормализации (strip+lower где уместно)
             q['resolution'] = (q.get('resolution') or "").strip().lower()
             q['quality'] = (q.get('quality') or "").strip().lower()
             q['encoder'] = (q.get('encoder') or "").strip().lower()
-
-            # episodes_range из description/label при отсутствии
             if not q.get('episodes_range'):
                 for source in (q.get('episodes_range'), q.get('description'), q.get('label')):
                     if source:
@@ -733,17 +658,12 @@ class SaveManager:
                         if m:
                             q['episodes_range'] = f"{m.group(1)}-{m.group(2)}"
                             break
-
             q['episodes_range'] = (q.get('episodes_range') or "").strip()
             q['label'] = (q.get('label') or "").strip()
             q['filename'] = (q.get('filename') or "").strip()
-
-            # api flags
             q['api_updated_at'] = q.get('api_updated_at') or q.get('updated_at') or datetime.now(timezone.utc)
             q['is_in_production'] = int(bool(q.get('is_in_production')))
             q['episodes_total'] = int(q.get('episodes_total') or 0)
-
-            # range_first/last
             rng = (q.get('episodes_range') or "").strip()
             if rng:
                 m = re.search(r'(\d+)\s*[-–—]\s*(\d+)', rng)
@@ -779,7 +699,6 @@ class SaveManager:
         def _norm_res_sql(expr):
             return func.lower(func.trim(func.coalesce(expr, '')))
 
-        # ---------- pruning helpers ----------
         def _prune_covered_ranges(session, title_id: int):
             """Удалить записи, полностью покрытые более широким диапазоном в той же (resolution, codec_family)."""
             A = aliased(T);
@@ -874,8 +793,6 @@ class SaveManager:
                 .where(~T.torrent_id.in_(keep))
             )
 
-        # ---------- main logic ----------
-        # Полная замена по title_id (доверяем API-снэпшоту)
         if isinstance(torrent_data, list):
             if not torrent_data:
                 return
@@ -886,20 +803,15 @@ class SaveManager:
             title_id = prepared[0]['title_id']
             if any(t['title_id'] != title_id for t in prepared):
                 raise ValueError("В батче обнаружены разные title_id — replace невозможен")
-
-            # атомарный replace + мягкий дедуп
             with self.Session as session, session.begin():
                 session.query(T).filter(T.title_id == title_id).delete(synchronize_session=False)
                 session.bulk_save_objects([T(**t) for t in prepared])
-
                 _prune_triplet(session, title_id)
                 _prune_covered_ranges(session, title_id)
                 _prune_res_codec(session, title_id)
-
             self.logger.info(f"[replace] title_id={title_id}: inserted {len(prepared)}")
             return
 
-        # Upsert одиночной записи + ОБЯЗАТЕЛЬНАЯ чистка покрытых (даже «в производстве»)
         if isinstance(torrent_data, dict):
             p = _prep_one(torrent_data)
             if p.get('torrent_id') is None:
@@ -908,7 +820,6 @@ class SaveManager:
             with self.Session as session, session.begin():
                 session.merge(T(**p))
 
-            # ВАЖНО: покрытие чистим ВСЕГДА (решает кейс «1–4» накрывает «1–3» немедленно)
             with self.Session as session, session.begin():
                 _prune_covered_ranges(session, p['title_id'])
                 if not p.get('is_in_production'):

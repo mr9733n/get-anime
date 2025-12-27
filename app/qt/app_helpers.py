@@ -174,11 +174,13 @@ class TitleHtmlFactory:
 
             _, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             poster_html = self.app.ui_generator.generate_poster_html(title, need_placeholder=True)
+            reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
             template = Template(one_title_html)
             html_content = template.render(
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
+                reload_poster_html=reload_poster_html,
                 provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,
@@ -237,6 +239,7 @@ class TitleHtmlFactory:
 
             titles_html, _, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
             poster_html = self.app.ui_generator.generate_poster_html(title, need_background=True)
+            reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
             show_more_html = self.app.ui_generator.generate_show_more_html(title.title_id)
 
             template = Template(titles_html)
@@ -244,6 +247,7 @@ class TitleHtmlFactory:
                 title=title,
                 styles_css=styles_css,
                 poster_html=poster_html,
+                reload_poster_html=reload_poster_html,
                 provider_html=provider_html,
                 reload_html=reload_html,
                 rating_html=rating_html,

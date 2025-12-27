@@ -19,13 +19,14 @@ from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
-from providers.animedia.v0.client import AniMediaClient
+
+
 from static.layout_metadata import all_layout_metadata
 from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
 from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheStatus, AniMediaCacheConfig
 from providers.animedia.v0.qt_async_worker import AsyncWorker
-from providers.animedia.v0.adapter import AniMediaAdapter
+from providers.animedia.v0 import create_adapter
 from utils.config.config_manager import ConfigManager
 from utils.downloads.poster_manager import PosterManager
 from utils.downloads.torrent_manager import TorrentManager
@@ -39,7 +40,9 @@ from utils.net.url_resolver_config import ResolverConfig
 from utils.security.library_loader import verify_library
 from utils.parsing.animedia import parse_schedule_line
 
-VLC_PLAYER_HASH = "839a2166c93efc2f93b4383b0de62e8729133c7eae49ff720d20dafdaaa63bf4"
+VLC_PLAYER_HASH = "2b3e49bce530b0403ad5f7617a06fea62f437cfc0d4eb2f01c7784cb4c78fb80"
+MPV_PLAYER_HASH = "b25e49c0a8d7f4f7ae23a9316154aa357c88f2b2a095f2d1829534db0924a66c"
+MINI_BROWSER_HASH = "5b03e0919016a3af239eaf92b6507b3ffd80a76f7dfa6d40aa0f48e1f2dfdf1c"
 PROVIDER_ANILIBERTY = "aniliberty"
 PROVIDER_ANIMEDIA = "animedia"
 SHOW_DEFAULT = "default"
@@ -180,13 +183,12 @@ class AnimePlayerAppVer3(QWidget):
 
         self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=Path(self.temp_dir))
         self.animedia_cache = AniMediaCacheManager(self.animedia_cache_cfg.base_dir)
-        self.animedia_client = AniMediaClient(
+        self.animedia_adapter = create_adapter(
             base_url=self.base_am_url,
             net_client=self.net_client,
-            cache=self.animedia_cache,
-            cache_cfg=self.animedia_cache_cfg,
-            logger=self.logger)
-        self.animedia_adapter = AniMediaAdapter(self.base_am_url, self.animedia_client, self.logger)
+            cache_dir=Path(self.temp_dir),
+            logger=self.logger,
+        )
 
         # Initialize TorrentManager with the correct paths
         self.torrent_manager = TorrentManager(

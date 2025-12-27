@@ -514,15 +514,22 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Fixes
 - [x] Remove proxy
 - [x] If proxy enabled in app uses url resolver
-- [ ] Add tests
 
-# 8.37 Qt mini browser for external player
+### 8.37 Qt mini browser for external player
 - [x] change logic for saving urls for mini browser
 - [x] add router for playlists
 - [x] change logic for open playlists and links
 - [x] add mini browser with proxy
 - [x] built in open urls in mini browser
-- [ ] ...
+
+### 8.37 Builder
+- [x] Add builder for Win and Mac
+- [x] Fixes for build apps
+
+### 8.37 Refactoring AniMedia client v0
+- [x] add transport layer
+- [x] add service layer
+- [x] add settings
 
 ### 8.37 Features and Fixes
 - [x] pretty folders for apps
@@ -539,9 +546,18 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add logic for AM titles
 - [x] Add Screen for all titles from AniMedia 
 - [x] Add force download to poster
-- [x] Small refactor of AniMedia client
 - [x] Pretty UI in UIAMGenerator 
-- [x] 
+- [x] Add upscale for original poster lower than w=455px
+- [x] Add Reload poster to all other screens
+- [x] Add create thumb from original poster
+
+### 8.38 Orchestrator Refactoring
+- [ ] refactoring app.py
+
+### 8.39 MPV Player
+- [ ] Add tests
+
+### 8.39 Fixes
 - [ ] Add Screen for deleted titles with permanent delete func 
 - [ ] Change delete logic to unlink -> move to delete table
 - [ ] Fix highlighting episode in VLC playlist
@@ -550,16 +566,11 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] save franchise_id to titles table [title_franchises]
 - [ ] add dll hash on build, remove hardcode
 
-### 8.37 Refactoring AniMedia client v0
-- [ ] add transport layer
-- [ ] add service layer
-- [ ] add settings
-
-### 8.37 Refactoring Player DB Sync Utility 0.0.0.2
+### 8.40 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui
 - [ ] ...
 
-### 8.38 New features Player DB Sync Utility 0.0.0.3
+### 8.40 New features Player DB Sync Utility 0.0.0.3
 - [ ] если нажать clear и попробовать отправить бд еще раз то офер не сформируется, то и с ответом
 - [ ] Cancel Send
 - [ ] Cancel Receive
@@ -585,8 +596,6 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Have some bugs
 - [ ] ...
 
-### 9.1 Refactoring
-- [ ] refactoring app.py
 
 ### 9.2. New features & change one title view & redesign system browser 2
 - [ ] add additional feature to custom player for seek bar: sliding toggle with click to position

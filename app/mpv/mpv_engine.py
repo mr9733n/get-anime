@@ -9,25 +9,9 @@ import logging
 import traceback
 from pathlib import Path
 from typing import Callable, Optional
-from urllib.parse import urlparse
 
 from app.mpv.base_engine import PlaybackState
-from utils.security.library_loader import verify_library, load_library
 
-LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
-LIB_NAME = "libmpv-2.dll"
-
-lib_dir = str(Path(__file__).resolve().parents[2] / "libs")
-try:
-    expected_hash = LIB_HASH
-    lib_file_path = load_library(lib_dir, LIB_NAME)
-    status = verify_library(lib_file_path, expected_hash)
-    if not status:
-        sys.exit(1)
-except Exception as e:
-    logging.error(f"Failed to initialize library: {e}", exc_info=True)
-
-os.environ["PATH"] = str(lib_dir) + os.pathsep + os.environ.get("PATH", "")
 import mpv  # python-mpv
 
 class MpvEngine:

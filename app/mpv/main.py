@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import argparse
+from pathlib import Path
 
 from PyQt5.QtCore import QSharedMemory, QTimer
 from PyQt5.QtGui import QIcon
@@ -10,6 +11,28 @@ from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QStyle
 
 from app.mpv.mpv_engine import MpvEngine
 from app.mpv.player_window import PlayerWindow
+from midnight.check_dll import load_library
+from utils.security.library_loader import verify_library
+
+LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
+LIB_NAME = "libmpv-2.dll"
+
+
+if getattr(sys, 'frozen', False):
+    # Frozen app - dll в корне рядом с exe
+    lib_dir = os.path.dirname(sys.executable)
+else:
+    # Dev mode - dll в libs/
+    lib_dir = str(Path(__file__).resolve().parents[2] / "libs")
+
+try:
+    expected_hash = LIB_HASH
+    lib_file_path = load_library(lib_dir, LIB_NAME)
+    status = verify_library(lib_file_path, expected_hash)
+    if not status:
+        sys.exit(1)
+except Exception as e:
+    logging.error(f"Failed to initialize library: {e}", exc_info=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,7 +61,7 @@ def main():
         unique_key = str(args.prod_key) + '-APM'
         shared_memory = QSharedMemory(unique_key)
         if not shared_memory.create(1):
-            logging.getLogger().error("Anime Player VLC player is already running!")
+            logging.getLogger().error("Anime Player MPV player is already running!")
             sys.exit(1)
 
         loglevel = "info" if args.verbose else "warn"
@@ -56,7 +79,7 @@ def main():
         w.show()
 
     else:
-        message = "VLC player cannot be run without AnimePlayer application!"
+        message = "MPV player cannot be run without AnimePlayer application!"
         logging.getLogger().error(message)
         tray_icon = QSystemTrayIcon()
         tray_icon.setIcon(app.style().standardIcon(QStyle.SP_MessageBoxWarning))

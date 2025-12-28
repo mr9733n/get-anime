@@ -46,7 +46,7 @@ def copy_player_and_update_hash(
         Хэш плеера или None при ошибке
     """
     if app_py_path is None:
-        app_py_path = os.path.join(PROJECT_DIR, 'app', 'qt', 'app.py')
+        app_py_path = os.path.join(PROJECT_DIR, 'app', 'qt', 'app_constants.py')
 
     player_dir = CompiledDirs.get(player_name)
     main_dir = CompiledDirs.get(AppNames.MAIN)

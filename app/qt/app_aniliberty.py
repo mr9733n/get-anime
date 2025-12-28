@@ -164,7 +164,6 @@ def parse_schedule_data(self, data, title_ids):
 
     return parsed_data
 
-
 def get_schedule(self, day):
     """
     Получает расписание с сервера API.
@@ -193,3 +192,21 @@ def get_schedule(self, day):
         self.logger.error(f"Unexpected error while fetching schedule: {e}")
         self.show_error_notification("Error", "Unexpected error. Check logs for details.")
         return None
+
+def reload_schedule(self):
+    """Обновляет и отображает расписание тайтлов."""
+    try:
+        day = self.current_day_of_week
+        if not day:
+            day = 1  # Monday (1–7)
+
+        current_titles = self.total_titles if self.total_titles else set()
+        status, new_title_ids = self.check_and_update_schedule(day, current_titles)
+        self.current_title_id = None
+
+        if status and new_title_ids:
+            self.display_titles_for_day(day, force_reload=False)
+        else:
+            self.display_titles_for_day(day, force_reload=True)
+    except Exception as e:
+        self.logger.error(f"Ошибка при обновлении reload_schedule: {e}")

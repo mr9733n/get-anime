@@ -132,7 +132,7 @@ def navigate_pagination(self, go_forward=True):
         batch_size = 12  # TODO: default size = 12
 
         if show_mode in (SHOW_AM_SCHEDULE, SHOW_AM_TITLES):
-            if self._navigate_animedia_mode(show_mode, go_forward):
+            if self._navigate_animedia_mode(self.current_show_mode, go_forward=go_forward):
                 return
 
         if self.current_title_ids:

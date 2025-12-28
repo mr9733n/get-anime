@@ -259,7 +259,7 @@ class UIGenerator:
             poster_size_key = "original"
             reload_poster_href = f"""reload_poster/{title_id}/{poster_size_key}"""
             text = f"""<span class="decorate_name">RELOAD POSTER<span>"""
-            reload_poster_html = f'{self.blank_spase}<a href="{reload_poster_href}" title="Reload poster">{text}</a>{self.blank_spase*35}'
+            reload_poster_html = f'{self.blank_spase}<a href="{reload_poster_href}" title="Reload poster">{text}</a>{self.blank_spase*15}'
             return reload_poster_html
         except Exception as e:
             tid = getattr(title, "title_id", "?")

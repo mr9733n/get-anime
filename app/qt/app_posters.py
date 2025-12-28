@@ -1,3 +1,5 @@
+# app/qt/app_posters.py
+from __future__ import annotations
 """Poster related methods extracted from app.py.
 
 Attach to AnimePlayerAppVer3 similarly to keep call sites intact.

@@ -1,6 +1,8 @@
-from app.qt.app_exceptions import APIClientError
+# app/qt/app_aniliberty.py
+from __future__ import annotations
 
-PROVIDER_ANILIBERTY = "aniliberty"
+from app.qt.app_exceptions import APIClientError
+from app.qt.app_constants import PROVIDER_ANILIBERTY
 
 
 def fetch_and_process_schedule(self, day_of_week):

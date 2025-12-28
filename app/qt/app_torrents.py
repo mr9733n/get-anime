@@ -1,4 +1,5 @@
-
+# app/qt/app_torrents.py
+from __future__ import annotations
 
 def save_torrent_wrapper(self, link, title_name, torrent_id):
     """

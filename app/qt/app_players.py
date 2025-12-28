@@ -1,3 +1,5 @@
+# app/qt/app_players.py
+from __future__ import annotations
 """Player/playlist related methods extracted from app.py.
 
 These functions are intended to be attached to AnimePlayerAppVer3 as methods:

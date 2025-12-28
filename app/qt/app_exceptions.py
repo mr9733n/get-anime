@@ -1,4 +1,5 @@
-
+# app/qt/app_exceptions.py
+from __future__ import annotations
 
 
 class APIClientError(Exception):

@@ -1,4 +1,6 @@
 # app/qt/app_constants.py
+from __future__ import annotations
+
 
 # --- Security hashes (executables) ---
 VLC_PLAYER_HASH = "2b3e49bce530b0403ad5f7617a06fea62f437cfc0d4eb2f01c7784cb4c78fb80"

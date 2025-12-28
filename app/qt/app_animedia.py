@@ -1,3 +1,6 @@
+# app/qt/app_animedia.py
+from __future__ import annotations
+
 from app.qt.app_state import ViewState
 
 from providers.animedia.v0.cache_manager import AniMediaCacheStatus

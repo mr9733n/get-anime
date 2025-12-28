@@ -11,6 +11,28 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from app.mpv.base_engine import PlaybackState
+from utils.security.library_loader import verify_library, load_library
+
+LIB_HASH = "fdb7a0b1f700b9eb9056e9ddc0a890c33f55fbb7ccbd9ff1d554ea088762ee0d"
+LIB_NAME = "libmpv-2.dll"
+
+
+if getattr(sys, 'frozen', False):
+    # Frozen app - dll в корне рядом с exe
+    lib_dir = os.path.dirname(sys.executable)
+else:
+    # Dev mode - dll в libs/
+    lib_dir = str(Path(__file__).resolve().parents[2] / "libs")
+    os.environ["PATH"] = str(lib_dir) + os.pathsep + os.environ.get("PATH", "")
+
+try:
+    expected_hash = LIB_HASH
+    lib_file_path = load_library(lib_dir, LIB_NAME)
+    status = verify_library(lib_file_path, expected_hash)
+    if not status:
+        sys.exit(1)
+except Exception as e:
+    logging.error(f"Failed to initialize library: {e}", exc_info=True)
 
 import mpv  # python-mpv
 

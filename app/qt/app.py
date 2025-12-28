@@ -14,12 +14,13 @@ from PyQt5.QtCore import QTimer, QThreadPool, pyqtSlot, pyqtSignal, Qt, QSharedM
 from app.qt.app_state_manager import AppStateManager
 from app.qt.app_handlers import LinkActionHandler
 from app.qt.ui_am_generator import UIAMGenerator
-from app.vlc.vlc_player import VLCPlayer
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
 
+from app.qt.app_exceptions import APIClientError
+from app.qt.app_state import ViewState, TitleRef
 
 from static.layout_metadata import all_layout_metadata
 from providers.aniliberty.v1.api import APIClient
@@ -37,54 +38,21 @@ from utils.net.net_client import NetClient
 from utils.net.url_resolve_service import UrlResolveService
 from utils.net.url_resolver import TTLCache
 from utils.net.url_resolver_config import ResolverConfig
-from utils.security.library_loader import verify_library
-from utils.parsing.animedia import parse_schedule_line
 
-VLC_PLAYER_HASH = "2b3e49bce530b0403ad5f7617a06fea62f437cfc0d4eb2f01c7784cb4c78fb80"
-MPV_PLAYER_HASH = "b25e49c0a8d7f4f7ae23a9316154aa357c88f2b2a095f2d1829534db0924a66c"
-MINI_BROWSER_HASH = "5b03e0919016a3af239eaf92b6507b3ffd80a76f7dfa6d40aa0f48e1f2dfdf1c"
-PROVIDER_ANILIBERTY = "aniliberty"
-PROVIDER_ANIMEDIA = "animedia"
-SHOW_DEFAULT = "default"
-SHOW_SYSTEM = "system"
-SHOW_ONE_TITLE = "one_title"
-SHOW_AM_SCHEDULE = "animedia_schedule"
-SHOW_AM_TITLES = "animedia_titles"
-SCHEDULE_KEY: str = "am_schedule_cache"
-ALL_TITLES_KEY: str = "am_all_titles_cache"
-DEFAULT_TEMPLATE = "default"
-DOWNLOAD_AFTER_AGE = 7 # Days
-FINAL_AGE = 90 # Days
-APP_WIDTH = 1000
-APP_HEIGHT = 800
-APP_X_POS = 100
-APP_Y_POS = 100
-
-
-@dataclass
-class TitleRef:
-    title_id: int
-    name_ru: str | None
-    name_en: str | None
-    provider: str | None
-    provider_name: str | None
-    external_id: str | None
-
-
-@dataclass(frozen=True)
-class ViewState:
-    show_mode: str = SHOW_DEFAULT
-    title_id: Optional[int] = None
-    title_ids: Optional[List[int]] = None
-    day_of_week: Optional[int] = None
-    am_offset: int = 0
-    am_page_size: int = 12
-
-
-class APIClientError(Exception):
-    """Исключение для ошибок при работе с API."""
-    def __init__(self, message):
-        super().__init__(message)
+from app.qt.app_constants import (
+    PROVIDER_ANILIBERTY,
+    PROVIDER_ANIMEDIA,
+    SHOW_DEFAULT,
+    SHOW_SYSTEM,
+    SHOW_ONE_TITLE,
+    SHOW_AM_SCHEDULE,
+    SHOW_AM_TITLES,
+    DEFAULT_TEMPLATE,
+    APP_WIDTH,
+    APP_HEIGHT,
+    APP_X_POS,
+    APP_Y_POS,
+)
 
 
 class AnimePlayerAppVer3(QWidget):
@@ -753,157 +721,6 @@ class AnimePlayerAppVer3(QWidget):
         if pagination_widget:
             pagination_widget.setVisible(total_pages > 1)
 
-    def _warmup_animedia_titles_and_posters(self, key: str, data_json: list[dict]) -> None:
-        """
-        1) гарантирует, что для каждого original_id есть TitleProviderMap (animedia, external_id -> title_id)
-        2) ставит постеры в очередь на скачивание через PosterManager (ему нужен title_id)
-        """
-        for block in data_json or []:
-            for line in (block.get("titles") or []):
-                title, time_part, ep_part, rating, poster_url, original_id = parse_schedule_line(key, line)
-
-                if not original_id:
-                    self.logger.debug(f"SKIP line (no original_id): key={key}, line={line}")
-                    continue
-
-                data = {
-                    "provider": PROVIDER_ANIMEDIA,
-                    "original_id": original_id,
-                    "title": title,
-                    "poster_url": poster_url,
-                    "poster_slot": "small" if key == SCHEDULE_KEY else "medium",
-                    "rating": rating,
-                }
-                self.db_manager.process_animedia_titles(data)
-
-    def display_animedia_titles_screen(self, titles_json=None):
-        st = self.view_state
-        if not st or st.show_mode != SHOW_AM_TITLES:
-            st = ViewState(show_mode=SHOW_AM_TITLES, am_offset=0, am_page_size=12)
-            self.set_view_state(st)
-        else:
-            # не перезатираем, просто гарантируем show_mode
-            self.set_view_state(ViewState(
-                show_mode=SHOW_AM_TITLES,
-                am_offset=st.am_offset,
-                am_page_size=st.am_page_size,
-            ))
-            st = self.view_state
-
-        if not titles_json:
-            status, cached = self.animedia_cache.load(
-                self.animedia_cache.cfg.all_titles_key,
-                self.animedia_cache.cfg.all_titles_ttl
-            )
-            if status is AniMediaCacheStatus.VALID and cached:
-                titles_json = cached
-            else:
-                self.logger.info("No valid schedule cache to restore")
-                titles_json = []
-                self.get_animedia_all_titles()
-
-        visible_schedule = self._slice_animedia_titles(titles_json, st.am_offset, st.am_page_size)
-        # ВАЖНО: прогреваем маппинг и очередь постеров до отрисовки
-        try:
-            self._warmup_animedia_titles_and_posters(
-                key=ALL_TITLES_KEY,
-                data_json=titles_json
-            )
-
-        except Exception as e:
-            self.logger.error(f"Animedia warmup failed: {e}")
-
-        total_count = self._count_animedia_items(titles_json)
-        self._am_total_count = total_count
-        self.current_offset = st.am_offset  # чтобы _setup_pagination_ui показывал правильную страницу
-        self._setup_pagination_ui(total_count, st.am_page_size, description="AniMedia — all titles")
-
-        self.display_titles_in_ui(visible_schedule, show_mode=SHOW_AM_TITLES)
-
-    def display_animedia_schedule_screen(self, schedule_json=None):
-        st = self.view_state
-        if not st or st.show_mode != SHOW_AM_SCHEDULE:
-            st = ViewState(show_mode=SHOW_AM_SCHEDULE, am_offset=0, am_page_size=12)
-            self.set_view_state(st)
-        else:
-            # не перезатираем, просто гарантируем show_mode
-            self.set_view_state(ViewState(
-                show_mode=SHOW_AM_SCHEDULE,
-                am_offset=st.am_offset,
-                am_page_size=st.am_page_size,
-            ))
-            st = self.view_state
-
-        if not schedule_json:
-            status, cached = self.animedia_cache.load(
-                self.animedia_cache.cfg.schedule_key,
-                self.animedia_cache.cfg.schedule_ttl
-            )
-            if status is AniMediaCacheStatus.VALID and cached:
-                schedule_json = cached
-            else:
-                self.logger.info("No valid schedule cache to restore")
-                schedule_json = []
-                self.get_animedia_new_titles()
-
-        visible_schedule = self._slice_animedia_titles(schedule_json, st.am_offset, st.am_page_size)
-        # ВАЖНО: прогреваем маппинг и очередь постеров до отрисовки
-        try:
-            self._warmup_animedia_titles_and_posters(
-                key=SCHEDULE_KEY,
-                data_json=schedule_json
-            )
-
-        except Exception as e:
-            self.logger.error(f"Animedia warmup failed: {e}")
-
-        total_count = self._count_animedia_items(schedule_json)
-        self._am_total_count = total_count
-        self.current_offset = st.am_offset  # чтобы _setup_pagination_ui показывал правильную страницу
-        self._setup_pagination_ui(total_count, st.am_page_size, description="AniMedia — расписание")
-
-        self.display_titles_in_ui(visible_schedule, show_mode=SHOW_AM_SCHEDULE)
-
-    @staticmethod
-    def _count_animedia_items(data_json: list[dict]) -> int:
-        total = 0
-        for block in data_json or []:
-            total += len(block.get("titles") or [])
-        return total
-
-    @staticmethod
-    def _slice_animedia_titles(data_json: list[dict], offset: int, limit: int) -> list[dict]:
-        """
-        data_json: [{page: int, titles: [str, ...]}, ...]
-        Возвращает такой же формат, но titles обрезаны по глобальному offset/limit.
-        """
-        if not data_json or limit <= 0:
-            return []
-
-        out: list[dict] = []
-        remain_skip = offset
-        remain_take = limit
-
-        for block in data_json:
-            titles = block.get("titles") or []
-            if not titles:
-                continue
-
-            if remain_skip >= len(titles):
-                remain_skip -= len(titles)
-                continue
-
-            start = remain_skip
-            chunk = titles[start:start + remain_take]
-            remain_take -= len(chunk)
-            remain_skip = 0
-
-            out.append({"page": block.get("page"), "titles": chunk})
-
-            if remain_take <= 0:
-                break
-
-        return out
 
     def display_titles_in_ui(self, titles, show_mode='default', row_start=0, col_start=0):
         try:
@@ -1019,90 +836,6 @@ class AnimePlayerAppVer3(QWidget):
         except Exception as e:
             self.logger.error(f"Ошибка при save titles расписания: {e}")
 
-    def fetch_and_process_schedule(self, day_of_week):
-        """
-        Получает и обрабатывает расписание с сервера.
-        Args:
-            day_of_week (int): День недели.
-        Returns:
-            tuple: (bool, set) Успешность операции и набор title_ids.
-        """
-        try:
-            data = self.get_schedule(day_of_week)
-            if data is None:
-                self.logger.warning(f"No data available for day {day_of_week}.")
-                return False, None
-
-            titles_list = []
-            for item in data:
-                titles = item.get("list", [])
-                titles_list.extend(titles)
-
-            self.logger.debug(f"Total titles (light): {len(titles_list)}")
-            ids = [t.get('external_id') for t in titles_list if t.get('external_id') is not None]
-            if ids:
-                full_list = self.api_adapter.get_releases_full(ids, max_workers=4)
-                if full_list:
-                    self.logger.debug(f"Full bundles fetched: {len(full_list)} (parallel)")
-                    new_title_ids = self._save_titles_list(full_list)
-                else:
-                    # fallback:
-                    new_title_ids = self._save_titles_list(titles_list)
-            else:
-                new_title_ids = self._save_titles_list(titles_list)
-
-            parsed_data = self.parse_schedule_data(data, new_title_ids)
-            self.logger.debug(f"Parsed data: {parsed_data}")
-            self._save_parsed_data(parsed_data)
-
-            return True, new_title_ids
-        except Exception as e:
-            self.logger.error(f"Error while fetching and processing schedule: {e}")
-            return False, None
-
-    def check_and_update_schedule(self, day_of_week, current_titles):
-        """
-        Проверяет наличие обновлений в расписании и обновляет базу данных.
-        Args:
-            day_of_week (int): День недели.
-            current_titles (set): Текущий набор title_ids.
-
-        Returns:
-            tuple: (bool, set) Успешность операции и набор обновленных title_ids.
-        """
-        try:
-            self.ui_manager.show_loader("Updating schedule...")
-            self.ui_manager.set_buttons_enabled(False)
-            status, new_title_ids = self.fetch_and_process_schedule(day_of_week)
-            if not status:
-                return False, None
-
-            if current_titles:
-                titles_to_remove = current_titles.difference(new_title_ids)
-                if titles_to_remove:
-                    self.logger.debug(f"Titles to remove: {titles_to_remove}")
-                    self.db_manager.remove_schedule_day(titles_to_remove, day_of_week)
-                else:
-                    self.logger.debug(f"No updates required: {current_titles} == {new_title_ids}")
-
-            return True, new_title_ids
-        except Exception as e:
-            self.logger.error(f"Error while checking and updating schedule: {e}")
-            return False, None
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
-    def clear_previous_posters(self):
-        """Удаляет все предыдущие виджеты из сетки постеров."""
-        while self.posters_layout.count():
-            item = self.posters_layout.takeAt(0)
-            widget_to_remove = item.widget()
-            if widget_to_remove is not None:
-                widget_to_remove.deleteLater()
-            if item.layout() is not None:
-                self.clear_layout(item.layout())
-
     def clear_layout(self, layout):
         """Рекурсивно очищает все элементы из переданного layout."""
         if layout is not None:
@@ -1180,120 +913,6 @@ class AnimePlayerAppVer3(QWidget):
                     self.logger.error(f"Exception while processing {process_name} for title_id={title_id}: {e}")
 
         return internal_ids
-
-    def get_random_title(self):
-        try:
-            self.ui_manager.show_loader("Fetching random title...")
-            self.ui_manager.set_buttons_enabled(False)
-
-            data = self.api_adapter.get_random_title()
-
-            if not isinstance(data, dict):
-                self.logger.error(f"Unexpected response format: {type(data).__name__}")
-                self.show_error_notification("API Error", "Unexpected response format.")
-                return
-
-            if 'error' in data:
-                self.logger.error(data['error'])
-                self.show_error_notification("API Error", data['error'])
-                return
-
-            self.logger.debug(f"Full response data: {len(data)} keys (type: {type(data).__name__})")
-
-            title_list = data.get('list', [])
-            if not title_list:
-                self.logger.error("No titles found in the response.")
-                self.show_error_notification("Error", "No titles found in the response.")
-                return
-
-            internal_ids = self.invoke_database_save(title_list)
-            title_id = internal_ids[0] if internal_ids else None
-            if title_id is None:
-                self.logger.error("Title ID not found in response.")
-                self.show_error_notification("Error", "Title ID not found in response.")
-                return
-
-            self.display_info(title_id)
-            self.current_data = data
-
-        except Exception as e:
-            self.logger.error(f"Error while fetching random title: {e}")
-            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
-            return False, None
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
-    def get_schedule(self, day):
-        """
-        Получает расписание с сервера API.
-        Args:
-            day (int): День недели для запроса.
-        Returns:
-            list: Данные расписания.
-        Raises:
-            APIClientError: Если произошла ошибка при запросе или обработке данных.
-        """
-        try:
-            data = self.api_adapter.get_schedule(day)
-            if data is None:
-                raise APIClientError(f"No data returned for day {day}.")
-            if isinstance(data, dict) and 'error' in data:
-                raise APIClientError(f"API returned an error: {data['error']}")
-
-            self.logger.debug(f"Data received for day {day}: {len(data)} keys (type: {type(data).__name__})")
-            self.current_data = data
-            return data
-        except APIClientError as api_error:
-            self.logger.error(f"API Client Error: {api_error}")
-            self.show_error_notification("API Error", str(api_error)) # Показываем ошибку пользователю
-            return None
-        except Exception as e:
-            self.logger.error(f"Unexpected error while fetching schedule: {e}")
-            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
-            return None
-
-    def parse_schedule_data(self, data, title_ids):
-        """Парсит расписание и возвращает список {day, title_id}."""
-        parsed_data = []
-        if not isinstance(data, list):
-            self.logger.error(f"Ожидался список, получен: {type(data).__name__}")
-            return parsed_data
-
-        for day_info in data:
-            if not isinstance(day_info, dict):
-                self.logger.error(
-                    f"Неправильный формат данных: ожидался словарь, получен {type(day_info).__name__}"
-                )
-                continue
-
-            day = day_info.get("day")
-            title_list = day_info.get("list", [])
-
-            if not isinstance(title_list, list):
-                self.logger.error(
-                    f"Неправильный формат 'list': ожидался список, получен {type(title_list).__name__}"
-                )
-                continue
-
-            for title in title_list:
-                if not isinstance(title, dict):
-                    continue
-
-                external_id = title.get("external_id")
-                if not external_id:
-                    continue
-                title_db = self.db_manager.get_title_by_external_id(PROVIDER_ANILIBERTY, external_id)
-                internal_title_id = title_db.title_id
-
-                if internal_title_id:
-                    parsed_data.append({"day": day, "title_id": internal_title_id})
-                else:
-                    self.logger.warning(
-                        f"Не найден title_id для external_id={external_id} (day={day})"
-                    )
-
-        return parsed_data
 
     def _resolve_titles_for_query(self, search_text: str) -> list[TitleRef]:
         """Ищет тайтлы в БД и приводит результат к единому виду."""
@@ -1427,61 +1046,6 @@ class AnimePlayerAppVer3(QWidget):
         """Обновление только через AniMedia."""
         return self._update_titles(provider_filter=PROVIDER_ANIMEDIA)
 
-    def get_animedia_all_titles(self):
-        self.ui_manager.show_loader("Loading AniMedia schedule...")
-        self.ui_manager.set_buttons_enabled(False)
-
-        self._animedia_worker = AsyncWorker(
-            self.animedia_adapter.get_all_titles,
-            max_titles=60,
-            pages=5,
-        )
-        self._animedia_worker.finished.connect(self._on_animedia_all_titles)
-        self._animedia_worker.error.connect(self._on_animedia_error)
-        self._animedia_worker.start()
-
-    def get_animedia_new_titles(self):
-        self.ui_manager.show_loader("Loading AniMedia schedule...")
-        self.ui_manager.set_buttons_enabled(False)
-
-        self._animedia_worker = AsyncWorker(
-            self.animedia_adapter.get_new_titles,
-            max_titles=60,
-        )
-        self._animedia_worker.finished.connect(self._on_animedia_new_titles)
-        self._animedia_worker.error.connect(self._on_animedia_error)
-        self._animedia_worker.start()
-
-    def _on_animedia_all_titles(self, data):
-        try:
-            if not data:
-                self.show_error_notification("AniMedia", "No data received.")
-                return
-
-            self.display_animedia_titles_screen(data)
-
-        except Exception as e:
-            self.logger.error(f"Error in _on_animedia_all_titles: {e}")
-            self.show_error_notification("AniMedia", "Failed to show schedule. Check logs.")
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
-    def _on_animedia_new_titles(self, data):
-        try:
-            if not data:
-                self.show_error_notification("AniMedia", "No data received.")
-                return
-
-            self.display_animedia_schedule_screen(data)
-
-        except Exception as e:
-            self.logger.error(f"Error in _on_animedia_new_titles: {e}")
-            self.show_error_notification("AniMedia", "Failed to show schedule. Check logs.")
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
     def _search_by_title(self, provider_filter: str | None, search_text: str | None) -> bool:
         """
         Общая логика поиска тайтлов по названию.
@@ -1586,71 +1150,6 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.debug(f"Get titles from DB with title_ids: {title_ids} by keyword {search_text}")
             self.display_titles(title_ids)
 
-    def _on_animedia_error(self, message: str):
-        try:
-            self.logger.error(f"AniMedia worker error: {message}")
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-            self.show_error_notification("AniMedia error", message)
-
-        except Exception as msg:
-            self.logger.error(f"Unexpected error in _on_animedia_error: {msg}")
-            self.show_error_notification("Error", f"Unexpected error. Check logs for details {msg}")
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
-
-    def _on_animedia_result(self, data: list) -> list[int] | None:
-        """
-        `data` – список словарей, который вернул `get_by_title`.
-        Здесь можно сохранить в БД, отобразить в UI и т.п.
-        """
-        try:
-            if not data:
-                self.show_error_notification("AniMedia", "No titles found on Animedia.")
-                return
-
-            self.logger.info(f"Animedia returned {len(data)} items")
-
-            if isinstance(data, dict) and 'error' in data:
-                self.logger.error(data['error'])
-                self.show_error_notification("AniMedia scraper Error", data['error'])
-                return None
-
-            if isinstance(data, dict) and 'list' in data:
-                title_list = data['list']
-            elif isinstance(data, dict) and 'external_id' in data:
-                title_list = [data]
-            elif isinstance(data, list):
-                title_list = data
-            else:
-                self.logger.error("No titles found in the response.")
-                self.show_error_notification("Error", "No titles found in the response.")
-                return
-
-            if not title_list:
-                self.logger.error("No titles found in the response.")
-                self.show_error_notification("Error", "No titles found in the response.")
-                return
-
-            self.logger.debug(f"Processing title data: {title_list}")
-            title_ids = self.invoke_database_save(title_list)
-            self.current_data = data
-
-            if not title_ids:
-                self.logger.error("No title_ids returned after saving Animedia titles")
-                self.show_error_notification("AniMedia", "Failed to save titles to database.")
-                return
-
-            search_text = getattr(self, "_last_search_text", "")
-            self._handle_found_titles(title_ids, search_text)
-
-        except Exception as e:
-            self.logger.error(f"Error while fetching title AM: {e}")
-            self.show_error_notification("Error", "Unexpected error. Check logs for details.")
-        finally:
-            self.ui_manager.hide_loader()
-            self.ui_manager.set_buttons_enabled(True)
 
     def _handle_get_titles_from_api(self, search_text) -> list[int] | None:
         try:
@@ -1698,549 +1197,97 @@ class AnimePlayerAppVer3(QWidget):
             self.logger.error(f"Error while fetching title from AL: {e}")
             self.show_error_notification("Error", "Unexpected error. Check logs for details.")
 
-    def save_playlist_wrapper(self):
-        """
-        Wrapper function to handle saving the playlists.
-        Iterates through all discovered playlists and saves them.
-        """
-        try:
-            self.playlist_filename = None
-            if not self.playlists:
-                self.logger.error("No playlists found to save.")
-                return
-
-            for title_id, playlist in self.playlists.items():
-                sanitized_title = playlist.get("sanitized_title")
-                discovered_links = playlist.get("links") or []
-
-                stream_video_url = self.db_manager.get_player_host_by_title_id(title_id)
-                if discovered_links:
-                    bundle = self.playlist_manager.save_playlist_bundle([sanitized_title], discovered_links,
-                                                                        stream_video_url)
-
-                    # сохраним в структуре плейлистов для роутера
-                    playlist["streams_file"] = bundle.m3u_name if bundle.streams_count > 0 else None
-                    playlist["web_file"] = bundle.web_name if bundle.web_count > 0 else None
-
-                    self.logger.debug(
-                        f"Playlist for title {sanitized_title} was sent for saving with filename; {bundle}."
-                    )
-                else:
-                    self.logger.error(f"No links found for title {sanitized_title}, skipping saving.")
-
-            self.save_combined_playlist_wrapper()
-
-        except Exception:
-            self.logger.exception("Failed while saving playlists.")
-
-    def save_combined_playlist_wrapper(self):
-        combined_playlist_filename = (
-            "_".join([info["sanitized_title"] for info in self.playlists.values()])[:100] + ".m3u"
-        )
-
-        combined_path = os.path.join("playlists", combined_playlist_filename)
-        if os.path.exists(combined_path):
-            base, ext = os.path.splitext(combined_playlist_filename)
-            combined_playlist_filename = f"{base}_{int(datetime.now().timestamp())}{ext}"
-            combined_path = os.path.join("playlists", combined_playlist_filename)
-
-        lines = ["#EXTM3U"]
-        total = 0
-
-        for title_id, playlist in self.playlists.items():
-            links = playlist.get("links") or []
-            if not links:
-                continue
-
-            host = self.db_manager.get_player_host_by_title_id(title_id) or ""
-
-            for link in links:
-                if not isinstance(link, str) or not link.endswith(".m3u8"):
-                    continue
-
-                full_url = f"{self.pre}{host}{link}"
-                lines.append(full_url)
-                total += 1
-
-        if total == 0:
-            self.logger.error("No valid links found for saving the combined playlist.")
-            return
-
-        new_content = "\n".join(lines) + "\n"
-
-        if os.path.exists(combined_path):
-            try:
-                with open(combined_path, "r", encoding="utf-8") as f:
-                    existing_content = f.read()
-                if existing_content == new_content:
-                    self.logger.info(f"Combined playlist '{combined_playlist_filename}' is up-to-date.")
-                    self.playlist_filename = combined_playlist_filename
-                    return
-            except Exception as e:
-                self.logger.error(f"Failed to read existing combined playlist: {e}")
-
-        try:
-            os.makedirs(os.path.dirname(combined_path), exist_ok=True)
-            with open(combined_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-
-            self.logger.info(f"Combined playlist '{combined_playlist_filename}' saved with {total} links.")
-            self.playlist_filename = combined_playlist_filename
-        except Exception as e:
-            self.logger.error(f"Failed to save the combined playlist: {e}")
-
-    def save_torrent_wrapper(self, link, title_name, torrent_id):
-        """
-        Wrapper function to handle saving the torrent.
-        Collects title names and links, and passes them to save_torrent_file.
-        """
-        try:
-            sanitized_title_name = self.sanitize_filename(title_name)
-            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
-
-            self.torrent_manager.save_torrent_file(link, file_name)
-            self.logger.debug("Opening torrent client ..")
-        except Exception as e:
-            error_message = f"Error in save_torrent_wrapper: {str(e)}"
-            self.logger.error(error_message)
-
     def on_link_click(self, url):
         link = url.toString()
         self.link_handler.handle(link)
 
-    def get_poster_or_placeholder(self, title_id: int, size_key: str = "original", force_download: bool = False,) -> bytes:
-        """
-        Получает постер для тайтла или плейсхолдер, если постер не найден.
-        Инициирует скачивание постера только если существующий постер устарел или отсутствует.
-        """
-        try:
-            poster_data, is_placeholder = self.db_manager.get_poster_blob(title_id, size_key=size_key)
-            need_download = False
-
-            if force_download:
-                need_download = True
-                self.logger.debug(f"Force download requested for title_id={title_id}, size_key={size_key}")
-            else:
-                if not poster_data or is_placeholder:
-                    need_download = True
-                else:
-                    poster_date = self.db_manager.get_poster_last_updated(title_id, size_key=size_key)
-                    if poster_date:
-                        if poster_date.tzinfo is None:
-                            poster_date = poster_date.replace(tzinfo=timezone.utc)
-
-                        current_time = datetime.now(timezone.utc)
-                        week_age = timedelta(days=DOWNLOAD_AFTER_AGE)
-                        final_age = timedelta(days=FINAL_AGE)
-                        poster_age = current_time - poster_date
-
-                        if poster_age < week_age:
-                            self.logger.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is fresh ({poster_date}). Skipping download."
-                            )
-                        elif poster_age < final_age:
-                            need_download = True
-                            self.logger.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is stale ({poster_date}). Scheduling download."
-                            )
-                        else:
-                            self.logger.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is final ({poster_date}). Skipping download considered final (older than 90 days)."
-                            )
-            if need_download:
-                poster_link = self.db_manager.get_poster_link(title_id, size_key)
-                if poster_link:
-                    processed_link = self.perform_poster_link(poster_link)
-                    if processed_link:
-                        self.poster_manager.write_poster_links([(title_id, processed_link, size_key)])
-                        self.logger.debug(f"Added poster for title_id {title_id} to download queue.")
-
-            return poster_data
-
-        except Exception as e:
-            self.logger.error(f"Ошибка get_poster_or_placeholder: {e}")
-            return None
-
-    def perform_poster_link(self, poster_link):
-        """
-        Возвращает «нормализованный» URL постера.
-        Если poster_link уже является полным URL, который уже содержит
-        base_al_url или base_am_url, он возвращается без добавления префикса.
-        """
-        try:
-            standardized_url = None
-            self.logger.debug(f"Processing poster link: {poster_link}")
-            is_full_url = poster_link.startswith(("http://", "https://"))
-            contains_base = any(
-                base in poster_link for base in (self.base_al_url, self.base_am_url)
-            )
-            if is_full_url and contains_base:
-                standardized_url = self.standardize_url(poster_link)
-                self.logger.debug(
-                    f"Poster link already full URL → {standardized_url[-41:]}"
-                )
-            elif poster_link.startswith("/"):
-                poster_url = f"{self.pre}{self.base_al_url}{poster_link}"
-                standardized_url = self.standardize_url(poster_url)
-                self.logger.debug(f"Constructed poster URL → {standardized_url[-41:]}")
-
-            cached_urls = [url for (_, url, _) in self.poster_manager.poster_links]
-
-            if standardized_url in cached_urls:
-                self.logger.debug(
-                    f"Poster URL already cached: {standardized_url}. Skipping fetch."
-                )
-                return None
-
-            return standardized_url
-
-        except Exception as e:
-            self.logger.error(f"Error while processing poster link: {e}")
-            return None
-
-    @staticmethod
-    def sanitize_filename(name):
-        """
-        Sanitize the filename by removing special characters that are not allowed in filenames.
-        """
-        return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-    @staticmethod
-    def standardize_url(url):
-        """
-        Standardizes the URL for consistent comparison.
-        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
-        """
-        return url.strip().split('?')[0]
-
-    def open_vlc_player(self, playlist_path, title_id, skip_data=None):
-        """
-        Создаёт и открывает окно VLC‑плеера.
-        Параметры `proxy`, `log` и `log_level` передаются только если они включены.
-        """
-        vlc_kwargs = {"current_template": self.current_template}
-
-        if self.log_enabled == "true":
-            vlc_kwargs["log"] = self.log_enabled
-            vlc_kwargs["log_level"] = self.verbose
-
-        self.vlc_window = VLCPlayer(**vlc_kwargs)
-
-        final_path = playlist_path
-        if self.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
-                ("http://", "https://")):
-            rr = self.url_resolver.resolve(playlist_path)
-            if rr and getattr(rr, "final_url", None):
-                final_path = rr.final_url
-
-        self.logger.debug(
-            f"title_id: {title_id}, playlist_path: {playlist_path}, skip_data: {skip_data}"
-        )
-        self.vlc_window.load_playlist(final_path, title_id, skip_data)
-        self.vlc_window.show()
-        self.vlc_window.timer.start()
-
-    def open_standalone_vlc_player(self, playlist_path, title_id, skip_data=None):
-        """Launch VLC player as a separate process."""
-        final_path = playlist_path
-        if self.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
-                ("http://", "https://")):
-            rr = self.url_resolver.resolve(playlist_path)
-            if rr and getattr(rr, "final_url", None):
-                final_path = rr.final_url
-
-        if getattr(sys, 'frozen', False):
-            # TODO: add other platforms
-            vlc_player_executable_name = self.config_manager.get_vlc_player_executable_name()
-            vlc_player_executable = os.path.join(os.path.dirname(sys.executable), vlc_player_executable_name)
-
-            if VLC_PLAYER_HASH:
-                status = verify_library(vlc_player_executable, VLC_PLAYER_HASH)
-
-                if not status:
-                    self.logger.error(f"VLC player executable hash mismatch! Security risk detected.")
-                    self.show_error_notification("Security Error", "VLC player executable verification failed.")
-                    sys.exit(1)
-
-            cmd = [vlc_player_executable,
-                   "--playlist", final_path,
-                   "--title_id", str(title_id),
-                   "--template", self.current_template]
-
-            if skip_data:
-                cmd.extend(["--skip_data", skip_data])
-            if self.prod_key is not None:
-                cmd.extend(["--prod_key", str(self.prod_key)])
-
-            if self.log_enabled == "true":
-                cmd.extend(["--log", str(self.log_enabled)])
-                cmd.extend(["--verbose", str(self.verbose)])
-
-            subprocess.Popen(cmd, close_fds=True)
-            self.logger.info(f"Launched standalone VLC player for title_id: {title_id}")
-        else:
-            # TODO: DEVELOPMENT Version
-            self.open_vlc_player(final_path, title_id, skip_data)
-
-    def open_mpv_player(self, playlist_path, title_id, skip_data=None):
-        """
-        DEV-версия: открываем окно mpv прямо в текущем процессе (без бинарника).
-        """
-        try:
-            from app.mpv.mpv_engine import MpvEngine
-            from app.mpv.player_window import PlayerWindow
-
-            mpv_kwargs = {}
-            # прокси
-            if self.proxy_enabled == "true":
-                mpv_kwargs["proxy"] = self.proxy_url
-
-            # логирование (опционально)
-            log_file = None
-            if self.mpv_log_enabled == "true":
-                # можно положить рядом с temp/logs
-                log_file = str(Path("logs") / "mpv.log")
-
-            self.logger.info(f"DEV mpv player launch : {self.proxy_url} {self.mpv_log_enabled}")
-
-            engine = MpvEngine(
-                proxy=None,
-                loglevel=("info" if str(self.mpv_verbose).lower() in ("info", "debug") else "warn"),
-                log_file=log_file
-            )
-
-            w = PlayerWindow(
-                engine,
-                playlist=playlist_path,
-                title_id=title_id,
-                skip_data=skip_data,
-                proxy=mpv_kwargs.get("proxy"),
-                resolver=self.url_resolver,
-                autoplay=True,
-                template=self.current_template,  # важно!
-            )
-            w.show()
-
-            # держим ссылку, чтобы окно не убилось GC
-            self.mpv_window = w
-
-        except Exception as e:
-            self.logger.error(f"DEV mpv player launch failed: {e}", exc_info=True)
-            raise
-
-    def open_standalone_mpv_player(self, playlist_path, title_id, skip_data=None) -> bool:
-        """
-        PROD-версия: запускаем mpv-плеер как отдельный процесс.
-        Возвращает True если удалось запустить, иначе False.
-        """
-        try:
-            if getattr(sys, 'frozen', False):
-                mpv_executable = os.path.join(os.path.dirname(sys.executable), self.mpv_player_executable_name)
-
-                if not os.path.exists(mpv_executable):
-                    self.logger.error(f"mpv player executable not found: {mpv_executable}")
-                    return False
-
-                cmd = [
-                    mpv_executable,
-                    "--playlist", str(playlist_path),
-                    "--title_id", str(title_id),
-                    "--template", str(self.current_template),
-                ]
-
-                if skip_data:
-                    cmd.extend(["--skip_data", skip_data])
-
-                if self.prod_key is not None:
-                    cmd.extend(["--prod_key", str(self.prod_key)])
-
-                # mpv лог/verbose (опционально)
-                if self.mpv_log_enabled == "true":
-                    cmd.extend(["--log", str(Path("logs") / "mpv.log")])
-                if str(self.mpv_verbose).lower() in ("info", "debug"):
-                    cmd.extend(["--verbose"])
-
-                subprocess.Popen(cmd, close_fds=True)
-                self.logger.info(f"Launched standalone MPV player for title_id: {title_id}")
-                return True
-
-            # DEV
-            self.open_mpv_player(playlist_path, title_id, skip_data)
-            return True
-
-        except Exception as e:
-            self.logger.error(f"open_standalone_mpv_player failed: {e}", exc_info=True)
-            return False
-
-    def open_web_link(self, link: str, title_id: int | None = None, skip_data=None):
-        try:
-            if not title_id:
-                title_id = self.current_title_id
-
-            host = None
-            if title_id:
-                host = self.db_manager.get_player_host_by_title_id(title_id)
-            if not host:
-                host = self.stream_video_url  # fallback
-
-            full = self.playlist_manager.make_full_url(link, host)
-            if not full:
-                self.logger.error(f"open_web_link: empty url from link={link!r} host={host!r}")
-                return
-
-            self.logger.info(f"Opening web link in mini_browser: {full}")
-            self.router.open_web_urls([full])
-
-        except Exception as e:
-            self.logger.error(f"open_web_link error: {e}", exc_info=True)
-
-    def play_link(self, link, title_id=None, skip_data=None):
-        """
-        Воспроизводит ссылку на эпизод.
-
-        Логика:
-        1. Если link уже полный URL (https://...) - используем как есть
-        2. Если link это путь (/videos/...) - получаем host из БД и строим URL
-        """
-        try:
-            if link.startswith(("http://", "https://")):
-                open_link = link
-                self.logger.debug("Using full URL from link")
-            else:
-                if title_id:
-                    host = self.db_manager.get_player_host_by_title_id(title_id) if title_id else self.stream_video_url
-                    self.logger.debug(f"Using host from DB: {self.stream_video_url}")
-
-                if not link.startswith('/'):
-                    link = '/' + link
-
-                open_link = self.playlist_manager.make_full_url(link, host)
-
-            if not open_link:
-                self.logger.error("Empty open_link ...")
-                return
-
-            # 1) mpv (если включен)
-            if getattr(self, "use_mpv_player", "false") == "true":
-                ok = self.open_standalone_mpv_player(open_link, str(title_id), skip_data)
-                if ok:
-                    self.logger.info(f"Playing via MPV: {open_link[-50:]}")
-                    return
-
-                # mpv не смог стартовать -> fallback на VLC
-                self.logger.warning("MPV failed to launch, falling back to VLC...")
-
-            # 2) VLC (как было)
-            if self.use_libvlc == "true":
-                self.open_standalone_vlc_player(open_link, str(title_id), skip_data)
-            else:
-                # внешний плеер
-                subprocess.Popen([self.video_player_path, open_link])
-
-            self.logger.info(f"Playing: {open_link[-50:]}")
-
-        except Exception as e:
-            self.logger.error(f"Error playing link: {e}", exc_info=True)
-
-    def play_playlist_wrapper(self, file_name=None, title_id=None, skip_data=None):
-        """
-        Wrapper function to handle playing the playlist.
-        Determines the file name and passes it to play_playlist.
-        """
-        try:
-            if not title_id:
-                title_id = self.current_title_id
-
-            if not file_name:
-                file_name = self.playlist_filename
-                if not file_name:
-                    self.logger.error("No playlist filename available. Please save a playlist first.")
-                    return
-
-            file_path = os.path.join(self.playlist_manager.playlist_path, file_name)
-            if not os.path.exists(file_path):
-                self.logger.error(f"Playlist file does not exist: {file_path}")
-                return
-
-            # ✅ НОВОЕ: web playlist -> mini browser
-            if str(file_name).lower().endswith(".urls"):
-                self.logger.info(f"Opening web playlist via mini_browser: {file_path}")
-                # напрямую, без open_playlist(), чтобы не было циклов
-                self.router.open_web_file(file_path)
-                return
-
-            # дальше — твоя старая логика mpv/vlc
-            self.logger.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
-
-            if getattr(self, "use_mpv_player", "false") == "true":
-                ok = self.open_standalone_mpv_player(file_path, title_id, skip_data)
-                if ok:
-                    self.logger.debug("Playlist launched via MPV successfully")
-                    return
-                self.logger.warning("MPV failed to launch playlist, falling back to VLC.")
-
-            if self.use_libvlc == "true":
-                self.open_standalone_vlc_player(file_path, title_id, skip_data)
-            else:
-                self.playlist_manager.play_playlist(file_name, self.video_player_path)
-
-            self.logger.debug("Video player launched successfully")
-        except Exception as e:
-            self.logger.error(f"Error in play_playlist_wrapper: {e}", exc_info=True)
-
-    def get_mini_browser_command(self) -> list[str]:
-        """
-        DEV: запускаем app/qt_browser/mini_browser.py через текущий интерпретатор
-        """
-        app_dir = os.path.dirname(os.path.dirname(__file__))  # app/
-        mini_browser_py = os.path.join(app_dir, "qt_browser", "mini_browser.py")
-        return [sys.executable, mini_browser_py]
-
     def reset_offset(self):
         self.current_offset = 0
 
-    def ensure_playlist_bundle(self, title_id: int):
-        """
-        Гарантирует, что для title_id bundle создан, но НЕ пересоздаёт каждый рендер.
-        Пересоздаёт только если изменились links или host.
-        """
-        playlist = (self.playlists or {}).get(title_id)
-        if not playlist:
-            return None
 
-        links = playlist.get("links") or []
-        if not links:
-            playlist["streams_file"] = None
-            playlist["web_file"] = None
-            playlist["streams_count"] = 0
-            playlist["web_count"] = 0
-            playlist["bundle_key"] = None
-            return playlist
+from app.qt.app_torrents import save_torrent_wrapper
 
-        host = self.db_manager.get_player_host_by_title_id(title_id)
-        key = calc_bundle_key(title_id, links, host)
-        prev_key = playlist.get("bundle_key")
+from app.qt.app_players import (
+    open_mpv_player,
+    open_standalone_mpv_player,
+    open_vlc_player,
+    open_standalone_vlc_player,
+    open_web_link,
+    play_link,
+    play_playlist_wrapper,
+    get_mini_browser_command,
+    ensure_playlist_bundle,
+    save_playlist_wrapper,
+    save_combined_playlist_wrapper,
+)
 
-        # если ключ не изменился — bundle уже актуален, ничего не делаем
-        if prev_key == key:
-            if playlist.get("streams_file") is not None or playlist.get("web_file") is not None:
-                return playlist
+from app.qt.app_posters import (
+    get_poster_or_placeholder,
+    perform_poster_link,
+    sanitize_filename,
+    standardize_url,
+    clear_previous_posters,
+)
 
-        sanitized_title = playlist.get("sanitized_title") or str(title_id)
+from app.qt.app_animedia import (
+    display_animedia_titles_screen,
+    display_animedia_schedule_screen,
+    _warmup_animedia_titles_and_posters,
+    _count_animedia_items,
+    _slice_animedia_titles,
+    get_animedia_all_titles,
+    get_animedia_new_titles,
+    _on_animedia_all_titles,
+    _on_animedia_new_titles,
+    _on_animedia_error,
+    _on_animedia_result,
+)
 
-        bundle = self.playlist_manager.save_playlist_bundle(
-            [sanitized_title],
-            links,
-            host
-        )
+from app.qt.app_aniliberty import (
+    fetch_and_process_schedule,
+    check_and_update_schedule,
+    get_random_title,
+    parse_schedule_data,
+    get_schedule,
+)
 
-        # сохраняем в playlist кэш + метаданные
-        playlist["bundle_key"] = key
-        playlist["streams_count"] = bundle.streams_count
-        playlist["web_count"] = bundle.web_count
+AnimePlayerAppVer3.save_torrent_wrapper = save_torrent_wrapper
 
-        # если файл реально создан (count > 0) — сохраняем имя, иначе None
-        playlist["streams_file"] = bundle.m3u_name if bundle.streams_count > 0 else None
-        playlist["web_file"] = bundle.web_name if bundle.web_count > 0 else None
+AnimePlayerAppVer3.open_mpv_player = open_mpv_player
+AnimePlayerAppVer3.open_standalone_mpv_player = open_standalone_mpv_player
+AnimePlayerAppVer3.open_vlc_player = open_vlc_player
+AnimePlayerAppVer3.open_standalone_vlc_player = open_standalone_vlc_player
+AnimePlayerAppVer3.open_web_link = open_web_link
+AnimePlayerAppVer3.play_link = play_link
+AnimePlayerAppVer3.play_playlist_wrapper = play_playlist_wrapper
+AnimePlayerAppVer3.get_mini_browser_command = get_mini_browser_command
+AnimePlayerAppVer3.ensure_playlist_bundle = ensure_playlist_bundle
+AnimePlayerAppVer3.save_playlist_wrapper = save_playlist_wrapper
+AnimePlayerAppVer3.save_combined_playlist_wrapper = save_combined_playlist_wrapper
 
-        return playlist
+AnimePlayerAppVer3.get_poster_or_placeholder = get_poster_or_placeholder
+AnimePlayerAppVer3.perform_poster_link = perform_poster_link
+AnimePlayerAppVer3.clear_previous_posters = clear_previous_posters
+AnimePlayerAppVer3.sanitize_filename = staticmethod(sanitize_filename)
+AnimePlayerAppVer3.standardize_url = staticmethod(standardize_url)
+
+AnimePlayerAppVer3.display_animedia_titles_screen = display_animedia_titles_screen
+AnimePlayerAppVer3.display_animedia_schedule_screen = display_animedia_schedule_screen
+AnimePlayerAppVer3._warmup_animedia_titles_and_posters = _warmup_animedia_titles_and_posters
+AnimePlayerAppVer3._count_animedia_items = staticmethod(_count_animedia_items)
+AnimePlayerAppVer3._slice_animedia_titles = staticmethod(_slice_animedia_titles)
+AnimePlayerAppVer3.get_animedia_all_titles = get_animedia_all_titles
+AnimePlayerAppVer3.get_animedia_new_titles = get_animedia_new_titles
+AnimePlayerAppVer3._on_animedia_all_titles = _on_animedia_all_titles
+AnimePlayerAppVer3._on_animedia_new_titles = _on_animedia_new_titles
+AnimePlayerAppVer3._on_animedia_error = _on_animedia_error
+AnimePlayerAppVer3._on_animedia_result = _on_animedia_result
+
+# --- AniLiberty ---
+AnimePlayerAppVer3.fetch_and_process_schedule = fetch_and_process_schedule
+AnimePlayerAppVer3.check_and_update_schedule = check_and_update_schedule
+AnimePlayerAppVer3.get_random_title = get_random_title
+AnimePlayerAppVer3.parse_schedule_data = parse_schedule_data
+AnimePlayerAppVer3.get_schedule = get_schedule
+
+

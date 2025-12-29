@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
 from app.qt.app_services import AppServices
-from app.qt.proxy_map import PROXY_MAP
+from app.qt.proxy_api import PROXY_API
 
 from app.qt.controllers.actions import ActionsController
 from app.qt.controllers.animedia import AniMediaController
@@ -288,7 +288,7 @@ class AnimePlayerAppVer3(QWidget):
             app.aboutToQuit.connect(self.api_client.close)
 
         self.init_ui(all_layout_metadata)
-        # self._validate_proxy_map()
+        self._validate_proxy_map()
 
     @staticmethod
     def _default_data_dir(app_name: str = "AnimePlayer") -> pathlib.Path:
@@ -323,33 +323,19 @@ class AnimePlayerAppVer3(QWidget):
         link = url.toString()
         self.link_handler.handle(link)
 
-    _ALLOWED_DELEGATES = (
-        "display", "player", "poster", "torrent",
-        "actions", "state_runtime", "animedia",
-        "aniliberty", "persistence", "callback", "bootstrap",
-    )
+    _PROXY_MAP = PROXY_API
 
-    def __getattr__(self, name: str):
-        # ВАЖНО: не используем getattr(self, ...) внутри __getattr__!
-        found = []
-        for ctrl_name in self._ALLOWED_DELEGATES:
-            try:
-                ctrl = object.__getattribute__(self, ctrl_name)
-            except AttributeError:
-                continue
+    def __getattr__(self, name):
+        try:
+            ctrl_name, meth = self._PROXY_MAP[name]
+        except KeyError:
+            raise AttributeError(name)
 
-            if hasattr(ctrl, name):
-                found.append(getattr(ctrl, name))
+        ctrl = object.__getattribute__(self, ctrl_name)
+        return getattr(ctrl, meth)
 
-        if len(found) == 1:
-            return found[0]
-
-        if len(found) > 1:
-            raise AttributeError(
-                f"Ambiguous proxy method '{name}' found in multiple controllers: {self._ALLOWED_DELEGATES}"
-            )
-
-        raise AttributeError(name)
+    def __dir__(self):
+        return sorted(set(super().__dir__()) | set(self._PROXY_MAP))
 
     def _validate_proxy_map(self):
         for public, (ctrl_name, meth) in self._PROXY_MAP.items():

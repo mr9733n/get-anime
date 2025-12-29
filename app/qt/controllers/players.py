@@ -57,7 +57,7 @@ class PlayerController:
 
             # логирование (опционально)
             log_file = None
-            if self.app.mpv_log_enabled == "true":
+            if self.app.mpv_log_enabled:
                 # можно положить рядом с temp/logs
                 log_file = str(Path("logs") / "mpv.log")
 
@@ -115,7 +115,7 @@ class PlayerController:
                     cmd.extend(["--prod_key", str(self.app.prod_key)])
 
                 # mpv лог/verbose (опционально)
-                if self.app.mpv_log_enabled == "true":
+                if self.app.mpv_log_enabled:
                     cmd.extend(["--log", str(Path("logs") / "mpv.log")])
                 if str(self.app.mpv_verbose).lower() in ("info", "debug"):
                     cmd.extend(["--verbose"])
@@ -139,7 +139,7 @@ class PlayerController:
         """
         vlc_kwargs = {"current_template": self.app.current_template}
 
-        if self.app.log_enabled == "true":
+        if self.app.log_enabled:
             vlc_kwargs["log"] = self.app.log_enabled
             vlc_kwargs["log_level"] = self.app.verbose
 
@@ -191,7 +191,7 @@ class PlayerController:
             if self.app.prod_key is not None:
                 cmd.extend(["--prod_key", str(self.app.prod_key)])
 
-            if self.app.log_enabled == "true":
+            if self.app.log_enabled:
                 cmd.extend(["--log", str(self.app.log_enabled)])
                 cmd.extend(["--verbose", str(self.app.verbose)])
 
@@ -251,7 +251,7 @@ class PlayerController:
                 return
 
             # 1) mpv (если включен)
-            if getattr(self.app, "use_mpv_player", "false") == "true":
+            if self.app.use_mpv_player:
                 ok = self.open_standalone_mpv_player(open_link, str(title_id), skip_data)
                 if ok:
                     self.log.info(f"Playing via MPV: {open_link[-50:]}")
@@ -261,7 +261,7 @@ class PlayerController:
                 self.log.warning("MPV failed to launch, falling back to VLC...")
 
             # 2) VLC (как было)
-            if self.app.use_libvlc == "true":
+            if self.app.use_libvlc:
                 self.open_standalone_vlc_player(open_link, str(title_id), skip_data)
             else:
                 # внешний плеер
@@ -302,14 +302,14 @@ class PlayerController:
             # дальше — твоя старая логика mpv/vlc
             self.log.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
 
-            if getattr(self.app, "use_mpv_player", "false") == "true":
+            if self.app.use_mpv_player:
                 ok = self.open_standalone_mpv_player(file_path, title_id, skip_data)
                 if ok:
                     self.log.debug("Playlist launched via MPV successfully")
                     return
                 self.log.warning("MPV failed to launch playlist, falling back to VLC.")
 
-            if self.app.use_libvlc == "true":
+            if self.app.use_libvlc:
                 self.open_standalone_vlc_player(file_path, title_id, skip_data)
             else:
                 self.app.playlist_manager.play_playlist(file_name, self.app.video_player_path)

@@ -1,4 +1,5 @@
 import logging
+
 from providers.aniliberty.v1.adapter import APIAdapter
 
 
@@ -59,6 +60,7 @@ class FakeMapper:
 
 def make_adapter():
     logger = logging.getLogger("test")
+    logger.setLevel(logging.CRITICAL)
     adapter = APIAdapter(FakeClient(), logger)
     adapter.mapper = FakeMapper()  # подменяем реальный mapper
     adapter.service = None         # сервис тут не нужен

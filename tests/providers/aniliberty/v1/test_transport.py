@@ -2,6 +2,8 @@ import time
 import json
 import httpx
 import pytest
+import logging
+logging.getLogger("providers.aniliberty.v1.transport").setLevel(logging.CRITICAL)
 
 from providers.aniliberty.v1.transport import HttpTransport
 

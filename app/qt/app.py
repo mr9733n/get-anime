@@ -4,7 +4,6 @@ import sys
 import logging
 import importlib.resources as ir
 
-from pathlib import Path
 from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
@@ -50,6 +49,23 @@ class AnimePlayerAppVer3(QWidget):
     def __init__(self, config_manager, db_manager, version, template_name, prod_key=None):
         super().__init__()
         self.logger = logging.getLogger(__name__)
+
+        self._init_single_instance(prod_key)
+        self._init_threading_and_state()
+
+        self._init_config_and_bootstrap(config_manager, db_manager, version, template_name, prod_key)
+        self._init_network()
+        self._init_settings()
+
+        self._init_paths_and_cache()
+        self._init_providers_and_managers()
+
+        self._init_ui()
+        self._init_link_handler()
+
+        self._init_services_and_controllers()
+
+    def _init_single_instance(self, prod_key):
         self.prod_key = prod_key
         if prod_key is not None:
             unique_key = str(prod_key) + '-APA'
@@ -58,9 +74,12 @@ class AnimePlayerAppVer3(QWidget):
                 self.logger.error("Main application is already running!")
                 sys.exit(1)
 
-        self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
+    def _init_threading_and_state(self):
+        self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
         self.thread_pool.setExpiryTimeout(30_000)
+
+        # runtime/ui state defaults
         self.mpv_window = None
         self.view_state = None
         self.am_total_count = None
@@ -90,26 +109,33 @@ class AnimePlayerAppVer3(QWidget):
         self.total_titles = []
         self.playlists = {}
 
+        self.row_start = 0
+        self.col_start = 0
+        self.pre = "https://"
+
+    def _init_config_and_bootstrap(self, config_manager, db_manager, version, template_name, prod_key):
         self.current_template = template_name
         self.logger.info(f"Используется шаблон: {self.current_template}")
         self.app_version = version
         self.logger.debug(f"Starting AnimePlayerApp Version {self.app_version}..")
-        self.row_start = 0
-        self.col_start = 0
-        self.pre = "https://"
+
         self.config_manager = config_manager
+        self.db_manager = db_manager
+
         self.bootstrap = BootstrapController(self, None)
 
-        """Loads the configuration settings needed by the application."""
+    def _init_network(self):
         self.network_config = self.config_manager.network
         self.net_client = NetClient(self.network_config)
         self.logger.info(f"Network client initialized. Proxy enabled: {self.network_config.proxy_enabled}")
+
         self.url_resolver = UrlResolveService(
             net=self.net_client,
             cache=TTLCache(max_items=2048),
             cfg=ResolverConfig(),
         )
 
+    def _init_settings(self):
         self.base_al_url = self.config_manager.get_setting('Settings', 'base_al_url')
         self.base_am_url = self.config_manager.get_setting('Settings', 'base_am_url')
         self.al_api_version = self.config_manager.get_setting('Settings', 'al_api_version')
@@ -122,18 +148,21 @@ class AnimePlayerAppVer3(QWidget):
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
         # vlc_player
-        self.use_libvlc = self.get_cfg('Settings', 'use_libvlc', "false", lower=True)
-        self.log_enabled = self.get_cfg('VlcPlayer', 'log_enabled', "false", lower=True)
+        self.use_libvlc = self.get_cfg_bool('Settings', 'use_libvlc', False)
+        self.log_enabled = self.get_cfg_bool('VlcPlayer', 'log_enabled', False)
         self.verbose = self.get_cfg('VlcPlayer', 'verbose_level', "2")
+
         # network
         self.proxy_enabled = bool(self.network_config.proxy_enabled)
         self.proxy_url = self.network_config.proxy_url
-        # mpv‑related
-        self.use_mpv_player = self.get_cfg('Settings', 'use_mpv_player', "false", lower=True)
+
+        # mpv
         self.mpv_player_executable_name = self.get_cfg('MpvPlayer', 'executable_name', "mpv_player.exe")
-        self.mpv_log_enabled = self.get_cfg('MpvPlayer', 'log_enabled', "false", lower=True)
+        self.use_mpv_player = self.get_cfg_bool('Settings', 'use_mpv_player', False)
+        self.mpv_log_enabled = self.get_cfg_bool('MpvPlayer', 'log_enabled', False)
         self.mpv_verbose = self.get_cfg('MpvPlayer', 'verbose_level', "info")
 
+    def _init_paths_and_cache(self):
         self.data_dir = self._default_data_dir()
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,26 +175,28 @@ class AnimePlayerAppVer3(QWidget):
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
         self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=self.temp_dir)
-
         self.animedia_cache = AniMediaCacheManager(self.animedia_cache_cfg.base_dir)
+
+    def _init_providers_and_managers(self):
+        # AniMedia adapter
         self.animedia_adapter = create_adapter(
             base_url=self.base_am_url,
             net_client=self.net_client,
-            cache_dir = self.temp_dir,
+            cache_dir=self.temp_dir,
             logger=self.logger,
         )
 
-        # Initialize TorrentManager with the correct paths
+        # Torrent manager
         self.torrent_manager = TorrentManager(
             torrent_save_path=self.torrent_save_path,
             torrent_client_path=self.torrent_client_path,
-            base_url=self.base_al_url,  # Передаём base_al_url из конфига
+            base_url=self.base_al_url,
             net_client=self.net_client
         )
-        # Corrected debug logging of paths using setup values
         self.logger.debug(f"Video Player Path: {self.video_player_path}")
         self.logger.debug(f"Torrent Client Path: {self.torrent_client_path}")
 
+        # AniLiberty API
         self.api_client = APIClient(
             base_url=self.base_al_url,
             api_version=self.al_api_version,
@@ -176,21 +207,20 @@ class AnimePlayerAppVer3(QWidget):
             max_cache_items=256,
             enable_dumps=False
         )
-        self.api_adapter = APIAdapter(
-            self.api_client,
-            self.logger,
-        )
+        self.api_adapter = APIAdapter(self.api_client, self.logger)
 
+        # Managers
         self.playlist_manager = PlaylistManager()
-        self.db_manager = db_manager
         self.poster_manager = PosterManager(
             save_callback=self.db_manager.save_poster,
             net_client=self.net_client
         )
 
+    def _init_ui(self):
         self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
         self.ui_am_generator = UIAMGenerator(self, self.db_manager, self.current_template)
         self.ui_s_generator = UISGenerator(self, self.db_manager)
+
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
 
         try:
@@ -201,6 +231,7 @@ class AnimePlayerAppVer3(QWidget):
 
         self.ui_manager = UIManager(self, self.ui_style)
 
+    def _init_link_handler(self):
         self.link_handler = LinkActionHandler(
             logger=self.logger,
             db_manager=self.db_manager,
@@ -218,7 +249,6 @@ class AnimePlayerAppVer3(QWidget):
             reload_poster=self.get_poster_or_placeholder
         )
 
-        # init open router
         self.router = OpenRouter(self)
 
         self.callbacks = {}
@@ -226,6 +256,7 @@ class AnimePlayerAppVer3(QWidget):
         for i, day in enumerate(days_of_week):
             self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
 
+    def _init_services_and_controllers(self):
         self.svc = AppServices(
             logger=self.logger,
             config=self.config_manager,
@@ -233,7 +264,7 @@ class AnimePlayerAppVer3(QWidget):
             ui=self.ui_manager,
             playlist=self.playlist_manager,
             api=self.api_adapter,
-            http=getattr(self, "_http", None),  # если есть общий клиент
+            http=getattr(self, "_http", None),
         )
 
         self.state_runtime = StateRuntimeController(self, self.svc)
@@ -264,6 +295,10 @@ class AnimePlayerAppVer3(QWidget):
         else:
             base = pathlib.Path(os.getenv("XDG_DATA_HOME", pathlib.Path.home() / ".local" / "share"))
         return base / app_name
+
+    def get_cfg_bool(self, section, key, default=False) -> bool:
+        val = self.get_cfg(section, key, default)
+        return str(val).lower() in ("1", "true", "yes", "on")
 
     def closeEvent(self, event):
         QApplication.instance().quit()  # Завершает все окна приложения

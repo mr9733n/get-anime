@@ -551,17 +551,20 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add Reload poster to all other screens
 - [x] Add create thumb from original poster
 
+### 8.38 MPV Player
+- [x] Add tests
+
 ### 8.38 Orchestrator Refactoring
-- [ ] refactoring app.py
+- [x] add controllers
+- [x] refactor init in app.py
+- [x] add tests
+- [ ] ...
 
 ### 8.38 Fixes
 - [x] Fix url inserting in animedia parser
 - [x] Fix UI animedia card height when title name is too long
 - [x] fix pagination for all screens 
-
-
-### 8.39 MPV Player
-- [ ] Add tests
+- [x] 2025-12-29 21:08:58 | ERROR | app.qt.ui_s_generator.switch_template | Ошибка при переключении шаблона: 'DatabaseManager' object has no attribute 'app_state_manager'
 
 ### 8.39 Fixes
 - [ ] Add save state for pagination in AM 

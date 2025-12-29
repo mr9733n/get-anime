@@ -1,0 +1,4 @@
+function pt { pytest -q }
+function ptv { pytest -vv -ra }
+function ptd { pytest -vv -ra --durations=10 }
+function ptl { pytest -q --log-cli-level=INFO }

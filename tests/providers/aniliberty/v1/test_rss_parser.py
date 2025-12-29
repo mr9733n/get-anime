@@ -1,3 +1,6 @@
+import logging
+logging.getLogger(__name__).setLevel(logging.CRITICAL)
+
 from providers.aniliberty.v1.xml_parser import parse_torrents_rss
 
 def test_parse_rss_basic():

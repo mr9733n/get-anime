@@ -1,4 +1,5 @@
-
+import logging
+logging.getLogger(__name__).setLevel(logging.CRITICAL)
 
 from providers.aniliberty.v1.service import ReleaseBundleService
 

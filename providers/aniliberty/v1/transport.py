@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
+from os import PathLike
+
 import httpx
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from providers.aniliberty.v1.cache_policy import CachePolicy
 
@@ -27,7 +30,7 @@ class HttpTransport:
         *,
         net_client: Any,
         base_url: str,
-        utils_folder: str = "temp",
+        utils_folder: Union[str, Path, PathLike] = "temp",
         logger: logging.Logger | None = None,
         sleep_fn: Any | None = None,
         timeout: httpx.Timeout | None = None,
@@ -38,13 +41,13 @@ class HttpTransport:
         enable_dumps: bool = False,
     ) -> None:
         self.logger = logger or logging.getLogger(__name__)
-        self.utils_folder = utils_folder
+        self.utils_folder = Path(utils_folder)
         self._sleep = sleep_fn or time.sleep
         self.max_cache_items = max(0, int(max_cache_items))
         self._cache_policy = cache_policy
         self.enable_dumps = enable_dumps
         if self.enable_dumps:
-            os.makedirs(self.utils_folder, exist_ok=True)
+            self.utils_folder.mkdir(parents=True, exist_ok=True)
 
         self._http = net_client.create_httpx_client(
             base_url=base_url,
@@ -156,13 +159,16 @@ class HttpTransport:
                     if self.enable_dumps:
                         ts = int(time.time())
                         safe = endpoint.replace("/", "_")
+                        bin_path = self.utils_folder / f"{safe}_{ts}.bin"
+                        txt_path = self.utils_folder / f"{safe}_{ts}.txt"
+
                         try:
-                            with open(os.path.join(self.utils_folder, f"{safe}_{ts}.bin"), "wb") as fb:
+                            with open(bin_path, "wb") as fb:
                                 fb.write(resp.content)
                         except Exception:
                             pass
                         try:
-                            with open(os.path.join(self.utils_folder, f"{safe}_{ts}.txt"), "w", encoding="utf-8", errors="replace") as ft:
+                            with open(txt_path, "w", encoding="utf-8", errors="replace") as ft:
                                 ft.write(resp.text)
                         except Exception:
                             pass
@@ -177,7 +183,9 @@ class HttpTransport:
                     try:
                         ts = int(time.time())
                         safe = endpoint.replace("/", "_")
-                        with open(os.path.join(self.utils_folder, f"{safe}_{ts}.json"), "w", encoding="utf-8") as f:
+                        json_path = self.utils_folder / f"{safe}_{ts}.json"
+
+                        with open(json_path, "w", encoding="utf-8") as f:
                             json.dump(data, f, ensure_ascii=False, indent=2)
                     except Exception:
                         pass

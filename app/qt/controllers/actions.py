@@ -162,14 +162,14 @@ class ActionsController:
 
                     self.log.info(f"Updating via AniMedia: query={query_name}")
                     self._last_search_text = query_name
-                    self._animedia_worker = AsyncWorker(
+                    self.animedia_worker = AsyncWorker(
                         self.app.animedia_adapter.get_by_title,
                         query_name,
                         max_titles=5,
                     )
-                    self._animedia_worker.finished.connect(self._on_animedia_result)
-                    self._animedia_worker.error.connect(self.on_animedia_error)
-                    self._animedia_worker.start()
+                    self.animedia_worker.finished.connect(self._on_animedia_result)
+                    self.animedia_worker.error.connect(self.on_animedia_error)
+                    self.animedia_worker.start()
                     continue
 
                 self.log.warning(
@@ -245,14 +245,14 @@ class ActionsController:
                 try:
                     self.log.info("...Try to load from Animedia (async)")
                     self._last_search_text = search_text
-                    self._animedia_worker = AsyncWorker(
+                    self.animedia_worker = AsyncWorker(
                         self.app.animedia_adapter.get_by_title,
                         search_text,
                         max_titles=5,
                     )
-                    self._animedia_worker.finished.connect(self._on_animedia_result)
-                    self._animedia_worker.error.connect(self.on_animedia_error)
-                    self._animedia_worker.start()
+                    self.animedia_worker.finished.connect(self._on_animedia_result)
+                    self.animedia_worker.error.connect(self.on_animedia_error)
+                    self.animedia_worker.start()
                     return True
                 except Exception as e:
                     self.log.error(f"Error starting Animedia worker: {e}")

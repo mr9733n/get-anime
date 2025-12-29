@@ -196,26 +196,26 @@ class AniMediaController:
         self.ui.show_loader("Loading AniMedia schedule...")
         self.ui.set_buttons_enabled(False)
 
-        self.app._animedia_worker = AsyncWorker(
+        self.app.animedia_worker = AsyncWorker(
             self.app.animedia_adapter.get_all_titles,
             max_titles=60,
             pages=5,
         )
-        self.app._animedia_worker.finished.connect(self._on_animedia_all_titles)
-        self.app._animedia_worker.error.connect(self.app.actions.on_animedia_error)
-        self.app._animedia_worker.start()
+        self.app.animedia_worker.finished.connect(self._on_animedia_all_titles)
+        self.app.animedia_worker.error.connect(self.app.actions.on_animedia_error)
+        self.app.animedia_worker.start()
 
     def get_animedia_new_titles(self):
         self.ui.show_loader("Loading AniMedia schedule...")
         self.ui.set_buttons_enabled(False)
 
-        self.app._animedia_worker = AsyncWorker(
+        self.app.animedia_worker = AsyncWorker(
             self.app.animedia_adapter.get_new_titles,
             max_titles=60,
         )
-        self.app._animedia_worker.finished.connect(self._on_animedia_new_titles)
-        self.app._animedia_worker.error.connect(self.app.actions.on_animedia_error)
-        self.app._animedia_worker.start()
+        self.app.animedia_worker.finished.connect(self._on_animedia_new_titles)
+        self.app.animedia_worker.error.connect(self.app.actions.on_animedia_error)
+        self.app.animedia_worker.start()
 
     def _on_animedia_all_titles(self, data):
         try:

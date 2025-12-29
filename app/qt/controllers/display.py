@@ -337,8 +337,8 @@ class DisplayController:
                     self.app.posters_layout.addWidget(title_widget, row, column)
 
             self.log.debug(f"Displayed {show_mode} with {len(titles)} titles.")
-            app_state = self.app.get_current_state()
-            QTimer.singleShot(100, lambda: self.app.state_manager.save_state(app_state))
+            self.app.state_changed.emit()
+
         except Exception as e:
             self.log.error(f"Ошибка display_titles_in_ui: {e}")
 

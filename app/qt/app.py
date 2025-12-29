@@ -44,6 +44,7 @@ from utils.net.url_resolver_config import ResolverConfig
 
 class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
+    state_changed = pyqtSignal()
 
     def __init__(self, db_manager, version, template_name, prod_key=None):
         super().__init__()
@@ -58,7 +59,7 @@ class AnimePlayerAppVer3(QWidget):
 
         self.thread_pool = QThreadPool()  # Пул потоков для управления задачами
         self.thread_pool.setMaxThreadCount(4)
-        self.thread_pool.setExpiryTimeout(30000)
+        self.thread_pool.setExpiryTimeout(30_000)
         self.mpv_window = None
         self.view_state = None
         self.am_total_count = None
@@ -222,7 +223,6 @@ class AnimePlayerAppVer3(QWidget):
             ui=self.ui_manager,
             playlist=self.playlist_manager,
             api=self.api_adapter,
-            #animedia_worker=getattr(self, "_animedia_worker", None),
             http=getattr(self, "_http", None),  # если есть общий клиент
         )
 
@@ -238,8 +238,6 @@ class AnimePlayerAppVer3(QWidget):
         self.player = PlayerController(self, self.svc)
 
         self.callbacks.update(self.callback.generate_callbacks())
-
-        # self.state_manager = AppStateManager(self.db_manager)
 
         app = QApplication.instance()
         if app is not None:

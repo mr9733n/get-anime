@@ -212,10 +212,10 @@ if __name__ == "__main__":
     app_pyqt.setWindowIcon(QIcon(icon_path))
 
     if not DEVELOPMENT_MODE:
-        window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name, prod_key)
+        window_pyqt = AnimePlayerAppVer3(config_manager, db_manager, version, template_name, prod_key)
     else:
         logging.getLogger(__name__).info("Development mode: single instance check disabled.")
-        window_pyqt = AnimePlayerAppVer3(db_manager, version, template_name)
+        window_pyqt = AnimePlayerAppVer3(config_manager, db_manager, version, template_name)
 
     if app_state:
         window_pyqt.restore_state(app_state)

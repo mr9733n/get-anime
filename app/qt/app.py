@@ -1,6 +1,8 @@
+import os
 import pathlib
 import sys
 import logging
+import importlib.resources as ir
 
 from pathlib import Path
 from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
@@ -31,7 +33,6 @@ from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
 from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheConfig
 from providers.animedia.v0 import create_adapter
-from utils.config.config_manager import ConfigManager
 from utils.downloads.poster_manager import PosterManager
 from utils.downloads.torrent_manager import TorrentManager
 from utils.playlists.playlist_manager import PlaylistManager
@@ -46,7 +47,7 @@ class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
     state_changed = pyqtSignal()
 
-    def __init__(self, db_manager, version, template_name, prod_key=None):
+    def __init__(self, config_manager, db_manager, version, template_name, prod_key=None):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.prod_key = prod_key
@@ -66,7 +67,7 @@ class AnimePlayerAppVer3(QWidget):
         self.current_show_mode = None
         self.error_label = None
         self.tray_icon = None
-        self._animedia_worker = None
+        self.animedia_worker = None
         self.current_title_ids = None
         self.current_day_of_week = None
         self.current_title_id = None
@@ -96,13 +97,13 @@ class AnimePlayerAppVer3(QWidget):
         self.row_start = 0
         self.col_start = 0
         self.pre = "https://"
-        self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
+        self.config_manager = config_manager
         self.bootstrap = BootstrapController(self, None)
 
         """Loads the configuration settings needed by the application."""
-        network_config = self.config_manager.network
-        self.net_client = NetClient(network_config)
-        self.logger.info(f"Network client initialized. Proxy enabled: {network_config.proxy_enabled}")
+        self.network_config = self.config_manager.network
+        self.net_client = NetClient(self.network_config)
+        self.logger.info(f"Network client initialized. Proxy enabled: {self.network_config.proxy_enabled}")
         self.url_resolver = UrlResolveService(
             net=self.net_client,
             cache=TTLCache(max_items=2048),
@@ -125,25 +126,32 @@ class AnimePlayerAppVer3(QWidget):
         self.log_enabled = self.get_cfg('VlcPlayer', 'log_enabled', "false", lower=True)
         self.verbose = self.get_cfg('VlcPlayer', 'verbose_level', "2")
         # network
-        self.proxy_enabled = self.get_cfg('Network', 'proxy_enabled', "false", lower=True)
-        self.proxy_url = self.get_cfg('Network', 'proxy_url', None)
+        self.proxy_enabled = bool(self.network_config.proxy_enabled)
+        self.proxy_url = self.network_config.proxy_url
         # mpv‑related
         self.use_mpv_player = self.get_cfg('Settings', 'use_mpv_player', "false", lower=True)
         self.mpv_player_executable_name = self.get_cfg('MpvPlayer', 'executable_name', "mpv_player.exe")
         self.mpv_log_enabled = self.get_cfg('MpvPlayer', 'log_enabled', "false", lower=True)
         self.mpv_verbose = self.get_cfg('MpvPlayer', 'verbose_level', "info")
 
-        self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
+        self.data_dir = self._default_data_dir()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
+        self.torrent_save_path = self.data_dir / "torrents"
+        self.torrent_save_path.mkdir(parents=True, exist_ok=True)
+
+        self.temp_dir = self.data_dir / "temp"
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
-        self.temp_dir = "temp"
+        self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=self.temp_dir)
 
-        self.animedia_cache_cfg = AniMediaCacheConfig(base_dir=Path(self.temp_dir))
         self.animedia_cache = AniMediaCacheManager(self.animedia_cache_cfg.base_dir)
         self.animedia_adapter = create_adapter(
             base_url=self.base_am_url,
             net_client=self.net_client,
-            cache_dir=Path(self.temp_dir),
+            cache_dir = self.temp_dir,
             logger=self.logger,
         )
 
@@ -185,10 +193,12 @@ class AnimePlayerAppVer3(QWidget):
         self.ui_s_generator = UISGenerator(self, self.db_manager)
         self.add_title_browser_to_layout.connect(self.on_add_title_browser_to_layout)
 
-        qss_path = pathlib.Path('static/styles.qss')
-        if not qss_path.is_file():
-            raise FileNotFoundError(f"Не найден файл стилей: {qss_path}")
-        self.ui_style = qss_path.read_text(encoding='utf-8')
+        try:
+            qss_path = ir.files("static").joinpath("styles.qss")
+            self.ui_style = qss_path.read_text(encoding="utf-8")
+        except Exception as e:
+            raise FileNotFoundError("Не удалось загрузить static/styles.qss как ресурс пакета") from e
+
         self.ui_manager = UIManager(self, self.ui_style)
 
         self.link_handler = LinkActionHandler(
@@ -244,6 +254,16 @@ class AnimePlayerAppVer3(QWidget):
             app.aboutToQuit.connect(self.api_client.close)
 
         self.init_ui(all_layout_metadata)
+
+    @staticmethod
+    def _default_data_dir(app_name: str = "AnimePlayer") -> pathlib.Path:
+        if sys.platform.startswith("win"):
+            base = pathlib.Path(os.getenv("APPDATA", pathlib.Path.home() / "AppData" / "Roaming"))
+        elif sys.platform == "darwin":
+            base = pathlib.Path.home() / "Library" / "Application Support"
+        else:
+            base = pathlib.Path(os.getenv("XDG_DATA_HOME", pathlib.Path.home() / ".local" / "share"))
+        return base / app_name
 
     def closeEvent(self, event):
         QApplication.instance().quit()  # Завершает все окна приложения
@@ -344,6 +364,9 @@ class AnimePlayerAppVer3(QWidget):
     def show_error_notification(self, *a, **kw):
         return self.display.show_error_notification(*a, **kw)
 
+    def clear_layout(self, *a, **kw):
+        return self.display.clear_layout(*a, **kw)
+
     def create_animedia_schedule_browser(self, *a, **kw):
         return self.display.create_animedia_schedule_browser(*a, **kw)
 
@@ -367,6 +390,9 @@ class AnimePlayerAppVer3(QWidget):
 
     def display_titles(self, *a, **kw):
         return self.display.display_titles(*a, **kw)
+
+    def display_titles_for_day(self, *a, **kw):
+        return self.display.display_titles_for_day(*a, **kw)
 
     def display_titles_in_ui(self, *a, **kw):
         return self.display.display_titles_in_ui(*a, **kw)

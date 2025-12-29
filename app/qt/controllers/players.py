@@ -52,7 +52,7 @@ class PlayerController:
 
             mpv_kwargs = {}
             # прокси
-            if self.app.proxy_enabled == "true":
+            if self.app.proxy_enabled:
                 mpv_kwargs["proxy"] = self.app.proxy_url
 
             # логирование (опционально)
@@ -146,7 +146,7 @@ class PlayerController:
         self.app.vlc_window = VLCPlayer(**vlc_kwargs)
 
         final_path = playlist_path
-        if self.app.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
+        if self.app.proxy_enabled and isinstance(playlist_path, str) and playlist_path.startswith(
                 ("http://", "https://")):
             rr = self.app.url_resolver.resolve(playlist_path)
             if rr and getattr(rr, "final_url", None):
@@ -162,7 +162,7 @@ class PlayerController:
     def open_standalone_vlc_player(self, playlist_path, title_id, skip_data=None):
         """Launch VLC player as a separate process."""
         final_path = playlist_path
-        if self.app.proxy_enabled == "true" and isinstance(playlist_path, str) and playlist_path.startswith(
+        if self.app.proxy_enabled and isinstance(playlist_path, str) and playlist_path.startswith(
                 ("http://", "https://")):
             rr = self.app.url_resolver.resolve(playlist_path)
             if rr and getattr(rr, "final_url", None):

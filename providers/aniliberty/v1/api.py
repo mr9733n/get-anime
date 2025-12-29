@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from os import PathLike
+from typing import Union
 from typing import Any, Dict, Optional, Sequence
 
 from providers.aniliberty.v1.transport import HttpTransport
@@ -23,7 +26,7 @@ class APIClient:
         api_version: str,
         net_client: Any,
         logger: logging.Logger | None = None,
-        utils_folder: str = "temp",
+        utils_folder: Union[str, Path, PathLike] = "temp",
         sleep_fn=None,
         max_cache_items: int = 256,
         enable_dumps: bool = False,

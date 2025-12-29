@@ -1,0 +1,93 @@
+# app/qt/app_services.py
+from __future__ import annotations
+
+import logging
+import json
+
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+@dataclass(slots=True)
+class AppServices:
+    # core infra
+    logger: Any
+    config: Any
+    db: Any
+
+    # ui/core controllers
+    ui: Any
+    playlist: Any
+
+    # providers / api
+    api: Any
+    # animedia_worker: Optional[Any] = None
+
+    # misc/external
+    http: Optional[Any] = None  # если у тебя где-то есть общий http-клиент
+
+
+class AppStateService:
+    def __init__(self, db_manager):
+        self.logger = logging.getLogger(__name__)
+        self.db_manager = db_manager
+
+    def save_state(self, app_state):
+        """Сохраняет состояние приложения"""
+        try:
+            if self.db_manager:
+                self.save_state_to_db(app_state)
+
+            self.logger.info("Состояние приложения успешно сохранено")
+            return True
+        except Exception as e:
+            self.logger.error(f"Ошибка при сохранении состояния: {e}")
+            return False
+
+    def load_state(self):
+        """Загружает сохраненное состояние приложения"""
+        try:
+            state = self.load_state_from_db()
+
+            self.logger.info("Состояние приложения успешно загружено")
+            return state or {}
+        except Exception as e:
+            self.logger.error(f"Ошибка при загрузке состояния: {e}")
+            return {}
+
+    def save_state_to_db(self, app_state):
+        """Сохраняет состояние в базу данных"""
+        try:
+            state_items = [
+                (key, json.dumps(value, ensure_ascii=False) if value is not None else None)
+                for key, value in app_state.items()
+            ]
+            self.db_manager.state_manager.save_app_state(state_items)
+            return True
+        except Exception as e:
+            self.logger.error(f"Ошибка при сохранении состояния в БД: {e}")
+            return False
+
+    def load_state_from_db(self):
+        """Загружает состояние из базы данных, преобразуя 'null' обратно в None"""
+        try:
+            state = self.db_manager.state_manager.load_app_state()
+
+            # TODO: Конвертируем строки "null" в None
+            for key, value in state.items():
+                if isinstance(value, str) and value.lower() == "null":
+                    state[key] = None
+
+            return state
+        except Exception as e:
+            self.logger.error(f"Ошибка при загрузке состояния из БД: {e}")
+            return {}
+
+    def clear_state_in_db(self):
+        """Очищает сохраненное состояние в БД"""
+        try:
+            return self.db_manager.state_manager.clear_app_state()
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при сбросе состояния: {e}")
+            return {}

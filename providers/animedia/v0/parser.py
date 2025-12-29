@@ -3,17 +3,18 @@ import re
 import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Callable, Awaitable, TypeVar
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
-from providers.animedia.v0.legacy_mapper import (
-    extract_id_from_url,
-    urljoin,
-)
+
+from providers.animedia.v0.legacy_mapper import extract_id_from_url
 
 class AniMediaParser:
     def __init__(self, base_url: str, logger: logging.Logger | None = None,):
         self.logger = logger or logging.getLogger(__name__)
         self.base_url = base_url
+        if not self.base_url.startswith(("http://", "https://")):
+            self.base_url = "https://" + self.base_url.rstrip("/")
 
     # full title data
     def parse_poster_links(self, html):
@@ -42,17 +43,6 @@ class AniMediaParser:
             return []
 
         return raw_vlnks
-
-    @staticmethod
-    def extract_file_from_html(html: str, base_url: str) -> Optional[str]:
-        """Ищет в HTML строку `file = "..."` и возвращает абсолютный URL."""
-        soup = BeautifulSoup(html, "html.parser")
-        for script in soup.find_all("script"):
-            txt = script.string or script.get_text()
-            m = re.search(r'file\s*[:=]\s*["\']([^"\']+)["\']', txt)
-            if m:
-                return urljoin(base_url, m.group(1))
-        return None
 
     def _build_new_titles(self, items: List[BeautifulSoup], max_titles: int) -> List[str]:
         results: List[str] = []
@@ -308,7 +298,7 @@ class AniMediaParser:
             link = None
             title_id = None
             if link_tag and link_tag.has_attr("href"):
-                link = self.base_url.rstrip("/") + link_tag["href"]
+                link = link_tag["href"]
                 title_id = str(extract_id_from_url(link))
 
             # ---- название ----

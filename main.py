@@ -13,7 +13,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
 from app.qt.app import AnimePlayerAppVer3
-from app.qt.app_state_manager import AppStateManager
+from app.qt.app_services import AppStateService
 from core.database_manager import DatabaseManager
 from utils.security.library_loader import verify_library, load_library
 from utils.runtime.runtime_manager import test_exception
@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
     QtCore.qInstallMessageHandler(qt_message_handler)
 
-    state_manager = AppStateManager(db_manager)
+    state_manager = AppStateService(db_manager)
 
     app_state = state_manager.load_state()
     template_name = app_state.get("template_name", "default")

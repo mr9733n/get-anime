@@ -554,10 +554,17 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 ### 8.38 Orchestrator Refactoring
 - [ ] refactoring app.py
 
+### 8.38 Fixes
+- [x] Fix url inserting in animedia parser
+- [x] Fix UI animedia card height when title name is too long
+- [x] fix pagination for all screens 
+
+
 ### 8.39 MPV Player
 - [ ] Add tests
 
 ### 8.39 Fixes
+- [ ] Add save state for pagination in AM 
 - [ ] Add Screen for deleted titles with permanent delete func 
 - [ ] Change delete logic to unlink -> move to delete table
 - [ ] Fix highlighting episode in VLC playlist

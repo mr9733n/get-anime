@@ -30,3 +30,6 @@ APP_WIDTH = 1000
 APP_HEIGHT = 800
 APP_X_POS = 100
 APP_Y_POS = 100
+
+# --- State runtime
+LIST_MODES = {"titles_list", "franchise_list", "need_to_see_list", "ongoing_list"}

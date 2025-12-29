@@ -336,6 +336,7 @@ class GetManager:
         """Получает все тайтлы вместе с информацией о франшизах."""
         with self.Session as session:
             try:
+                total_count = 0
                 if title_id:
                     # New style
                     franchise_subquery = session.query(FranchiseRelease.ext_fr_id).filter(

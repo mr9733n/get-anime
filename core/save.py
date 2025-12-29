@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import uuid
+import ast
 
 from typing import Optional
 from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists

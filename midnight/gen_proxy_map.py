@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Set, Tuple
 # --- настрой это под свою структуру (по умолчанию под твою) ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTROLLERS_DIR = PROJECT_ROOT / "app" / "qt" / "controllers"
-APP_MODULE = "app.qt.proxy_map"
+APP_MODULE = "app.qt.app"
 APP_CLASS = "AnimePlayerAppVer3"
 
 
@@ -43,28 +43,43 @@ class AppCall:
 
 
 def iter_py_files(d: Path) -> List[Path]:
-    return sorted([p for p in d.glob("*.py") if p.is_file() and not p.name.startswith("_")])
+    return sorted([p for p in d.glob("*.py") if p.is_file() and not p.name.startswith("_") and "tests" not in p.parts])
 
 
 def parse_tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def collect_app_calls(path: Path) -> List[AppCall]:
+def collect_app_uses(path: Path) -> list[AppCall]:
     tree = parse_tree(path)
-    calls: List[AppCall] = []
+    uses: list[AppCall] = []
+
+    def is_self_app(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "app"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "self"
+        )
 
     class V(ast.NodeVisitor):
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            # self.app.<name>
+            if is_self_app(node.value):
+                uses.append(AppCall(method=node.attr, file=path, lineno=getattr(node, "lineno", 0)))
+            self.generic_visit(node)
+
         def visit_Call(self, node: ast.Call) -> None:
-            # match: self.app.<name>(...)
-            f = node.func
-            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Attribute):
-                if f.value.attr == "app" and isinstance(f.value.value, ast.Name) and f.value.value.id == "self":
-                    calls.append(AppCall(method=f.attr, file=path, lineno=getattr(node, "lineno", 0)))
+            # getattr(self.app, "name")
+            if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
+                obj, key = node.args[0], node.args[1]
+                if is_self_app(obj) and isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    uses.append(AppCall(method=key.value, file=path, lineno=getattr(node, "lineno", 0)))
             self.generic_visit(node)
 
     V().visit(tree)
-    return calls
+    return uses
+
 
 
 def collect_controller_methods(path: Path) -> Set[str]:
@@ -114,7 +129,7 @@ def main() -> None:
     # 1) Собираем вызовы self.app.<method>()
     app_calls: List[AppCall] = []
     for f in controller_files:
-        app_calls.extend(collect_app_calls(f))
+        app_calls.extend(collect_app_uses(f))
 
     called_methods: Set[str] = {c.method for c in app_calls}
 

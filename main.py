@@ -135,6 +135,17 @@ def qt_message_handler(mode, context, message):
     else:
         logger.debug(f"Qt: {message}")
 
+def schedule_state_save():
+    # схлопываем частые события
+    if pending["timer"] is not None:
+        pending["timer"].stop()
+
+    t = QtCore.QTimer()
+    t.setSingleShot(True)
+    t.timeout.connect(lambda: state_manager.save_state(window_pyqt.get_current_state()))
+    t.start(400)  # 0.4с после последнего “успешного display”
+    pending["timer"] = t
+
 def on_app_quit():
     app_state = window_pyqt.get_current_state()
     state_manager.save_state(app_state)
@@ -214,6 +225,9 @@ if __name__ == "__main__":
         window_pyqt.display_titles(start=True)
 
     window_pyqt.show()
+    pending = {"timer": None}
+
+    window_pyqt.state_changed.connect(schedule_state_save)
 
     app_pyqt.aboutToQuit.connect(on_app_quit)
     # Test handling critical & fatal error

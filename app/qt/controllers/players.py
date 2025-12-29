@@ -251,7 +251,7 @@ class PlayerController:
                 return
 
             # 1) mpv (если включен)
-            if getattr(self, "use_mpv_player", "false") == "true":
+            if getattr(self.app, "use_mpv_player", "false") == "true":
                 ok = self.open_standalone_mpv_player(open_link, str(title_id), skip_data)
                 if ok:
                     self.log.info(f"Playing via MPV: {open_link[-50:]}")
@@ -302,7 +302,7 @@ class PlayerController:
             # дальше — твоя старая логика mpv/vlc
             self.log.debug(f"Playing playlist '{file_name}' for title_id: {title_id}")
 
-            if getattr(self, "use_mpv_player", "false") == "true":
+            if getattr(self.app, "use_mpv_player", "false") == "true":
                 ok = self.open_standalone_mpv_player(file_path, title_id, skip_data)
                 if ok:
                     self.log.debug("Playlist launched via MPV successfully")
@@ -322,9 +322,9 @@ class PlayerController:
         """
         DEV: запускаем app/qt_browser/mini_browser.py через текущий интерпретатор
         """
-        app_dir = os.path.dirname(os.path.dirname(__file__))  # app/
-        mini_browser_py = os.path.join(app_dir, "qt_browser", "mini_browser.py")
-        return [sys.executable, mini_browser_py]
+        app_dir = Path(__file__).resolve().parents[2]  # .../app
+        mini_browser_py = app_dir / "qt_browser" / "mini_browser.py"
+        return [sys.executable, str(mini_browser_py)]
 
     def ensure_playlist_bundle(self, title_id: int):
         """
@@ -404,8 +404,8 @@ class PlayerController:
 
             self.save_combined_playlist_wrapper()
 
-        except Exception:
-            self.log.exception("Failed while saving playlists.")
+        except Exception as e:
+            self.log.exception(f"Failed while saving playlists. {e}")
 
     def save_combined_playlist_wrapper(self):
         combined_playlist_filename = (

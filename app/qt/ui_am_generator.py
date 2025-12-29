@@ -35,8 +35,8 @@ class UIAMGenerator:
                 reload_poster_href=f"reload_poster/",
                 parse_key=SCHEDULE_KEY,
                 poster_size_key="small",
-                poster_w=80,
-                poster_h=112,
+                poster_w=140,
+                poster_h=196,
                 section_title_fn=self._section_title_schedule,
                 meta_fn=lambda time_part, ep_part, rating: self._meta_join(time_part, ep_part),
             )
@@ -56,8 +56,8 @@ class UIAMGenerator:
                 reload_poster_href=f"reload_poster/",
                 parse_key=ALL_TITLES_KEY,
                 poster_size_key="medium",
-                poster_w=213,
-                poster_h=300,
+                poster_w=240,
+                poster_h=336,
                 section_title_fn=self._section_title_titles,
                 meta_fn=lambda time_part, ep_part, rating: self._meta_join(
                     (f"★ {rating:.1f}" if isinstance(rating, float) and rating > 0 else None),
@@ -236,6 +236,7 @@ class UIAMGenerator:
         poster_h: int,
         reload_poster_href: str,
     ) -> str:
+        safe_title = safe_title[:100] + "..." if len(safe_title) > 100 else safe_title
         placeholder = (
             f"<div style='width:{poster_w}px; height:{poster_h}px; background:rgba(0,0,0,0.06); border-radius:6px;'></div>"
         )

@@ -11,7 +11,6 @@ from core.delete import DeleteManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History, Title
 from core.types import PosterSize
-from app.qt.app_state_manager import AppStateManager
 
 
 class DatabaseManager:
@@ -21,7 +20,6 @@ class DatabaseManager:
         self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
 
-        self.app_state_manager = AppStateManager(self)
         # Инициализация менеджеров
         self.template_manager = TemplateManager(self.engine)
         self.placeholder_manager = PlaceholderManager(self.engine)

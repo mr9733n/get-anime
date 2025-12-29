@@ -1,23 +1,32 @@
 import pathlib
 import sys
-import json
 import logging
 
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import List, Any, Dict, Union
 from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
-from app.qt.app_state_manager import AppStateManager
+from app.qt.app_services import AppServices
+
+from app.qt.controllers.actions import ActionsController
+from app.qt.controllers.animedia import AniMediaController
+from app.qt.controllers.aniliberty import AniLibertyController
+from app.qt.controllers.persistence import PersistenceController
+from app.qt.controllers.callback import CallbackController
+from app.qt.controllers.display import DisplayController
+from app.qt.controllers.torrents import TorrentController
+from app.qt.controllers.bootstrap import BootstrapController
+from app.qt.controllers.state_runtime import StateRuntimeController
+from app.qt.controllers.posters import PosterController
+from app.qt.controllers.players import PlayerController
+
 from app.qt.app_handlers import LinkActionHandler
 from app.qt.ui_am_generator import UIAMGenerator
 from app.qt.ui_manger import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_s_generator import UISGenerator
-from app.qt.app_exceptions import APIClientError
-from app.qt.app_state import ViewState, TitleRef
 from static.layout_metadata import all_layout_metadata
+
 from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
 from providers.animedia.v0.cache_manager import AniMediaCacheManager, AniMediaCacheConfig
@@ -32,32 +41,8 @@ from utils.net.url_resolve_service import UrlResolveService
 from utils.net.url_resolver import TTLCache
 from utils.net.url_resolver_config import ResolverConfig
 
-from app.qt.app_state_runtime import StateRuntimeMixin
-from app.qt.app_display import DisplayMixin
-from app.qt.app_actions import ActionsMixin
-from app.qt.app_callbacks import CallbacksMixin
-from app.qt.app_bootstrap import BootstrapMixin
-from app.qt.app_animedia import AniMediaMixin
-from app.qt.app_aniliberty import AniLibertyMixin
-from app.qt.app_persistence import PersistenceMixin
-from app.qt.app_players import PlayersMixin
-from app.qt.app_posters import PostersMixin
-from app.qt.app_torrents import TorrentsMixin
 
-class AnimePlayerAppVer3(
-    DisplayMixin,
-    BootstrapMixin,
-    StateRuntimeMixin,
-    CallbacksMixin,
-    ActionsMixin,
-    AniMediaMixin,
-    AniLibertyMixin,
-    PersistenceMixin,
-    PlayersMixin,
-    PostersMixin,
-    TorrentsMixin,
-    QWidget
-):
+class AnimePlayerAppVer3(QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
 
     def __init__(self, db_manager, version, template_name, prod_key=None):
@@ -76,7 +61,7 @@ class AnimePlayerAppVer3(
         self.thread_pool.setExpiryTimeout(30000)
         self.mpv_window = None
         self.view_state = None
-        self._am_total_count = None
+        self.am_total_count = None
         self.current_show_mode = None
         self.error_label = None
         self.tray_icon = None
@@ -111,6 +96,7 @@ class AnimePlayerAppVer3(
         self.col_start = 0
         self.pre = "https://"
         self.config_manager = ConfigManager(pathlib.Path('config/config.ini'))
+        self.bootstrap = BootstrapController(self, None)
 
         """Loads the configuration settings needed by the application."""
         network_config = self.config_manager.network
@@ -134,17 +120,17 @@ class AnimePlayerAppVer3(
         self.default_rating_name = self.config_manager.get_setting('Settings', 'default_rating_name')
 
         # vlc_player
-        self.use_libvlc = self._get_cfg('Settings', 'use_libvlc', "false", lower=True)
-        self.log_enabled = self._get_cfg('VlcPlayer', 'log_enabled', "false", lower=True)
-        self.verbose = self._get_cfg('VlcPlayer', 'verbose_level', "2")
+        self.use_libvlc = self.get_cfg('Settings', 'use_libvlc', "false", lower=True)
+        self.log_enabled = self.get_cfg('VlcPlayer', 'log_enabled', "false", lower=True)
+        self.verbose = self.get_cfg('VlcPlayer', 'verbose_level', "2")
         # network
-        self.proxy_enabled = self._get_cfg('Network', 'proxy_enabled', "false", lower=True)
-        self.proxy_url = self._get_cfg('Network', 'proxy_url', None)
+        self.proxy_enabled = self.get_cfg('Network', 'proxy_enabled', "false", lower=True)
+        self.proxy_url = self.get_cfg('Network', 'proxy_url', None)
         # mpv‑related
-        self.use_mpv_player = self._get_cfg('Settings', 'use_mpv_player', "false", lower=True)
-        self.mpv_player_executable_name = self._get_cfg('MpvPlayer', 'executable_name', "mpv_player.exe")
-        self.mpv_log_enabled = self._get_cfg('MpvPlayer', 'log_enabled', "false", lower=True)
-        self.mpv_verbose = self._get_cfg('MpvPlayer', 'verbose_level', "info")
+        self.use_mpv_player = self.get_cfg('Settings', 'use_mpv_player', "false", lower=True)
+        self.mpv_player_executable_name = self.get_cfg('MpvPlayer', 'executable_name', "mpv_player.exe")
+        self.mpv_log_enabled = self.get_cfg('MpvPlayer', 'log_enabled', "false", lower=True)
+        self.mpv_verbose = self.get_cfg('MpvPlayer', 'verbose_level', "info")
 
         self.torrent_save_path = pathlib.Path("torrents/")  # Ensure this is set correctly
         self.video_player_path, self.torrent_client_path = self.setup_paths()
@@ -193,7 +179,6 @@ class AnimePlayerAppVer3(
             net_client=self.net_client
         )
 
-        self.state_manager = AppStateManager(self.db_manager)
         self.ui_generator = UIGenerator(self, self.db_manager, self.current_template)
         self.ui_am_generator = UIAMGenerator(self, self.db_manager, self.current_template)
         self.ui_s_generator = UISGenerator(self, self.db_manager)
@@ -225,10 +210,36 @@ class AnimePlayerAppVer3(
         # init open router
         self.router = OpenRouter(self)
 
-        self.callbacks = self.generate_callbacks(all_layout_metadata)
+        self.callbacks = {}
         days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
         for i, day in enumerate(days_of_week):
             self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
+
+        self.svc = AppServices(
+            logger=self.logger,
+            config=self.config_manager,
+            db=self.db_manager,
+            ui=self.ui_manager,
+            playlist=self.playlist_manager,
+            api=self.api_adapter,
+            #animedia_worker=getattr(self, "_animedia_worker", None),
+            http=getattr(self, "_http", None),  # если есть общий клиент
+        )
+
+        self.state_runtime = StateRuntimeController(self, self.svc)
+        self.actions = ActionsController(self, self.svc)
+        self.animedia = AniMediaController(self, self.svc)
+        self.aniliberty = AniLibertyController(self, self.svc)
+        self.persistence = PersistenceController(self, self.svc)
+        self.callback = CallbackController(self, self.svc, all_layout_metadata)
+        self.display = DisplayController(self, self.svc)
+        self.torrent = TorrentController(self, self.svc)
+        self.poster = PosterController(self, self.svc)
+        self.player = PlayerController(self, self.svc)
+
+        self.callbacks.update(self.callback.generate_callbacks())
+
+        # self.state_manager = AppStateManager(self.db_manager)
 
         app = QApplication.instance()
         if app is not None:
@@ -244,7 +255,7 @@ class AnimePlayerAppVer3(
         self.posters_layout.addWidget(title_browser, row, column)
 
     @staticmethod
-    def _calc_offset(offset: int, total: int, page_size: int, go_forward: bool) -> int:
+    def calc_offset(offset: int, total: int, page_size: int, go_forward: bool) -> int:
         if total <= 0:
             return 0
         if go_forward:
@@ -255,195 +266,152 @@ class AnimePlayerAppVer3(
         link = url.toString()
         self.link_handler.handle(link)
 
-# --- Display ---
-# from app.qt.app_display import (
-#     init_ui,
-#     show_error_notification,
-#     refresh_display,
-#     update_title_links,
-#     navigate_pagination,
-#     display_titles,
-#     _update_pagination_offset,
-#     _setup_pagination_ui,
-#     display_titles_in_ui,
-#     display_info,
-#     display_titles_for_day,
-#     clear_layout,
-#     create_system_browser,
-#     create_animedia_schedule_browser,
-#     create_animedia_titles_browser,
-#     create_title_browser,
-#     reset_offset,
-# )
-# --- Bootstrap ---
-# from app.qt.app_bootstrap import _get_cfg, setup_paths
-# --- State runtime ---
-# from app.qt.app_state_runtime import (
-#    get_current_state,
-#    set_view_state,
-#    restore_state,
-#    _restore_day,
-#    _restore_title,
-#    _restore_titles,
-#    _navigate_animedia_mode,
-#    _animedia_display_for_mode,
-#)
-# --- Callbacks ---
-# from app.qt.app_callbacks import generate_callbacks, generate_simple_callback
-# --- Actions ---
-# from app.qt.app_actions import (
-#     get_search_by_title,
-#     get_search_by_title_aniliberty,
-#     get_search_by_title_animedia,
-#     get_update_title,
-#     get_update_title_aniliberty,
-#     get_update_title_animedia,
-#     _resolve_titles_for_query,
-#     _update_titles,
-#     _search_by_title,
-#     _handle_found_titles,
-#     _handle_get_titles_from_api,
-# )
-# --- Persistence ---
-# from app.qt.app_persistence import (
-#     invoke_database_save,
-#     _save_titles_list,
-#     _save_parsed_data,
-# )
-# --- Torrents ---
-# from app.qt.app_torrents import save_torrent_wrapper
-# --- Players ---
-# from app.qt.app_players import (
-#     open_mpv_player,
-#     open_standalone_mpv_player,
-#     open_vlc_player,
-#     open_standalone_vlc_player,
-#     open_web_link,
-#     play_link,
-#     play_playlist_wrapper,
-#     get_mini_browser_command,
-#     ensure_playlist_bundle,
-#     save_playlist_wrapper,
-#     save_combined_playlist_wrapper,
-# )
-# --- Posters ---
-# from app.qt.app_posters import (
-#     get_poster_or_placeholder,
-#     perform_poster_link,
-#     sanitize_filename,
-#     standardize_url,
-#     clear_previous_posters,
-# )
-# --- AniMedia ---
-# from app.qt.app_animedia import (
-#     display_animedia_titles_screen,
-#     display_animedia_schedule_screen,
-#     _warmup_animedia_titles_and_posters,
-#     _count_animedia_items,
-#     _slice_animedia_titles,
-#     get_animedia_all_titles,
-#     get_animedia_new_titles,
-#     _on_animedia_all_titles,
-#     _on_animedia_new_titles,
-#     _on_animedia_error,
-#     _on_animedia_result,
-# )
-# --- AniLiberty ---
-# from app.qt.app_aniliberty import (
-#     fetch_and_process_schedule,
-#     check_and_update_schedule,
-#     get_random_title,
-#     parse_schedule_data,
-#     get_schedule,
-#     reload_schedule,
-# )
-# --- Display ---
-# AnimePlayerAppVer3.init_ui = init_ui
-# AnimePlayerAppVer3.show_error_notification = show_error_notification
-# AnimePlayerAppVer3.refresh_display = refresh_display
-# AnimePlayerAppVer3.update_title_links =  update_title_links
-# AnimePlayerAppVer3.navigate_pagination = navigate_pagination
-# AnimePlayerAppVer3.display_titles = display_titles
-# AnimePlayerAppVer3._update_pagination_offset = _update_pagination_offset
-# AnimePlayerAppVer3._setup_pagination_ui = _setup_pagination_ui
-# AnimePlayerAppVer3.display_titles_in_ui = display_titles_in_ui
-# AnimePlayerAppVer3.display_info = display_info
-# AnimePlayerAppVer3.display_titles_for_day = display_titles_for_day
-# AnimePlayerAppVer3.clear_layout = clear_layout
-# AnimePlayerAppVer3.create_system_browser = create_system_browser
-# AnimePlayerAppVer3.create_animedia_schedule_browser = create_animedia_schedule_browser
-# AnimePlayerAppVer3.create_animedia_titles_browser = create_animedia_titles_browser
-# AnimePlayerAppVer3.create_title_browser = create_title_browser
-# AnimePlayerAppVer3.reset_offset = reset_offset
-# --- Bootstrap ---
-# AnimePlayerAppVer3._get_cfg = _get_cfg
-# AnimePlayerAppVer3.setup_paths = setup_paths
-# --- State runtime ---
-# AnimePlayerAppVer3.get_current_state = get_current_state
-# AnimePlayerAppVer3.set_view_state = set_view_state
-# AnimePlayerAppVer3.restore_state = restore_state
-# AnimePlayerAppVer3._restore_day = _restore_day
-# AnimePlayerAppVer3._restore_title = _restore_title
-# AnimePlayerAppVer3._restore_titles = _restore_titles
-# AnimePlayerAppVer3._navigate_animedia_mode = _navigate_animedia_mode
-# AnimePlayerAppVer3._animedia_display_for_mode = _animedia_display_for_mode
-# --- Callbacks ---
-# AnimePlayerAppVer3.generate_callbacks = generate_callbacks
-# AnimePlayerAppVer3.generate_simple_callback = generate_simple_callback
-# --- Actions ---
-# AnimePlayerAppVer3.get_search_by_title = get_search_by_title
-# AnimePlayerAppVer3.get_search_by_title_aniliberty = get_search_by_title_aniliberty
-# AnimePlayerAppVer3.get_search_by_title_animedia = get_search_by_title_animedia
-# AnimePlayerAppVer3.get_update_title = get_update_title
-# AnimePlayerAppVer3.get_update_title_aniliberty = get_update_title_aniliberty
-# AnimePlayerAppVer3.get_update_title_animedia = get_update_title_animedia
-# AnimePlayerAppVer3._resolve_titles_for_query = _resolve_titles_for_query
-# AnimePlayerAppVer3._update_titles = _update_titles
-# AnimePlayerAppVer3._search_by_title = _search_by_title
-# AnimePlayerAppVer3._handle_found_titles = _handle_found_titles
-# AnimePlayerAppVer3._handle_get_titles_from_api = _handle_get_titles_from_api
-# --- Persistence ---
-# AnimePlayerAppVer3.invoke_database_save = invoke_database_save
-# AnimePlayerAppVer3._save_titles_list = _save_titles_list
-# AnimePlayerAppVer3._save_parsed_data = _save_parsed_data
-# --- Torrents ---
-# AnimePlayerAppVer3.save_torrent_wrapper = save_torrent_wrapper
-# --- Players ---
-# AnimePlayerAppVer3.open_mpv_player = open_mpv_player
-# AnimePlayerAppVer3.open_standalone_mpv_player = open_standalone_mpv_player
-# AnimePlayerAppVer3.open_vlc_player = open_vlc_player
-# AnimePlayerAppVer3.open_standalone_vlc_player = open_standalone_vlc_player
-# AnimePlayerAppVer3.open_web_link = open_web_link
-# AnimePlayerAppVer3.play_link = play_link
-# AnimePlayerAppVer3.play_playlist_wrapper = play_playlist_wrapper
-# AnimePlayerAppVer3.get_mini_browser_command = get_mini_browser_command
-# AnimePlayerAppVer3.ensure_playlist_bundle = ensure_playlist_bundle
-# AnimePlayerAppVer3.save_playlist_wrapper = save_playlist_wrapper
-# AnimePlayerAppVer3.save_combined_playlist_wrapper = save_combined_playlist_wrapper
-# --- Posters ---
-# AnimePlayerAppVer3.get_poster_or_placeholder = get_poster_or_placeholder
-# AnimePlayerAppVer3.perform_poster_link = perform_poster_link
-# AnimePlayerAppVer3.clear_previous_posters = clear_previous_posters
-# AnimePlayerAppVer3.sanitize_filename = staticmethod(sanitize_filename)
-# AnimePlayerAppVer3.standardize_url = staticmethod(standardize_url)
-# --- AniMedia ---
-# AnimePlayerAppVer3.display_animedia_titles_screen = display_animedia_titles_screen
-# AnimePlayerAppVer3.display_animedia_schedule_screen = display_animedia_schedule_screen
-# AnimePlayerAppVer3._warmup_animedia_titles_and_posters = _warmup_animedia_titles_and_posters
-# AnimePlayerAppVer3._count_animedia_items = staticmethod(_count_animedia_items)
-# AnimePlayerAppVer3._slice_animedia_titles = staticmethod(_slice_animedia_titles)
-# AnimePlayerAppVer3.get_animedia_all_titles = get_animedia_all_titles
-# AnimePlayerAppVer3.get_animedia_new_titles = get_animedia_new_titles
-# AnimePlayerAppVer3._on_animedia_all_titles = _on_animedia_all_titles
-# AnimePlayerAppVer3._on_animedia_new_titles = _on_animedia_new_titles
-# AnimePlayerAppVer3._on_animedia_error = _on_animedia_error
-# AnimePlayerAppVer3._on_animedia_result = _on_animedia_result
-# --- AniLiberty ---
-# AnimePlayerAppVer3.fetch_and_process_schedule = fetch_and_process_schedule
-# AnimePlayerAppVer3.check_and_update_schedule = check_and_update_schedule
-# AnimePlayerAppVer3.get_random_title = get_random_title
-# AnimePlayerAppVer3.parse_schedule_data = parse_schedule_data
-# AnimePlayerAppVer3.get_schedule = get_schedule
-# AnimePlayerAppVer3.reload_schedule = reload_schedule
-#
+    # Bootstrap
+    def get_cfg(self, *a, **kw):
+        return self.bootstrap.get_cfg(*a, **kw)
+
+    def setup_paths(self):
+        return self.bootstrap.setup_paths()
+
+    # State runtime
+    def restore_state(self, *a, **kw):
+        return self.state_runtime.restore_state(*a, **kw)
+
+    def set_view_state(self, *a, **kw):
+        return self.state_runtime.set_view_state(*a, **kw)
+
+    def get_current_state(self):
+        return self.state_runtime.get_current_state()
+
+    def navigate_animedia_mode(self, *a, **kw):
+        return self.state_runtime.navigate_animedia_mode(*a, **kw)
+
+    # Actions
+    def get_update_title(self):
+        return self.actions.get_update_title()
+
+    def get_update_title_aniliberty(self):
+        return self.actions.get_update_title_aniliberty()
+
+    def get_search_by_title(self):
+        return self.actions.get_search_by_title()
+
+    def get_update_title_animedia(self):
+        return self.actions.get_update_title_animedia()
+
+    def get_search_by_title_aniliberty(self):
+        return self.actions.get_search_by_title_aniliberty()
+
+    def get_search_by_title_animedia(self, *a, **kw):
+        return self.actions.get_search_by_title_animedia(*a, **kw)
+
+    # AniMedia
+    def get_animedia_new_titles(self):
+        return self.animedia.get_animedia_new_titles()
+
+    def get_animedia_all_titles(self):
+        return self.animedia.get_animedia_all_titles()
+
+    def display_animedia_schedule_screen(self, *a, **kw):
+        return self.animedia.display_animedia_schedule_screen(*a, **kw)
+
+    def display_animedia_titles_screen(self, *a, **kw):
+        return self.animedia.display_animedia_titles_screen(*a, **kw)
+
+    # AniLiberty
+    def get_random_title(self):
+        return self.aniliberty.get_random_title()
+
+    def reload_schedule(self):
+        return self.aniliberty.reload_schedule()
+
+    def fetch_and_process_schedule(self, *a, **kw):
+        return self.aniliberty.fetch_and_process_schedule(*a, **kw)
+
+    # Persistence
+    def save_titles_list(self, *a, **kw):
+        return self.persistence.save_titles_list(*a, **kw)
+
+    def save_parsed_data(self, *a, **kw):
+        return self.persistence.save_parsed_data(*a, **kw)
+
+    def invoke_database_save(self, *a, **kw):
+        return self.persistence.invoke_database_save(*a, **kw)
+
+    # Callbacks
+    def generate_callbacks(self):
+        return self.callback.generate_callbacks()
+
+    # Display
+    def show_error_notification(self, *a, **kw):
+        return self.display.show_error_notification(*a, **kw)
+
+    def create_animedia_schedule_browser(self, *a, **kw):
+        return self.display.create_animedia_schedule_browser(*a, **kw)
+
+    def create_animedia_titles_browser(self, *a, **kw):
+        return self.display.create_animedia_titles_browser(*a, **kw)
+
+    def create_title_browser(self, *a, **kw):
+        return self.display.create_title_browser(*a, **kw)
+
+    def create_system_browser(self, *a, **kw):
+        return self.display.create_system_browser(*a, **kw)
+
+    def navigate_pagination(self, *a, **kw):
+        return self.display.navigate_pagination(*a, **kw)
+
+    def setup_pagination_ui(self, *a, **kw):
+        return self.display.setup_pagination_ui(*a, **kw)
+
+    def display_info(self, *a, **kw):
+        return self.display.display_info(*a, **kw)
+
+    def display_titles(self, *a, **kw):
+        return self.display.display_titles(*a, **kw)
+
+    def display_titles_in_ui(self, *a, **kw):
+        return self.display.display_titles_in_ui(*a, **kw)
+
+    def init_ui(self, *a, **kw):
+        return self.display.init_ui(*a, **kw)
+
+    def refresh_display(self):
+        return self.display.refresh_display()
+
+    def reset_offset(self):
+        return self.display.reset_offset()
+
+    # Torrent
+    def save_torrent_wrapper(self, *a, **kw):
+        return self.torrent.save_torrent_wrapper(*a, **kw)
+
+    # Poster
+    def get_poster_or_placeholder(self, *a, **kw):
+        return self.poster.get_poster_or_placeholder(*a, **kw)
+
+    def clear_previous_posters(self):
+        return self.poster.clear_previous_posters()
+
+    def sanitize_filename(self, *a, **kw):
+        return self.poster.sanitize_filename(*a, **kw)
+
+    # Player
+    def play_link(self, *a, **kw):
+        return self.player.play_link(*a, **kw)
+
+    def play_playlist_wrapper(self,*a, **kw):
+        return self.player.play_playlist_wrapper(*a, **kw)
+
+    def open_web_link(self, *a, **kw):
+        return self.player.open_web_link(*a, **kw)
+
+    def save_playlist_wrapper(self):
+        return self.player.save_playlist_wrapper()
+
+    def ensure_playlist_bundle(self, *a, **kw):
+        return self.player.ensure_playlist_bundle(*a, **kw)
+
+    def get_mini_browser_command(self):
+        return self.player.get_mini_browser_command()
 

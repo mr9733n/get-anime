@@ -61,9 +61,8 @@ class AnimePlayerAppVer3(QWidget):
         self._init_providers_and_managers()
 
         self._init_ui()
-        self._init_link_handler()
-
         self._init_services_and_controllers()
+        self._init_link_handler()
 
     def _init_single_instance(self, prod_key):
         self.prod_key = prod_key
@@ -108,6 +107,7 @@ class AnimePlayerAppVer3(QWidget):
         self.title_names = []
         self.total_titles = []
         self.playlists = {}
+        self.callbacks = {}
 
         self.row_start = 0
         self.col_start = 0
@@ -251,7 +251,6 @@ class AnimePlayerAppVer3(QWidget):
 
         self.router = OpenRouter(self)
 
-        self.callbacks = {}
         days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
         for i, day in enumerate(days_of_week):
             self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
@@ -278,6 +277,9 @@ class AnimePlayerAppVer3(QWidget):
         self.poster = PosterController(self, self.svc)
         self.player = PlayerController(self, self.svc)
 
+        if not hasattr(self, "callbacks"):
+            self.callbacks = {}
+
         self.callbacks.update(self.callback.generate_callbacks())
 
         app = QApplication.instance()
@@ -285,6 +287,7 @@ class AnimePlayerAppVer3(QWidget):
             app.aboutToQuit.connect(self.api_client.close)
 
         self.init_ui(all_layout_metadata)
+        self._validate_proxy_map()
 
     @staticmethod
     def _default_data_dir(app_name: str = "AnimePlayer") -> pathlib.Path:
@@ -319,158 +322,78 @@ class AnimePlayerAppVer3(QWidget):
         link = url.toString()
         self.link_handler.handle(link)
 
-    # Bootstrap
-    def get_cfg(self, *a, **kw):
-        return self.bootstrap.get_cfg(*a, **kw)
+    _PROXY_MAP = {
+        # Bootstrap
+        "get_cfg": ("bootstrap", "get_cfg"),
+        "setup_paths": ("bootstrap", "setup_paths"),
+        # Actions
+        "restore_state": ("state_runtime", "restore_state"),
+        "set_view_state": ("state_runtime", "set_view_state"),
+        "get_current_state": ("state_runtime", "get_current_state"),
+        "navigate_animedia_mode": ("state_runtime", "navigate_animedia_mode"),
+        # Actions
+        "get_update_title": ("actions", "get_update_title"),
+        "get_search_by_title": ("actions", "get_search_by_title"),
+        "get_update_title_animedia": ("actions", "get_update_title_animedia"),
+        "get_update_title_aniliberty": ("actions", "get_update_title_aniliberty"),
+        "get_search_by_title_animedia": ("actions", "get_search_by_title_animedia"),
+        "get_search_by_title_aniliberty": ("actions", "get_search_by_title_aniliberty"),
+        # Display
+        "init_ui": ("display", "init_ui"),
+        "reset_offset": ("display", "reset_offset"),
+        "clear_layout": ("display", "clear_layout"),
+        "display_info": ("display", "display_info"),
+        "display_titles": ("display", "display_titles"),
+        "refresh_display": ("display", "refresh_display"),
+        "navigate_pagination": ("display", "navigate_pagination"),
+        "setup_pagination_ui": ("display", "setup_pagination_ui"),
+        "display_titles_in_ui": ("display", "display_titles_in_ui"),
+        "create_title_browser": ("display", "create_title_browser"),
+        "create_system_browser": ("display", "create_system_browser"),
+        "display_titles_for_day": ("display", "display_titles_for_day"),
+        "show_error_notification": ("display", "show_error_notification"),
+        "create_animedia_titles_browser": ("display", "create_animedia_titles_browser"),
+        "create_animedia_schedule_browser": ("display", "create_animedia_schedule_browser"),
+        # Callbacks
+        "generate_callbacks": ("callback", "generate_callbacks"),
+        # AniMedia
+        "get_animedia_new_titles": ("animedia", "get_animedia_new_titles"),
+        "get_animedia_all_titles": ("animedia", "get_animedia_all_titles"),
+        "display_animedia_titles_screen": ("animedia", "display_animedia_titles_screen"),
+        "display_animedia_schedule_screen": ("animedia", "display_animedia_schedule_screen"),
+        # AniLiberty
+        "reload_schedule": ("aniliberty", "reload_schedule"),
+        "get_random_title": ("aniliberty", "get_random_title"),
+        "fetch_and_process_schedule": ("aniliberty", "fetch_and_process_schedule"),
+        # Persistence
+        "save_titles_list": ("persistence", "save_titles_list"),
+        "save_parsed_data": ("persistence", "save_parsed_data"),
+        "invoke_database_save": ("persistence", "invoke_database_save"),
+        # Torrent
+        "save_torrent_wrapper": ("torrent", "save_torrent_wrapper"),
+        # Poster
+        "sanitize_filename": ("poster", "sanitize_filename"),
+        "clear_previous_posters": ("poster", "clear_previous_posters"),
+        "get_poster_or_placeholder": ("poster", "get_poster_or_placeholder"),
+        # Player
+        "play_link": ("player", "play_link"),
+        "open_web_link": ("player", "open_web_link"),
+        "save_playlist_wrapper": ("player", "save_playlist_wrapper"),
+        "play_playlist_wrapper": ("player", "play_playlist_wrapper"),
+        "ensure_playlist_bundle": ("player", "ensure_playlist_bundle"),
+        "get_mini_browser_command": ("player", "get_mini_browser_command"),
+    }
 
-    def setup_paths(self):
-        return self.bootstrap.setup_paths()
+    def __getattr__(self, name):
+        if name in self._PROXY_MAP:
+            ctrl_name, meth_name = self._PROXY_MAP[name]
+            ctrl = getattr(self, ctrl_name)
+            return getattr(ctrl, meth_name)
+        raise AttributeError(name)
 
-    # State runtime
-    def restore_state(self, *a, **kw):
-        return self.state_runtime.restore_state(*a, **kw)
-
-    def set_view_state(self, *a, **kw):
-        return self.state_runtime.set_view_state(*a, **kw)
-
-    def get_current_state(self):
-        return self.state_runtime.get_current_state()
-
-    def navigate_animedia_mode(self, *a, **kw):
-        return self.state_runtime.navigate_animedia_mode(*a, **kw)
-
-    # Actions
-    def get_update_title(self):
-        return self.actions.get_update_title()
-
-    def get_update_title_aniliberty(self):
-        return self.actions.get_update_title_aniliberty()
-
-    def get_search_by_title(self):
-        return self.actions.get_search_by_title()
-
-    def get_update_title_animedia(self):
-        return self.actions.get_update_title_animedia()
-
-    def get_search_by_title_aniliberty(self):
-        return self.actions.get_search_by_title_aniliberty()
-
-    def get_search_by_title_animedia(self, *a, **kw):
-        return self.actions.get_search_by_title_animedia(*a, **kw)
-
-    # AniMedia
-    def get_animedia_new_titles(self):
-        return self.animedia.get_animedia_new_titles()
-
-    def get_animedia_all_titles(self):
-        return self.animedia.get_animedia_all_titles()
-
-    def display_animedia_schedule_screen(self, *a, **kw):
-        return self.animedia.display_animedia_schedule_screen(*a, **kw)
-
-    def display_animedia_titles_screen(self, *a, **kw):
-        return self.animedia.display_animedia_titles_screen(*a, **kw)
-
-    # AniLiberty
-    def get_random_title(self):
-        return self.aniliberty.get_random_title()
-
-    def reload_schedule(self):
-        return self.aniliberty.reload_schedule()
-
-    def fetch_and_process_schedule(self, *a, **kw):
-        return self.aniliberty.fetch_and_process_schedule(*a, **kw)
-
-    # Persistence
-    def save_titles_list(self, *a, **kw):
-        return self.persistence.save_titles_list(*a, **kw)
-
-    def save_parsed_data(self, *a, **kw):
-        return self.persistence.save_parsed_data(*a, **kw)
-
-    def invoke_database_save(self, *a, **kw):
-        return self.persistence.invoke_database_save(*a, **kw)
-
-    # Callbacks
-    def generate_callbacks(self):
-        return self.callback.generate_callbacks()
-
-    # Display
-    def show_error_notification(self, *a, **kw):
-        return self.display.show_error_notification(*a, **kw)
-
-    def clear_layout(self, *a, **kw):
-        return self.display.clear_layout(*a, **kw)
-
-    def create_animedia_schedule_browser(self, *a, **kw):
-        return self.display.create_animedia_schedule_browser(*a, **kw)
-
-    def create_animedia_titles_browser(self, *a, **kw):
-        return self.display.create_animedia_titles_browser(*a, **kw)
-
-    def create_title_browser(self, *a, **kw):
-        return self.display.create_title_browser(*a, **kw)
-
-    def create_system_browser(self, *a, **kw):
-        return self.display.create_system_browser(*a, **kw)
-
-    def navigate_pagination(self, *a, **kw):
-        return self.display.navigate_pagination(*a, **kw)
-
-    def setup_pagination_ui(self, *a, **kw):
-        return self.display.setup_pagination_ui(*a, **kw)
-
-    def display_info(self, *a, **kw):
-        return self.display.display_info(*a, **kw)
-
-    def display_titles(self, *a, **kw):
-        return self.display.display_titles(*a, **kw)
-
-    def display_titles_for_day(self, *a, **kw):
-        return self.display.display_titles_for_day(*a, **kw)
-
-    def display_titles_in_ui(self, *a, **kw):
-        return self.display.display_titles_in_ui(*a, **kw)
-
-    def init_ui(self, *a, **kw):
-        return self.display.init_ui(*a, **kw)
-
-    def refresh_display(self):
-        return self.display.refresh_display()
-
-    def reset_offset(self):
-        return self.display.reset_offset()
-
-    # Torrent
-    def save_torrent_wrapper(self, *a, **kw):
-        return self.torrent.save_torrent_wrapper(*a, **kw)
-
-    # Poster
-    def get_poster_or_placeholder(self, *a, **kw):
-        return self.poster.get_poster_or_placeholder(*a, **kw)
-
-    def clear_previous_posters(self):
-        return self.poster.clear_previous_posters()
-
-    def sanitize_filename(self, *a, **kw):
-        return self.poster.sanitize_filename(*a, **kw)
-
-    # Player
-    def play_link(self, *a, **kw):
-        return self.player.play_link(*a, **kw)
-
-    def play_playlist_wrapper(self,*a, **kw):
-        return self.player.play_playlist_wrapper(*a, **kw)
-
-    def open_web_link(self, *a, **kw):
-        return self.player.open_web_link(*a, **kw)
-
-    def save_playlist_wrapper(self):
-        return self.player.save_playlist_wrapper()
-
-    def ensure_playlist_bundle(self, *a, **kw):
-        return self.player.ensure_playlist_bundle(*a, **kw)
-
-    def get_mini_browser_command(self):
-        return self.player.get_mini_browser_command()
+    def _validate_proxy_map(self):
+        for public, (ctrl_name, meth) in self._PROXY_MAP.items():
+            assert ctrl_name, f"Proxy '{public}' has empty controller name"
+            ctrl = getattr(self, ctrl_name)
+            assert hasattr(ctrl, meth), f"Proxy '{public}' -> {ctrl_name}.{meth} missing"
 

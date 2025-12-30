@@ -14,7 +14,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTROLLERS_DIR = PROJECT_ROOT / "app" / "qt" / "controllers"
 APP_MODULE = "app.qt.app"
 APP_CLASS = "AnimePlayerAppVer3"
-
+CALLBACK_KEYWORDS = {
+    "callback", "cb", "handler", "action",
+    "on_click", "on_change", "on_submit",
+    "play_link", "open_web_link", "display_info", "display_titles",
+}
 
 # В твоём проекте атрибуты оркестратора называются так.
 # Можно расширять при необходимости.
@@ -50,9 +54,9 @@ def parse_tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
-def collect_app_uses(path: Path) -> list[AppCall]:
+def collect_app_callable_uses(path: Path) -> tuple[list[AppCall], list[AppCall]]:
     tree = parse_tree(path)
-    uses: list[AppCall] = []
+    called, refs = [], []
 
     def is_self_app(node: ast.AST) -> bool:
         return (
@@ -63,24 +67,34 @@ def collect_app_uses(path: Path) -> list[AppCall]:
         )
 
     class V(ast.NodeVisitor):
-        def visit_Attribute(self, node: ast.Attribute) -> None:
-            # self.app.<name>
-            if is_self_app(node.value):
-                uses.append(AppCall(method=node.attr, file=path, lineno=getattr(node, "lineno", 0)))
+        def visit_Call(self, node: ast.Call) -> None:
+            # self.app.<name>(...)
+            f = node.func
+            if isinstance(f, ast.Attribute) and is_self_app(f.value):
+                called.append(AppCall(method=f.attr, file=path, lineno=getattr(node, "lineno", 0)))
+
+            # keyword callbacks: foo=self.app.<name>
+            for kw in node.keywords or []:
+                if kw.arg and kw.arg in CALLBACK_KEYWORDS:
+                    v = kw.value
+                    if isinstance(v, ast.Attribute) and is_self_app(v.value):
+                        refs.append(AppCall(method=v.attr, file=path, lineno=getattr(node, "lineno", 0)))
+
             self.generic_visit(node)
 
-        def visit_Call(self, node: ast.Call) -> None:
-            # getattr(self.app, "name")
-            if isinstance(node.func, ast.Name) and node.func.id == "getattr" and len(node.args) >= 2:
-                obj, key = node.args[0], node.args[1]
-                if is_self_app(obj) and isinstance(key, ast.Constant) and isinstance(key.value, str):
-                    uses.append(AppCall(method=key.value, file=path, lineno=getattr(node, "lineno", 0)))
+        def visit_Assign(self, node: ast.Assign) -> None:
+            # callbacks[...] = self.app.<name>
+            v = node.value
+            if isinstance(v, ast.Attribute) and is_self_app(v.value):
+                # только если присваиваем в dict/list с "callback-like" именем
+                for t in node.targets:
+                    if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name):
+                        if t.value.id.lower() in {"callbacks", "actions", "handlers"}:
+                            refs.append(AppCall(method=v.attr, file=path, lineno=getattr(node, "lineno", 0)))
             self.generic_visit(node)
 
     V().visit(tree)
-    return uses
-
-
+    return called, refs
 
 def collect_controller_methods(path: Path) -> Set[str]:
     """
@@ -129,7 +143,7 @@ def main() -> None:
     # 1) Собираем вызовы self.app.<method>()
     app_calls: List[AppCall] = []
     for f in controller_files:
-        app_calls.extend(collect_app_uses(f))
+        app_calls.extend(collect_app_callable_uses(f))
 
     called_methods: Set[str] = {c.method for c in app_calls}
 

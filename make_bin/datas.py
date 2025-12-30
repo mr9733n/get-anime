@@ -26,6 +26,7 @@ def get_main_app_datas(build_config_path: str) -> list[tuple[str, str]]:
 
         # Скомпилированные .pyc файлы - App
         (os.path.join(PROJECT_DIR, 'app', 'qt', '__pycache__'), 'app/qt/__pycache__'),
+        (os.path.join(PROJECT_DIR, 'app', 'qt', 'controllers', '__pycache__'), 'app/qt/controllers/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'vlc', '__pycache__'), 'app/vlc/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'mpv', '__pycache__'), 'app/mpv/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'qt_browser', '__pycache__'), 'app/qt_browser/__pycache__'),

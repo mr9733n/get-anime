@@ -230,14 +230,24 @@ class StateRuntimeController:
 
     def _restore_animedia_schedule(self) -> None:
         """Восстанавливает AniMedia schedule screen."""
-        self.log.info("Restoring AniMedia schedule screen")
+        self.log.info(f"Restoring AniMedia schedule screen, offset={self.ctx.current_offset}")
         if self.animedia:
+            self.set_view_state(ViewState(
+                show_mode=SHOW_AM_SCHEDULE,
+                am_offset=self.ctx.current_offset,
+                am_page_size=12,
+            ))
             self.animedia.display_animedia_schedule_screen()
 
     def _restore_animedia_titles(self) -> None:
         """Восстанавливает AniMedia titles screen."""
-        self.log.info("Restoring AniMedia titles screen")
+        self.log.info(f"Restoring AniMedia titles screen, offset={self.ctx.current_offset}")
         if self.animedia:
+            self.set_view_state(ViewState(
+                show_mode=SHOW_AM_TITLES,
+                am_offset=self.ctx.current_offset,
+                am_page_size=12,
+            ))
             self.animedia.display_animedia_titles_screen()
 
     def _restore_default(self) -> None:

@@ -23,6 +23,7 @@ class LegacyMapper:
     logger: Any
     stream_video_host = "cache.libria.fun"
     api_version = "v1"
+    provider = "AniLiberty"
 
     # =========================
     # Base release mapping
@@ -32,7 +33,7 @@ class LegacyMapper:
         adapted = {
             'external_id': release.get('id'),
             'code': release.get('alias', ''),
-            'provider': 'AniLiberty',
+            'provider': self.provider,
             'names': {
                 'ru': (release.get('name') or {}).get('main', ''),
                 'en': (release.get('name') or {}).get('english', ''),
@@ -81,7 +82,7 @@ class LegacyMapper:
             },
 
             'player': {
-                'host': None,
+                'host': self.stream_video_host, # TODO: hardcode for fox some issues
                 'alternative_player': release.get('external_player', ''),
                 'list': []
             },

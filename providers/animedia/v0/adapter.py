@@ -52,6 +52,10 @@ class AniMediaAdapter:
         """
         return await self._service.get_all_titles(max_titles, pages)
 
+    async def load_more_titles(self, pages: int = 5) -> list[dict[str, Any]]:
+        """Продолжить загрузку каталога."""
+        return await self._service.continue_loading_titles(pages)
+
     def _to_legacy_format(self, title: Title) -> dict[str, Any]:
         """
         Convert domain model to legacy dict structure.

@@ -27,6 +27,7 @@ class AppContext:
     current_day_of_week: int | None = None
     current_show_mode: str = "default"
     current_offset: int = 0
+    am_last_loaded_page: int = 0
 
     # === Config (read-only после init) ===
     user_id: int = 1

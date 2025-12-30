@@ -188,6 +188,53 @@ class AniMediaService:
         self._logger.info(f"All titles finalized: {total_collected} titles")
         return all_results
 
+    async def continue_loading_titles(self, pages_to_load: int = 5) -> list[dict[str, Any]]:
+        """
+        Продолжить загрузку каталога с последней закэшированной страницы.
+        Всегда загружает следующие N страниц, независимо от количества тайтлов.
+        """
+        # 1. Текущее состояние кэша
+        cached = self._repo.load_all_titles_cache() or []
+        _, last_cached_page = self._repo.get_cached_all_titles_stats()
+
+        # 2. Определяем диапазон страниц
+        total_pages = await self._repo.get_total_catalog_pages()
+        start_page = last_cached_page + 1 if last_cached_page else 1
+        end_page = min(start_page + pages_to_load - 1, total_pages)
+
+        # 3. Проверка: всё уже загружено
+        if start_page > total_pages:
+            self._logger.info(f"All {total_pages} pages already cached")
+            return cached
+
+        self._logger.info(f"Loading pages {start_page}-{end_page} of {total_pages}")
+
+        # 4. Загрузка
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+        async def fetch_page(page: int) -> dict[str, Any]:
+            async with semaphore:
+                html = await self._repo.fetch_catalog_page(page)
+                titles = await self._repo.parse_catalog_titles(html, 20)
+                return {"page": page, "titles": titles}
+
+        tasks = [fetch_page(p) for p in range(start_page, end_page + 1)]
+        new_results = await asyncio.gather(*tasks)
+
+        # 5. Мерж с кэшем
+        all_results = cached + [r for r in new_results if r["titles"]]
+
+        for entry in all_results:
+            entry["titles"] = self._unique_preserve_order(entry["titles"])
+        all_results.sort(key=lambda x: x["page"])
+
+        # 6. Сохранение
+        self._repo.save_all_titles_cache(all_results)
+
+        total_collected = sum(len(e["titles"]) for e in all_results)
+        self._logger.info(f"Catalog: {total_collected} titles from {end_page} pages")
+        return all_results
+
     # ══════════════════════════════════════════════════════════
     # Utilities
     # ══════════════════════════════════════════════════════════

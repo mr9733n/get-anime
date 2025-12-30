@@ -252,7 +252,7 @@ class DisplayController:
             if not titles and description:
                 self.log.info("Нет данных для отображения, сбрасываем offset.")
                 self.ctx.current_offset = 0
-                self.ctx.total_titles = 0
+                self.ctx.total_titles = []
                 return
 
             # Настраиваем пагинацию
@@ -284,8 +284,7 @@ class DisplayController:
             special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
             self.poster.clear_previous_posters()
 
-            # Передаём parent_widget (QWidget), а не self (DisplayController)
-            factory = TitleDisplayFactory(self.parent)  # ← ИСПРАВИТЬ
+            factory = TitleDisplayFactory(self.parent)
 
             if show_mode in special_modes:
                 widget, _ = factory.create(show_mode, titles)

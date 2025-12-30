@@ -145,6 +145,12 @@ class AniMediaController:
                 self.get_animedia_all_titles()
                 return
 
+        self.ctx.am_last_loaded_page = max(
+            (e.get("page", 0) for e in titles_json),
+            default=0
+        )
+        self.log.debug(f"Last loaded page: {self.ctx.am_last_loaded_page}")
+
         self._display_animedia_screen(
             data_json=titles_json,
             show_mode=SHOW_AM_TITLES,
@@ -171,6 +177,15 @@ class AniMediaController:
             callback=self._on_animedia_all_titles,
             loader_message="Loading AniMedia catalog...",
             max_titles=60,
+            pages=5,
+        )
+
+    def load_more_titles(self) -> None:
+        """Загрузить следующую порцию тайтлов."""
+        self._start_async_worker(
+            method=self.adapter.load_more_titles,
+            callback=self._on_more_titles_loaded,
+            loader_message="Loading AniMedia More catalog...",
             pages=5,
         )
 
@@ -288,6 +303,8 @@ class AniMediaController:
         try:
             if not data:
                 self.display.show_error_notification("AniMedia", "No data received.")
+                self.ui.hide_loader()
+                self.ui.set_buttons_enabled(True)
                 return
 
             self.display_animedia_schedule_screen(data)
@@ -304,6 +321,9 @@ class AniMediaController:
         try:
             if not data:
                 self.display.show_error_notification("AniMedia", "No data received.")
+                self.ui.hide_loader()
+                self.ui.set_buttons_enabled(True)
+
                 return
 
             self.display_animedia_titles_screen(data)
@@ -314,6 +334,25 @@ class AniMediaController:
         finally:
             self.ui.hide_loader()
             self.ui.set_buttons_enabled(True)
+
+    def _on_more_titles_loaded(self, data: list) -> None:
+        """Callback для результатов загрузки "more" каталога."""
+        try:
+            if not data:
+                self.display.show_error_notification("AniMedia more", "No data received.")
+                self.ui.hide_loader()
+                self.ui.set_buttons_enabled(True)
+                return
+
+            self.display_animedia_titles_screen(data)
+
+        except Exception as e:
+            self.log.error(f"Error in _on_all_titles_loaded: {e}")
+            self.display.show_error_notification("AniMedia more", "Failed to show more catalog.")
+        finally:
+            self.ui.hide_loader()
+            self.ui.set_buttons_enabled(True)
+
 
     def _on_animedia_error(self, message: str) -> None:
         """Callback для ошибок воркера."""

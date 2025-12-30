@@ -13,10 +13,9 @@ class TorrentManager:
         self.net_client = net_client
         os.makedirs(self.torrent_save_path, exist_ok=True)
 
-    def save_torrent_file(self, torrent_url, file_name):
+    def save_torrent_file(self, torrent_url: str, file_name: str):
         """
         Download and save the torrent file from the given URL.
-        :type torrent_url: object
         :param torrent_url: URL of the torrent file.
         :param file_name: The name to save the torrent file as.
         ИСПРАВЛЕНИЕ: Поддержка новых URL API v1:

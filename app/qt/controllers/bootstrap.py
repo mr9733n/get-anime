@@ -1,51 +1,71 @@
 # app/qt/controllers/bootstrap.py
 from __future__ import annotations
 
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+
+@dataclass
+class BootstrapControllerDeps:
+    """Явные зависимости BootstrapController"""
+    logger: Logger
+    config_manager: Any  # ConfigManager
 
 
 class BootstrapController:
     """
-    Переходный контроллер (stage-2/3):
-    - svc: доступ к db/api/ui/logger/config/playlist
-    - app: доступ к orchestration-методам (display_titles, show_error_notification, invoke_database_save, ...)
+    Контроллер для начальной конфигурации.
+    Независимый контроллер — не зависит от других контроллеров.
     """
 
-    def __init__(self, app: Any, svc: Any | None = None):
-        self.app = app
-        self.svc = svc
+    def __init__(self, deps: BootstrapControllerDeps):
+        self._deps = deps
 
     @property
-    def db(self):
-        return self.svc.db
+    def log(self) -> Logger:
+        return self._deps.logger
 
     @property
-    def ui(self):
-        return self.svc.ui
+    def config(self):
+        return self._deps.config_manager
 
-    @property
-    def log(self):
-        return self.svc.logger
+    # === Public API ===
 
-    @property
-    def api(self):
-        return self.svc.api
-
-    def get_cfg(self, section: str, option: str, default: Any, *, lower: bool = False) -> Any:
+    def get_cfg(
+        self,
+        section: str,
+        option: str,
+        default: Any,
+        *,
+        lower: bool = False,
+    ) -> Any:
         """
         Возвращает значение из конфигурации.
-        Если чтение падает – возвращает `default`.
-        Параметр lower приводит строку к нижнему регистру (удобно для булевых флагов).
+        Если чтение падает — возвращает default.
         """
         try:
-            value = self.app.config_manager.get_setting(section, option)
-            return value.lower() if lower and isinstance(value, str) else value
+            value = self.config.get_setting(section, option)
+            if lower and isinstance(value, str):
+                return value.lower()
+            return value
         except Exception:
             return default
 
-    def setup_paths(self):
-        """Sets up paths based on the current platform and returns them for use."""
-        video_player_path = self.app.config_manager.get_video_player_path()
-        torrent_client_path = self.app.config_manager.get_torrent_client_path()
-        return video_player_path, torrent_client_path
+    def get_cfg_bool(
+        self,
+        section: str,
+        option: str,
+        default: bool = False,
+    ) -> bool:
+        """Возвращает булево значение из конфигурации."""
+        val = self.get_cfg(section, option, default)
+        return str(val).lower() in ("1", "true", "yes", "on")
 
+    def setup_paths(self) -> tuple[str, str]:
+        """Возвращает пути к video player и torrent client."""
+        video_player_path = self.config.get_video_player_path()
+        torrent_client_path = self.config.get_torrent_client_path()
+        return video_player_path, torrent_client_path

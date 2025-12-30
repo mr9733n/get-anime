@@ -2,86 +2,80 @@
 from __future__ import annotations
 
 import re
-
-from typing import Any, Union, List, Dict
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
+from typing import TYPE_CHECKING
 
 from app.qt.app_constants import DOWNLOAD_AFTER_AGE, FINAL_AGE
+from app.qt.protocols import IDBManager
+
+if TYPE_CHECKING:
+    from logging import Logger
+    from app.qt.app_context import AppContext
+    from utils.downloads.poster_manager import PosterManager
+
+
+@dataclass
+class PosterControllerDeps:
+    """Явные зависимости PosterController"""
+    logger: Logger
+    db: IDBManager
+    context: AppContext
+    poster_manager: PosterManager
+
+    # Config
+    base_al_url: str = ""
+    base_am_url: str = ""
+    url_prefix: str = "https://"
 
 
 class PosterController:
     """
-    Переходный контроллер (stage-2/3):
-    - svc: доступ к db/api/ui/logger/config/playlist
-    - app: доступ к orchestration-методам (display_titles, show_error_notification, invoke_database_save, ...)
+    Контроллер для работы с постерами.
+    Независимый контроллер — не зависит от других контроллеров.
     """
 
-    def __init__(self, app: Any, svc: Any):
-        self.app = app
-        self.svc = svc
+    def __init__(self, deps: PosterControllerDeps):
+        self._deps = deps
+
+    # === Properties ===
 
     @property
-    def db(self):
-        return self.svc.db
+    def log(self) -> Logger:
+        return self._deps.logger
 
     @property
-    def ui(self):
-        return self.svc.ui
+    def db(self) -> IDBManager:
+        return self._deps.db
 
     @property
-    def log(self):
-        return self.svc.logger
+    def ctx(self) -> AppContext:
+        return self._deps.context
 
     @property
-    def api(self):
-        return self.svc.api
+    def poster_manager(self) -> PosterManager:
+        return self._deps.poster_manager
 
-    def get_poster_or_placeholder(self, title_id: int, size_key: str = "original", force_download: bool = False,) -> bytes | None:
+    # === Public API ===
+
+    def get_poster_or_placeholder(
+            self,
+            title_id: int,
+            size_key: str = "original",
+            force_download: bool = False,
+    ) -> bytes | None:
         """
-        Получает постер для тайтла или плейсхолдер, если постер не найден.
-        Инициирует скачивание постера только если существующий постер устарел или отсутствует.
+        Получает постер для тайтла или плейсхолдер.
+        Инициирует скачивание только если постер устарел или отсутствует.
         """
         try:
             poster_data, is_placeholder = self.db.get_poster_blob(title_id, size_key=size_key)
-            need_download = False
+            need_download = self._should_download_poster(
+                title_id, size_key, poster_data, is_placeholder, force_download
+            )
 
-            if force_download:
-                need_download = True
-                self.log.debug(f"Force download requested for title_id={title_id}, size_key={size_key}")
-            else:
-                if not poster_data or is_placeholder:
-                    need_download = True
-                else:
-                    poster_date = self.db.get_poster_last_updated(title_id, size_key=size_key)
-                    if poster_date:
-                        if poster_date.tzinfo is None:
-                            poster_date = poster_date.replace(tzinfo=timezone.utc)
-
-                        current_time = datetime.now(timezone.utc)
-                        week_age = timedelta(days=DOWNLOAD_AFTER_AGE)
-                        final_age = timedelta(days=FINAL_AGE)
-                        poster_age = current_time - poster_date
-
-                        if poster_age < week_age:
-                            self.log.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is fresh ({poster_date}). Skipping download."
-                            )
-                        elif poster_age < final_age:
-                            need_download = True
-                            self.log.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is stale ({poster_date}). Scheduling download."
-                            )
-                        else:
-                            self.log.debug(
-                                f"Poster for title_id={title_id} size_key={size_key} is final ({poster_date}). Skipping download considered final (older than 90 days)."
-                            )
             if need_download:
-                poster_link = self.db.get_poster_link(title_id, size_key)
-                if poster_link:
-                    processed_link = self.perform_poster_link(poster_link)
-                    if processed_link:
-                        self.app.poster_manager.write_poster_links([(title_id, processed_link, size_key)])
-                        self.log.debug(f"Added poster for title_id {title_id} to download queue.")
+                self._queue_poster_download(title_id, size_key)
 
             return poster_data
 
@@ -89,65 +83,123 @@ class PosterController:
             self.log.error(f"Ошибка get_poster_or_placeholder: {e}")
             return None
 
-    def perform_poster_link(self, poster_link):
-        """
-        Возвращает «нормализованный» URL постера.
-        Если poster_link уже является полным URL, который уже содержит
-        base_al_url или base_am_url, он возвращается без добавления префикса.
-        """
+    def clear_previous_posters(self) -> None:
+        """Удаляет все предыдущие виджеты из сетки постеров."""
+        layout = self.ctx.posters_layout
+        if layout is None:
+            return
+
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            elif item.layout() is not None:
+                self._clear_layout_recursive(item.layout())
+
+    @staticmethod
+    def sanitize_filename(name: str) -> str:
+        """Очищает имя файла от недопустимых символов."""
+        return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+    # === Private Methods ===
+
+    def _should_download_poster(
+            self,
+            title_id: int,
+            size_key: str,
+            poster_data: bytes | None,
+            is_placeholder: bool,
+            force_download: bool,
+    ) -> bool:
+        """Определяет, нужно ли скачивать постер."""
+        if force_download:
+            self.log.debug(f"Force download for title_id={title_id}, size_key={size_key}")
+            return True
+
+        if not poster_data or is_placeholder:
+            return True
+
+        poster_date = self.db.get_poster_last_updated(title_id, size_key=size_key)
+        if not poster_date:
+            return True
+
+        return self._is_poster_stale(poster_date, title_id, size_key)
+
+    def _is_poster_stale(self, poster_date: datetime, title_id: int, size_key: str) -> bool:
+        """Проверяет, устарел ли постер."""
+        if poster_date.tzinfo is None:
+            poster_date = poster_date.replace(tzinfo=timezone.utc)
+
+        current_time = datetime.now(timezone.utc)
+        poster_age = current_time - poster_date
+
+        week_age = timedelta(days=DOWNLOAD_AFTER_AGE)
+        final_age = timedelta(days=FINAL_AGE)
+
+        if poster_age < week_age:
+            self.log.debug(f"Poster for title_id={title_id} is fresh. Skipping.")
+            return False
+        elif poster_age < final_age:
+            self.log.debug(f"Poster for title_id={title_id} is stale. Scheduling download.")
+            return True
+        else:
+            self.log.debug(f"Poster for title_id={title_id} is final (>90 days). Skipping.")
+            return False
+
+    def _queue_poster_download(self, title_id: int, size_key: str) -> None:
+        """Добавляет постер в очередь на скачивание."""
+        poster_link = self.db.get_poster_link(title_id, size_key)
+        if not poster_link:
+            return
+
+        processed_link = self._process_poster_link(poster_link)
+        if processed_link:
+            self.poster_manager.write_poster_links([(title_id, processed_link, size_key)])
+            self.log.debug(f"Added poster for title_id={title_id} to download queue.")
+
+    def _process_poster_link(self, poster_link: str) -> str | None:
+        """Нормализует URL постера."""
         try:
             standardized_url = None
-            self.log.debug(f"Processing poster link: {poster_link}")
             is_full_url = poster_link.startswith(("http://", "https://"))
             contains_base = any(
-                base in poster_link for base in (self.app.base_al_url, self.app.base_am_url)
+                base in poster_link
+                for base in (self._deps.base_al_url, self._deps.base_am_url)
             )
+
             if is_full_url and contains_base:
-                standardized_url = self.standardize_url(poster_link)
-                self.log.debug(
-                    f"Poster link already full URL → {standardized_url[-41:]}"
-                )
+                standardized_url = self._standardize_url(poster_link)
             elif poster_link.startswith("/"):
-                poster_url = f"{self.app.pre}{self.app.base_al_url}{poster_link}"
-                standardized_url = self.standardize_url(poster_url)
-                self.log.debug(f"Constructed poster URL → {standardized_url[-41:]}")
+                full_url = f"{self._deps.url_prefix}{self._deps.base_al_url}{poster_link}"
+                standardized_url = self._standardize_url(full_url)
 
-            cached_urls = [url for (_, url, _) in self.app.poster_manager.poster_links]
+            if not standardized_url:
+                return None
 
+            # Проверяем кэш
+            cached_urls = [url for (_, url, _) in self.poster_manager.poster_links]
             if standardized_url in cached_urls:
-                self.log.debug(
-                    f"Poster URL already cached: {standardized_url}. Skipping fetch."
-                )
+                self.log.debug(f"Poster URL already cached: {standardized_url[-40:]}")
                 return None
 
             return standardized_url
 
         except Exception as e:
-            self.log.error(f"Error while processing poster link: {e}")
+            self.log.error(f"Error processing poster link: {e}")
             return None
 
     @staticmethod
-    def sanitize_filename(name):
-        """
-        Sanitize the filename by removing special characters that are not allowed in filenames.
-        """
-        return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-    @staticmethod
-    def standardize_url(url):
-        """
-        Standardizes the URL for consistent comparison.
-        Strips spaces, removes query parameters if necessary, or any other needed cleaning.
-        """
+    def _standardize_url(url: str) -> str:
+        """Стандартизирует URL для сравнения."""
         return url.strip().split('?')[0]
 
-    def clear_previous_posters(self):
-        """Удаляет все предыдущие виджеты из сетки постеров."""
-        while self.app.posters_layout.count():
-            item = self.app.posters_layout.takeAt(0)
-            widget_to_remove = item.widget()
-            if widget_to_remove is not None:
-                widget_to_remove.deleteLater()
-            if item.layout() is not None:
-                self.app.clear_layout(item.layout())
-
+    def _clear_layout_recursive(self, layout) -> None:
+        """Рекурсивно очищает layout."""
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            elif item.layout() is not None:
+                self._clear_layout_recursive(item.layout())

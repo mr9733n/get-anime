@@ -9,12 +9,7 @@ from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 
 from utils.media.image_manager import guess_mime
 from utils.parsing.animedia import parse_schedule_line
-
-PROVIDER_ANIMEDIA = "animedia"
-SHOW_AM_SCHEDULE = "animedia_schedule"
-SHOW_AM_TITLES = "animedia_titles"
-SCHEDULE_KEY: str = "am_schedule_cache"
-ALL_TITLES_KEY: str = "am_all_titles_cache"
+from app.qt.app_constants import PROVIDER_ANIMEDIA, SHOW_AM_SCHEDULE, SHOW_AM_TITLES, SCHEDULE_KEY, ALL_TITLES_KEY
 
 
 class UIAMGenerator:
@@ -30,9 +25,11 @@ class UIAMGenerator:
                 mode=SHOW_AM_SCHEDULE,
                 blocks=schedule,
                 title_text="Новые серии аниме с сайта AniMedia",
+                cache_hint_text="Нажми чтобы сбросить локальный кеш.",
                 hint_text="Нажми на название или постер, чтобы отобразить.",
                 refresh_href=f"refresh_display/{SHOW_AM_SCHEDULE}",
                 reload_poster_href=f"reload_poster/",
+                drop_cache_href=f"am_drop_cache/{SCHEDULE_KEY}/{SHOW_AM_SCHEDULE}",
                 parse_key=SCHEDULE_KEY,
                 poster_size_key="small",
                 poster_w=140,
@@ -51,9 +48,11 @@ class UIAMGenerator:
                 mode=SHOW_AM_TITLES,
                 blocks=titles,
                 title_text="Все аниме с сайта AniMedia",
+                cache_hint_text="Нажми чтобы сбросить локальный кеш.",
                 hint_text="Нажми на название или постер, чтобы отобразить.",
                 refresh_href=f"refresh_display/{SHOW_AM_TITLES}",
                 reload_poster_href=f"reload_poster/",
+                drop_cache_href=f"am_drop_cache/{ALL_TITLES_KEY}/{SHOW_AM_TITLES}",
                 parse_key=ALL_TITLES_KEY,
                 poster_size_key="medium",
                 poster_w=240,
@@ -63,6 +62,8 @@ class UIAMGenerator:
                     (f"★ {rating:.1f}" if isinstance(rating, float) and rating > 0 else None),
                     ep_part
                 ),
+                load_more_href = f"am_load_more_titles/{SHOW_AM_TITLES}",
+                load_more_label = "LOAD MORE TITLES",
             )
             return self._create_browser_layout(html_text)
         except Exception as e:
@@ -97,15 +98,19 @@ class UIAMGenerator:
         mode: str,
         blocks,
         title_text: str,
+        cache_hint_text: str,
         hint_text: str,
         refresh_href: str,
         reload_poster_href: str,
+        drop_cache_href: str,
         parse_key: str,
         poster_size_key: str,
         poster_w: int,
         poster_h: int,
         section_title_fn: Callable[[Optional[int]], str],
         meta_fn: Callable[[str, str, Optional[str]], str],
+        load_more_href: str | None = None,
+        load_more_label: str = "LOAD MORE TITLES",
     ) -> str:
         _, _, _, styles_css = self.db_manager.get_template(self.current_template)
 
@@ -120,8 +125,25 @@ class UIAMGenerator:
                           <div style="font-size:20pt; font-weight:bold; margin-bottom:10px;">
                             {html.escape(title_text)}
                                 <div class="am-toolbar">
-                                    <a class="am-iconbtn" href="{refresh_href}">
+                                    <a class="am-iconbtn" href="{drop_cache_href}">
                                         <table cellspacing="0" cellpadding="0" style="display:inline-table; vertical-align:middle;">
+                                            <tr>
+                                                <td style="vertical-align:middle; padding-right:8px;">
+                                                    <div style="opacity:0.8; margin-bottom:18px; font-weight:bold;">
+                                                        {html.escape(cache_hint_text)}
+                                                    </div>
+                                                </td>
+                                                <td style="vertical-align:middle; padding-right:8px;">
+                                                    <span class="am-icon">🔄</span>
+                                                </td>
+                                                <td style="vertical-align:middle;">
+                                                    RELOAD CACHE
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </a>
+                                    <a class="am-iconbtn" href="{refresh_href}">        
+                                        <table cellspacing="0" cellpadding="0" style="display:inline-table; vertical-align:middle;">    
                                             <tr>
                                                 <td style="vertical-align:middle; padding-right:8px;">
                                                     <div style="opacity:0.8; margin-bottom:18px; font-weight:bold;">
@@ -131,12 +153,12 @@ class UIAMGenerator:
                                                 <td style="vertical-align:middle; padding-right:8px;">
                                                     <span class="am-icon">🔄</span>
                                                 </td>
-                                                <td style="vertical-align:middle; margin: 10px 10px 10px 10px">
+                                                <td style="vertical-align:middle;">
                                                     REFRESH SCREEN
                                                 </td>
                                             </tr>
                                         </table>
-                                    </a>
+                                    </a>    
                                 </div>
                             </div>
                       </div>
@@ -161,8 +183,31 @@ class UIAMGenerator:
                 meta_fn=meta_fn,
                 reload_poster_href=reload_poster_href,
             ))
+            rows.append("</div>")
 
-        rows.append("</div>")
+        if load_more_href and mode == SHOW_AM_TITLES:
+            ctx = self.app.ctx
+            total_items = ctx.am_total_count or 0
+            current_end = ctx.current_offset + 12  # offset + page_size
+
+            if current_end >= total_items:
+                rows.append(f"""
+                  <div style="text-align:center; margin:20px 20px;">
+                    <a class="am-iconbtn" href="{load_more_href}">
+                      <table cellspacing="0" cellpadding="0" style="display:inline-table; vertical-align:middle;">
+                        <tr>
+                          <td style="vertical-align:middle; padding-right:8px;">
+                            <span class="am-icon">➕</span>
+                          </td>
+                          <td style="vertical-align:middle;">
+                            {html.escape(load_more_label)} (page: {ctx.am_last_loaded_page + 1}+)
+                          </td>
+                        </tr>
+                      </table>
+                    </a>
+                  </div>
+                """)
+
         return "\n".join(rows)
 
     def _render_two_col_grid(
@@ -248,7 +293,7 @@ class UIAMGenerator:
                                             <td style="vertical-align:middle; padding-right:8px;">
                                               <span class="am-icon">⟳</span>
                                             </td>
-                                            <td style="vertical-align:middle; margin: 10px 10px 10px 10px">
+                                            <td style="vertical-align:middle;">
                                               RELOAD POSTER
                                             </td>
                                           </tr>
@@ -297,7 +342,7 @@ class UIAMGenerator:
     def _section_title_titles(page: Optional[int]) -> str:
         if page is None:
             return "Каталог аниме"
-        return f"Страница [{page}]" if page else "Каталог AniMedia"
+        return f"Page [{page}]" if page else "Каталог AniMedia"
 
     @staticmethod
     def _meta_join(*parts) -> str:

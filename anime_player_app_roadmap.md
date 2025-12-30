@@ -559,16 +559,61 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] refactor init in app.py
 - [x] add tests
 - [x] move proxy methods to dict
-- [ ] ...
-
+- [x] done
+┌─────────────────────────────────────────────────────────────────┐
+│                     INDEPENDENT                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  PersistenceController    PosterController    TorrentController │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     STATE LAYER                                 │
+├─────────────────────────────────────────────────────────────────┤
+│              StateRuntimeController                             │
+│                  (lazy → Display)                               │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   PROVIDER LAYER                                 │
+├──────────────────────────────────────────────────────────────────┤
+│    AniLibertyController        AniMediaController                │
+│  (lazy → Display, State)     (lazy → Display, State)             │
+└──────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    CENTRAL LAYER                                 │
+├──────────────────────────────────────────────────────────────────┤
+│                   DisplayController                              │
+│           (lazy → Poster, State, AniLiberty)                     │
+└──────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   ACTION LAYER                                   │
+├──────────────────────────────────────────────────────────────────┤
+│                   ActionsController                              │
+│              (direct → Display, Persistence)                     │
+└──────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   PLAYER LAYER                                   │
+├──────────────────────────────────────────────────────────────────┤
+│                   PlayerController                               │
+└──────────────────────────────────────────────────────────────────┘
 ### 8.38 Fixes
 - [x] Fix url inserting in animedia parser
 - [x] Fix UI animedia card height when title name is too long
 - [x] fix pagination for all screens 
 - [x] 2025-12-29 21:08:58 | ERROR | app.qt.ui_s_generator.switch_template | Ошибка при переключении шаблона: 'DatabaseManager' object has no attribute 'app_state_manager'
+- [x] Add save state for pagination in AM 
+- [x] Load more AM titles
+- [x] Drop AM cache 
 
 ### 8.39 Fixes
-- [ ] Add save state for pagination in AM 
 - [ ] Add Screen for deleted titles with permanent delete func 
 - [ ] Change delete logic to unlink -> move to delete table
 - [ ] Fix highlighting episode in VLC playlist
@@ -601,38 +646,35 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Internet (TCP + STUN/UPnP) Ограничение источников по IP / rate-limit
 
 
- ## 9. Check maybe obsolete
+## 9. TECH DEBT
 ### 9.0. Migration to PyQt6
 - [x] Started in branch 0.3.8.34
 - [ ] Have some bugs
 - [ ] ...
 
-
-### 9.2. New features & change one title view & redesign system browser 2
+### 9.1. New features & change one title view & redesign system browser 2
 - [x] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
 - [?] add/update table data
 
-## 10. TECH DEBT
-### 10.1. Использование Pydantic для Валидации
+### 9.2. Использование Pydantic для Валидации
 - [?] Установить Pydantic и создать схемы для валидации данных (`TitleSchema`, `EpisodeSchema` и т.д.).
 - [?] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
 
-### 10.2. Обработка Ошибок и Резервное Копирование
+### 9.3. Обработка Ошибок и Резервное Копирование
 - [?] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
 - [x] ? remove schedule view logic from get_titles ?
 - [ ] create job to inspect db tables for condition
 
-### 10.3. add watch history bulk selection
+### 9.4. add watch history bulk selection
 - [ ] select many >_< 
 
-## Этап 11. Тестирование и Оптимизация
-### 11.1. Тестирование Методов `DatabaseManager`
+### 9.5. Тестирование Методов `DatabaseManager`
 - [ ] Написать юнит-тесты для каждого метода `DatabaseManager` (создание, чтение, обновление, удаление данных).
 - [ ] Тестировать работу с базой данных на корректность добавления и получения данных.
 
-### 11.2. Тестирование Интеграции
+### 9.6. Тестирование Интеграции
 - [ ] Тестировать взаимодействие базы данных с остальным приложением, чтобы убедиться в правильности логики сохранения и загрузки данных.
 - [ ] Тестировать новый интерфейс, чтобы проверить отображение данных и правильность работы функционала.

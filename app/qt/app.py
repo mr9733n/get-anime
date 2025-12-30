@@ -331,6 +331,7 @@ class AnimePlayerAppVer3(QWidget):
             save_torrent_wrapper=self.save_torrent_wrapper,
             reset_offset=self.reset_offset,
             get_search_by_title_animedia=self.get_search_by_title_animedia,
+            load_more_animedia_titles=self.load_more_animedia_titles,
             open_web=self.open_web_link,
             refresh_display=self.refresh_display,
             reload_poster=self.get_poster_or_placeholder,
@@ -466,6 +467,10 @@ class AnimePlayerAppVer3(QWidget):
     def get_animedia_all_titles(self) -> None:
         """Загружает все тайтлы AniMedia."""
         self.animedia.get_animedia_all_titles()
+
+    def load_more_animedia_titles(self) -> None:
+        """Загрузить следующую порцию тайтлов AniMedia."""
+        self.animedia.load_more_titles()
 
     # --- Persistence ---
 

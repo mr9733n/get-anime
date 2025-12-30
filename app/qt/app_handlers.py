@@ -23,6 +23,7 @@ class LinkActionHandler:
                  save_torrent_wrapper,
                  reset_offset,
                  get_search_by_title_animedia,
+                 load_more_animedia_titles,
                  open_web,
                  refresh_display,
                  reload_poster):
@@ -37,6 +38,7 @@ class LinkActionHandler:
         self.save_torrent_wrapper = save_torrent_wrapper
         self.reset_offset = reset_offset
         self.get_search_by_title_animedia = get_search_by_title_animedia
+        self.load_more_animedia_titles = load_more_animedia_titles
         self.open_web_link = open_web
         self.refresh_display = refresh_display
         self.get_poster_or_placeholder = reload_poster
@@ -45,6 +47,7 @@ class LinkActionHandler:
         self.dispatch: dict[str, Handler] = {
             'display_info': self._handle_display_info,
             'am_search': self._handle_am_search,
+            'am_drop_cache': self._handle_am_drop_cache,
             'filter_by_franchise': self._handle_filter_by_franchise,
             'filter_by_genre': self._handle_filter_by_genre,
             'filter_by_team_member': self._handle_filter_by_team_member,
@@ -65,6 +68,7 @@ class LinkActionHandler:
             'open_web': self._handle_open_web,
             'refresh_display': self._handle_refresh_display,
             'reload_poster': self._handle_reload_poster,
+            'am_load_more_titles': self._handle_am_load_more_titles,
         }
 
     def handle(self, link: str) -> Optional[Any]:
@@ -300,8 +304,8 @@ class LinkActionHandler:
             skip_data = parts[3].strip("[]")
 
             self.logger.debug(f"Play_all: title_id: {title_id}, Skip data base64: {skip_data}, filename: {filename}")
-            self.play_playlist_wrapper(filename, title_id, skip_data)
-            QTimer.singleShot(100, lambda: self.display_info(title_id))
+            QTimer.singleShot(10, lambda: self.play_playlist_wrapper(filename, title_id, skip_data))
+            QTimer.singleShot(50, lambda: self.display_info(title_id))
         else:
             self.logger.error(f"Invalid play_all link structure: {parts}")
 
@@ -316,8 +320,8 @@ class LinkActionHandler:
                     f"Skip data base64: {skip_data}, Extracted link: {extracted_link}, Decoded link: {decoded_link}")
                 link = decoded_link
                 self.logger.info(f"Sending video link: {link} to VLC")
-                self.play_link(link, title_id, skip_data)
-                QTimer.singleShot(100, lambda: self.display_info(title_id))
+                QTimer.singleShot(10, lambda: self.play_link(link, title_id, skip_data))
+                QTimer.singleShot(50, lambda: self.display_info(title_id))
             except (ValueError, SyntaxError) as e:
                 self.logger.error(f"Error parsing: {e}")
         else:
@@ -362,7 +366,32 @@ class LinkActionHandler:
                 QTimer.singleShot(5, lambda: self.get_poster_or_placeholder(title_id=title_id, size_key=size_key, force_download=True))
                 QTimer.singleShot(800, lambda: self.refresh_display())
             except (ValueError, SyntaxError) as e:
-                self.logger.error(f"Error refreshing screen: {e}")
+                self.logger.error(f"Error reload poster: {e}")
         else:
             self.logger.error(f"Invalid open_web link structure: {parts}")
+
+    def _handle_am_drop_cache(self, parts: list[str]):
+        if len(parts) >= 3:
+            try:
+                cache_key = str(parts[1])
+                screen = str(parts[2])
+                self.logger.info(f"Force invalidate cache file: {cache_key} on screen: {screen} ...")
+                self.animedia_cache.invalidate_cache(cache_key)
+                QTimer.singleShot(50, lambda: self.refresh_display())
+            except (ValueError, SyntaxError) as e:
+                self.logger.error(f"Error Force invalidate cache: {e}")
+        else:
+            self.logger.error(f"Invalid open_web link structure: {parts}")
+
+    def _handle_am_load_more_titles(self, parts: list[str]) -> None:
+        if len(parts) >= 2:
+            try:
+                screen = str(parts[1])
+                self.logger.info(f"Load more titles on screen: {screen} ...")
+                QTimer.singleShot(100, self.load_more_animedia_titles)
+            except (ValueError, SyntaxError) as e:
+                self.logger.error(f"Error loading more titles: {e}")
+        else:
+            self.logger.error(f"Invalid am_load_more_titles link structure: {parts}")
+
 

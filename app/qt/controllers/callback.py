@@ -56,6 +56,10 @@ class CallbackController:
             if callback_key and callback_type == "simple" and callback_key not in callbacks:
                 callbacks[callback_key] = self._generate_simple_callback(callback_key)
 
+        days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+        for i, day in enumerate(days_of_week):
+            callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.app.display_titles_for_day(i + 1)
+
         return callbacks
 
     def _generate_simple_callback(self, callback_name):

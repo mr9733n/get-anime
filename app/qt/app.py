@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
 from app.qt.app_services import AppServices
-from app.qt.proxy_api import PROXY_API
+from app.qt.orchestrator_proxies import OrchestratorProxies
 
 from app.qt.controllers.actions import ActionsController
 from app.qt.controllers.animedia import AniMediaController
@@ -43,7 +43,7 @@ from utils.net.url_resolver import TTLCache
 from utils.net.url_resolver_config import ResolverConfig
 
 
-class AnimePlayerAppVer3(QWidget):
+class AnimePlayerAppVer3(OrchestratorProxies, QWidget):
     add_title_browser_to_layout = pyqtSignal(QTextBrowser, int, int)
     state_changed = pyqtSignal()
 
@@ -172,6 +172,7 @@ class AnimePlayerAppVer3(QWidget):
 
         self.temp_dir = self.data_dir / "temp"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"[***] {self.temp_dir}, {self.torrent_save_path}")
 
         self.video_player_path, self.torrent_client_path = self.setup_paths()
 
@@ -249,12 +250,7 @@ class AnimePlayerAppVer3(QWidget):
             refresh_display=self.refresh_display,
             reload_poster=self.get_poster_or_placeholder
         )
-
         self.router = OpenRouter(self)
-
-        days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
-        for i, day in enumerate(days_of_week):
-            self.callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.display_titles_for_day(i + 1)
 
     def _init_services_and_controllers(self):
         self.svc = AppServices(
@@ -288,7 +284,6 @@ class AnimePlayerAppVer3(QWidget):
             app.aboutToQuit.connect(self.api_client.close)
 
         self.init_ui(all_layout_metadata)
-        self._validate_proxy_map()
 
     @staticmethod
     def _default_data_dir(app_name: str = "AnimePlayer") -> pathlib.Path:
@@ -323,23 +318,4 @@ class AnimePlayerAppVer3(QWidget):
         link = url.toString()
         self.link_handler.handle(link)
 
-    _PROXY_MAP = PROXY_API
-
-    def __getattr__(self, name):
-        try:
-            ctrl_name, meth = self._PROXY_MAP[name]
-        except KeyError:
-            raise AttributeError(name)
-
-        ctrl = object.__getattribute__(self, ctrl_name)
-        return getattr(ctrl, meth)
-
-    def __dir__(self):
-        return sorted(set(super().__dir__()) | set(self._PROXY_MAP))
-
-    def _validate_proxy_map(self):
-        for public, (ctrl_name, meth) in self._PROXY_MAP.items():
-            assert ctrl_name, f"Proxy '{public}' has empty controller name"
-            ctrl = getattr(self, ctrl_name)
-            assert hasattr(ctrl, meth), f"Proxy '{public}' -> {ctrl_name}.{meth} missing"
 

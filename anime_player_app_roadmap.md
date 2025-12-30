@@ -558,6 +558,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] add controllers
 - [x] refactor init in app.py
 - [x] add tests
+- [x] move proxy methods to dict
 - [ ] ...
 
 ### 8.38 Fixes
@@ -608,22 +609,20 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 
 
 ### 9.2. New features & change one title view & redesign system browser 2
-- [ ] add additional feature to custom player for seek bar: sliding toggle with click to position
+- [x] add additional feature to custom player for seek bar: sliding toggle with click to position
 - [ ] need to change width of title browser if window is changed
 - [ ] idea: you can change window horizontal size and stretch title browser with window
-- [ ] add/update table data
-- [ ] ...
-
+- [?] add/update table data
 
 ## 10. TECH DEBT
 ### 10.1. Использование Pydantic для Валидации
-- [ ] Установить Pydantic и создать схемы для валидации данных (`TitleSchema`, `EpisodeSchema` и т.д.).
-- [ ] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
+- [?] Установить Pydantic и создать схемы для валидации данных (`TitleSchema`, `EpisodeSchema` и т.д.).
+- [?] Подключить валидацию к функциям сохранения, чтобы проверять данные перед их записью в базу.
 
 ### 10.2. Обработка Ошибок и Резервное Копирование
-- [ ] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
+- [?] Реализовать обработку ошибок при взаимодействии с базой данных, чтобы избежать потери данных.
 - [ ] Добавить функциональность для резервного копирования базы данных.
-- [ ] ? remove schedule view logic from get_titles ?
+- [x] ? remove schedule view logic from get_titles ?
 - [ ] create job to inspect db tables for condition
 
 ### 10.3. add watch history bulk selection

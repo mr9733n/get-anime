@@ -1,87 +1,194 @@
-# app/qt/controllers/callbacks.py
+# app/qt/controllers/callback.py
 from __future__ import annotations
 
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Callable, Any
+
+if TYPE_CHECKING:
+    from logging import Logger
+    from app.qt.app_context import AppContext
+
+
+@dataclass
+class CallbackControllerDeps:
+    """Явные зависимости CallbackController"""
+    logger: Logger
+    context: AppContext
+    layout_metadata: list[dict]
+
+    # Controller getters (для генерации callbacks)
+    get_actions: Callable[[], Any]
+    get_display: Callable[[], Any]
+    get_aniliberty: Callable[[], Any]
+    get_animedia: Callable[[], Any]
+    get_player: Callable[[], Any]
 
 
 class CallbackController:
     """
-    Переходный контроллер (stage-2/3):
-    - svc: доступ к db/api/ui/logger/config/playlist
-    - app: доступ к orchestration-методам (display_titles, show_error_notification, invoke_database_save, ...)
+    Контроллер для генерации UI callbacks.
+    Создаёт маппинг callback_key -> функция.
     """
 
-    def __init__(self, app: Any, svc: Any, layout: Any):
-        self.app = app
-        self.svc = svc
-        self.layout = layout
+    def __init__(self, deps: CallbackControllerDeps):
+        self._deps = deps
 
     @property
-    def db(self):
-        return self.svc.db
+    def log(self) -> Logger:
+        return self._deps.logger
 
     @property
-    def ui(self):
-        return self.svc.ui
+    def ctx(self) -> AppContext:
+        return self._deps.context
 
-    @property
-    def log(self):
-        return self.svc.logger
-
-    @property
-    def api(self):
-        return self.svc.api
+    # === Public API ===
 
     def generate_callbacks(self) -> dict[str, Callable]:
-        callbacks = {
-            "get_search_by_title": self.app.get_search_by_title,
-            "get_search_by_title_all": self.app.get_search_by_title_aniliberty,
-            "get_search_by_title_am": self.app.get_search_by_title_animedia,
-            "get_update_title": self.app.get_update_title,
-            "get_update_title_all": self.app.get_update_title_aniliberty,
-            "get_update_title_am": self.app.get_update_title_animedia,
-            "get_random_title": self.app.get_random_title,
-            "get_animedia_new_titles": self.app.get_animedia_new_titles,
-            "get_animedia_all_titles": self.app.get_animedia_all_titles,
-            "refresh_display": self.app.refresh_display,
-            "save_playlist_wrapper": self.app.save_playlist_wrapper,
-            "play_playlist_wrapper": self.app.play_playlist_wrapper,
-            "reload_schedule": self.app.reload_schedule,
-        }
+        """Генерирует все callbacks для UI."""
+        callbacks = {}
 
-        for metadata in self.layout:
-            callback_key = metadata.get("callback_key")
-            callback_type = metadata.get("callback_type", "complex")
+        # Добавляем основные callbacks
+        callbacks.update(self._get_search_callbacks())
+        callbacks.update(self._get_update_callbacks())
+        callbacks.update(self._get_aniliberty_callbacks())
+        callbacks.update(self._get_animedia_callbacks())
+        callbacks.update(self._get_display_callbacks())
+        callbacks.update(self._get_player_callbacks())
+        callbacks.update(self._get_day_callbacks())
 
-            if callback_key and callback_type == "simple" and callback_key not in callbacks:
-                callbacks[callback_key] = self._generate_simple_callback(callback_key)
-
-        days_of_week = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
-        for i, day in enumerate(days_of_week):
-            callbacks[f"display_titles_for_day_{i}"] = lambda checked, i=i: self.app.display_titles_for_day(i + 1)
+        # Добавляем простые callbacks из layout metadata
+        callbacks.update(self._get_simple_callbacks(callbacks))
 
         return callbacks
 
-    def _generate_simple_callback(self, callback_name):
-        """Создает простой колбек, который вызывает display_titles с соответствующими параметрами."""
+    # === Private: Callback Groups ===
 
-        def simple_callback(*args, **kwargs):
-            self.log.info(f"Вызван простой колбек: {callback_name}")
+    def _get_search_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для поиска."""
+        actions = self._deps.get_actions()
+        return {
+            "get_search_by_title": actions.get_search_by_title,
+            "get_search_by_title_all": actions.get_search_by_title_aniliberty,
+            "get_search_by_title_am": actions.get_search_by_title_animedia,
+        }
+
+    def _get_update_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для обновления."""
+        actions = self._deps.get_actions()
+        return {
+            "get_update_title": actions.get_update_title,
+            "get_update_title_all": actions.get_update_title_aniliberty,
+            "get_update_title_am": actions.get_update_title_animedia,
+        }
+
+    def _get_aniliberty_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для AniLiberty."""
+        aniliberty = self._deps.get_aniliberty()
+        return {
+            "get_random_title": aniliberty.get_random_title,
+            "reload_schedule": aniliberty.reload_schedule,
+        }
+
+    def _get_animedia_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для AniMedia."""
+        animedia = self._deps.get_animedia()
+        return {
+            "get_animedia_new_titles": animedia.get_animedia_new_titles,
+            "get_animedia_all_titles": animedia.get_animedia_all_titles,
+        }
+
+    def _get_display_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для отображения."""
+        display = self._deps.get_display()
+        return {
+            "refresh_display": display.refresh_display,
+        }
+
+    def _get_player_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для плеера."""
+        player = self._deps.get_player()
+        return {
+            "save_playlist_wrapper": player.save_playlist_wrapper,
+            "play_playlist_wrapper": player.play_playlist_wrapper,
+        }
+
+    def _get_day_callbacks(self) -> dict[str, Callable]:
+        """Callbacks для дней недели."""
+        display = self._deps.get_display()
+        days = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+        callbacks = {}
+        for i, day in enumerate(days):
+            day_num = i + 1
+            callbacks[f"display_titles_for_day_{i}"] = \
+                lambda checked, d=day_num: display.display_titles_for_day(d)
+
+        return callbacks
+
+    def _get_simple_callbacks(self, existing: dict) -> dict[str, Callable]:
+        """Генерирует простые callbacks из layout metadata."""
+        callbacks = {}
+        display = self._deps.get_display()
+
+        for metadata in self._deps.layout_metadata:
+            callback_key = metadata.get("callback_key")
+            callback_type = metadata.get("callback_type", "complex")
+
+            if not callback_key:
+                continue
+            if callback_key in existing:
+                continue
+            if callback_type != "simple":
+                continue
+
+            callbacks[callback_key] = self._create_simple_callback(callback_key, display)
+
+        return callbacks
+
+    def _create_simple_callback(
+            self,
+            callback_name: str,
+            display,
+    ) -> Callable:
+        """Создаёт простой callback."""
+
+        def callback(*args, **kwargs):
+            self.log.info(f"Simple callback: {callback_name}")
+
             if callback_name == "load_previous_titles":
-                self.app.display_titles(show_previous=True)
-            elif callback_name == "load_more_titles":
-                self.app.display_titles(show_next=True)
-            elif callback_name == "display_titles_text_list":
-                self.app.display_titles(show_mode='titles_list', batch_size=self.app.titles_list_batch_size)
-            elif callback_name == "display_ongoing_list":
-                self.app.display_titles(show_mode='ongoing_list', batch_size=self.app.titles_list_batch_size)
-            elif callback_name == "display_franchises":
-                self.app.display_titles(show_mode='franchise_list', batch_size=self.app.titles_list_batch_size)
-            elif callback_name == "toggle_need_to_see":
-                self.app.display_titles(show_mode='need_to_see_list', batch_size=self.app.titles_list_batch_size)
-            elif callback_name == "display_system":
-                self.app.display_titles(show_mode='system')
-            else:
-                self.log.warning(f"Неизвестный колбек: {callback_name}")
+                display.display_titles(show_previous=True)
 
-        return simple_callback
+            elif callback_name == "load_more_titles":
+                display.display_titles(show_next=True)
+
+            elif callback_name == "display_titles_text_list":
+                display.display_titles(
+                    show_mode='titles_list',
+                    batch_size=self.ctx.titles_list_batch_size,
+                )
+
+            elif callback_name == "display_ongoing_list":
+                display.display_titles(
+                    show_mode='ongoing_list',
+                    batch_size=self.ctx.titles_list_batch_size,
+                )
+
+            elif callback_name == "display_franchises":
+                display.display_titles(
+                    show_mode='franchise_list',
+                    batch_size=self.ctx.titles_list_batch_size,
+                )
+
+            elif callback_name == "toggle_need_to_see":
+                display.display_titles(
+                    show_mode='need_to_see_list',
+                    batch_size=self.ctx.titles_list_batch_size,
+                )
+
+            elif callback_name == "display_system":
+                display.display_titles(show_mode='system')
+
+            else:
+                self.log.warning(f"Unknown callback: {callback_name}")
+
+        return callback

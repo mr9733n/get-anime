@@ -43,7 +43,7 @@ def load_library(lib_dir, lib_name):
         raise FileNotFoundError(f"{lib_name} not found in {lib_path}.")
 
     try:
-        ctypes.CDLL(lib_file_path)
+        ctypes.CDLL(str(lib_file_path))
         logger.info(f"{lib_name} successfully loaded from {lib_path}.")
         return lib_file_path
     except OSError as e:

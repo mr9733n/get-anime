@@ -1,47 +1,56 @@
 # app/qt/controllers/torrents.py
 from __future__ import annotations
 
-from typing import Any, Optional, Iterable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from app.qt.protocols import IPosterController  # для sanitize_filename
+
+if TYPE_CHECKING:
+    from logging import Logger
+    from utils.downloads.torrent_manager import TorrentManager
+
+
+@dataclass
+class TorrentControllerDeps:
+    """Явные зависимости TorrentController"""
+    logger: Logger
+    torrent_manager: TorrentManager
 
 
 class TorrentController:
     """
-    Переходный контроллер (stage-2/3):
-    - svc: доступ к db/api/ui/logger/config/playlist
-    - app: доступ к orchestration-методам (display_titles, show_error_notification, invoke_database_save, ...)
+    Контроллер для работы с торрентами.
+    Независимый контроллер.
     """
 
-    def __init__(self, app: Any, svc: Any):
-        self.app = app
-        self.svc = svc
+    def __init__(self, deps: TorrentControllerDeps):
+        self._deps = deps
 
     @property
-    def db(self):
-        return self.svc.db
+    def log(self) -> Logger:
+        return self._deps.logger
 
     @property
-    def ui(self):
-        return self.svc.ui
+    def torrent_manager(self) -> TorrentManager:
+        return self._deps.torrent_manager
 
-    @property
-    def log(self):
-        return self.svc.logger
+    # === Public API ===
 
-    @property
-    def api(self):
-        return self.svc.api
-
-    def save_torrent_wrapper(self, link, title_name, torrent_id):
-        """
-        Wrapper function to handle saving the torrent.
-        Collects title names and links, and passes them to save_torrent_file.
-        """
+    def save_torrent_wrapper(self, link: str, title_name: str, torrent_id: int) -> None:
+        """Скачивает и сохраняет торрент файл."""
         try:
-            sanitized_title_name = self.app.sanitize_filename(title_name)
-            file_name = f"{sanitized_title_name}_{torrent_id}.torrent"
+            sanitized_name = self._sanitize_filename(title_name)
+            file_name = f"{sanitized_name}_{torrent_id}.torrent"
 
-            self.app.torrent_manager.save_torrent_file(link, file_name)
-            self.log.debug("Opening torrent client ..")
+            self.torrent_manager.save_torrent_file(link, file_name)
+            self.log.debug("Opening torrent client...")
+
         except Exception as e:
-            error_message = f"Error in save_torrent_wrapper: {str(e)}"
-            self.log.error(error_message)
+            self.log.error(f"Error in save_torrent_wrapper: {e}")
+
+    @staticmethod
+    def _sanitize_filename(name: str) -> str:
+        """Очищает имя файла от недопустимых символов."""
+        import re
+        return re.sub(r'[<>:"/\\|?*]', '_', name)

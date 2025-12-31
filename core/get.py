@@ -8,7 +8,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
-    Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio
+    Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio, DeletedTitleLog
 from core.types import PosterSize, POSTER_FIELDS
 
 
@@ -21,7 +21,13 @@ class GetManager:
         """Загружает тайтлы для указанного дня недели из базы данных."""
         with self.Session as session:
             try:
-                return session.query(Title).join(Schedule).filter(Schedule.day_of_week == day_of_week).all()
+                return (
+                    session.query(Title)
+                    .join(Schedule)
+                    .filter(Schedule.day_of_week == day_of_week)
+                    .filter(Title.is_deleted == False)
+                    .all()
+                )
 
             except Exception as e:
                 session.rollback()
@@ -405,7 +411,7 @@ class GetManager:
         """Titles without episodes"""
         with self.Session as session:
             try:
-                query = session.query(Title)
+                query = session.query(Title).filter(Title.is_deleted == False)
                 if title_ids:
                     query = query.filter(Title.title_id.in_(title_ids))
                 else:
@@ -447,6 +453,27 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке тайтлов из базы данных: {e}")
                 return 0
 
+    def get_deleted_titles(self, batch_size=None, offset=0):
+        with self.Session as session:
+            q = session.query(Title).filter(Title.is_deleted == True)
+            if batch_size:
+                q = q.offset(offset).limit(batch_size)
+            return q.all()
+
+    def get_deleted_titles_log(self, limit: int = 300, offset: int = 0):
+        with self.Session as session:
+            return (
+                session.query(DeletedTitleLog)
+                .order_by(DeletedTitleLog.deleted_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+    def get_deleted_titles_log_item(self, log_id: int):
+        with self.Session as session:
+            return session.query(DeletedTitleLog).filter(DeletedTitleLog.id == log_id).one_or_none()
+
     def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
         """Получает список тайтлов из базы данных через DatabaseManager."""
         """
@@ -463,6 +490,7 @@ class GetManager:
                     joinedload(Title.episodes),
                     joinedload(Title.schedules).joinedload(Schedule.day),  # <-- сразу тянем day
                 )
+                query = query.filter(Title.is_deleted == False)
 
                 # Фильтры по ID/списку ID
                 if title_id:

@@ -614,8 +614,13 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Drop AM cache 
 
 ### 8.39 Fixes
-- [ ] Add Screen for deleted titles with permanent delete func 
-- [ ] Change delete logic to unlink -> move to delete table
+- [x] Add Settings to System screen
+- [x] Add Optimize DB button on System screen
+- [x] Add loader to pagination
+- [x] Add audit table log
+- [x] Add audit log screen
+- [x] Add Screen for deleted titles with permanent delete func 
+- [x] Change delete logic to unlink -> move to delete table
 - [ ] Fix highlighting episode in VLC playlist
 - [ ] fix get title from db by query
 - [ ] fix switching template

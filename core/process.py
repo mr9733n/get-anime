@@ -193,7 +193,7 @@ class ProcessManager:
                 f"str='{raw_title_data.get('status', {}).get('string')}' | external_id={external_id}"
             )
 
-            title_id = self.save_manager.save_title(
+            title_id, was_restored = self.save_manager.save_title(
                 provider_code=provider_code,
                 external_id=external_id,
                 title_fields=title_fields,
@@ -215,7 +215,7 @@ class ProcessManager:
             genres_json = title_fields['title_genres']
             decoded_genres = json.loads(genres_json)
             self.logger.debug(f"GENRES: {title_id}:{decoded_genres}")
-            self.save_manager.save_genre(title_id, decoded_genres)
+            self.save_manager.save_genre(title_id, decoded_genres, replace=was_restored)
 
             team_data = {
                 'voice': title_fields['team_voice'],

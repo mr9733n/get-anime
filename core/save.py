@@ -5,8 +5,8 @@ import re
 import uuid
 import ast
 
-from typing import Optional
-from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists
+from typing import Optional, Any
+from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists, Column
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker, aliased
 from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
@@ -342,13 +342,14 @@ class SaveManager:
             .replace("-", "_")
         )
 
-    def save_title(self, provider_code: str, external_id: int | str, title_fields: dict) -> int:
+    def save_title(self, provider_code: str, external_id: int | str, title_fields: dict) -> tuple[Any, bool]:
         """
         Сохраняет тайтл и связь (provider, external_id -> title_id).
         Возвращает внутренний title_id.
         """
         with self.Session as session:
             try:
+                was_restored = False
                 if 'updated' in title_fields:
                     title_fields['updated'] = datetime.fromtimestamp(title_fields['updated'], tz=timezone.utc)
                 if 'last_change' in title_fields:
@@ -372,13 +373,23 @@ class SaveManager:
                     )
                     .one_or_none()
                 )
+
                 if link is not None:
                     title = link.title
+                    was_deleted = bool(getattr(title, "is_deleted", False))
                     is_updated = False
+
+                    if was_deleted:
+                        title.is_deleted = False
+                        title.deleted_at = None
+                        is_updated = True
+                        was_restored = True
+
                     for key, value in title_fields.items():
                         if hasattr(title, key) and getattr(title, key) != value:
                             setattr(title, key, value)
                             is_updated = True
+
                     if is_updated:
                         session.commit()
                         self.logger.debug(f"Updated title_id: {title.title_id} for {provider_code}:{external_id}")
@@ -394,7 +405,7 @@ class SaveManager:
                     session.add(link)
                     session.commit()
                     self.logger.debug(f"Created title_id: {title.title_id} for {provider_code}:{external_id}")
-                return title.title_id
+                return title.title_id, was_restored
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"Error saving title with mapping: {e}")
@@ -462,28 +473,47 @@ class SaveManager:
                 self.logger.error(f"Ошибка при сохранении франшизы в базе данных: {e}")
                 return False
 
-    def save_genre(self, title_id, genres):
+    def save_genre(self, title_id, genres, *, replace: bool = False):
         with self.Session as session:
             try:
-                for genre in genres:
-                    existing_genre = session.query(Genre).filter_by(name=genre).first()
-                    if not existing_genre:
-                        new_genre = Genre(name=genre, last_updated=datetime.now(timezone.utc))
-                        session.add(new_genre)
-                        session.commit()
-                        genre_id = new_genre.genre_id
-                    else:
-                        genre_id = existing_genre.genre_id
-                    existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
-                                                                                    genre_id=genre_id).first()
-                    if not existing_relation:
-                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.now(timezone.utc))
-                        session.add(new_relation)
+                if replace:
+                    session.query(TitleGenreRelation) \
+                        .filter(TitleGenreRelation.title_id == title_id) \
+                        .delete(synchronize_session=False)
+
+                for genre_data in genres:
+                    name = genre_data.get("name")
+                    if not name:
+                        continue
+
+                    genre = (
+                        session.query(Genre)
+                        .filter(Genre.name == name)
+                        .one_or_none()
+                    )
+                    if genre is None:
+                        genre = Genre(name=name)
+                        session.add(genre)
+                        session.flush()
+
+                    relation = (
+                        session.query(TitleGenreRelation)
+                        .filter_by(title_id=title_id, genre_id=genre.genre_id)
+                        .one_or_none()
+                    )
+                    if relation is None:
+                        session.add(
+                            TitleGenreRelation(
+                                title_id=title_id,
+                                genre_id=genre.genre_id
+                            )
+                        )
+
                 session.commit()
-                self.logger.debug(f"Successfully saved genres for title_id: {title_id}")
-            except Exception as e:
+
+            except Exception:
                 session.rollback()
-                self.logger.error(f"Ошибка при сохранении жанров для title_id {title_id}: {e}")
+                raise
 
     def save_team_members(self, title_id, team_data):
         with self.Session as session:

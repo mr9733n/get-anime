@@ -272,8 +272,56 @@ class DatabaseManager:
     def get_player_host_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_player_host_by_title_id(title_id)
 
-    def delete_titles(self, title_ids_input) -> dict:
-        return self.delete_manager.delete_titles(title_ids_input)
-
     def process_animedia_titles(self, data):
         return self.process_manager.process_animedia_titles(data)
+
+    def get_deleted_titles(self, batch_size=None, offset=0):
+        return self.get_manager.get_deleted_titles(batch_size=batch_size, offset=offset)
+
+    def get_deleted_titles_log(self, limit: int = 300, offset: int = 0):
+        return self.get_manager.get_deleted_titles_log(limit=limit, offset=offset)
+
+    def get_deleted_titles_log_item(self, log_id: int):
+        return self.get_manager.get_deleted_titles_log_item(log_id)
+
+    def soft_delete_titles(self, title_ids_input) -> dict:
+        return self.delete_manager.soft_delete_titles(title_ids_input)
+
+    def purge_titles(self, title_ids_input):
+        return self.delete_manager.delete_titles(title_ids_input)
+
+    def optimize_db(self) -> dict:
+        """VACUUM + ANALYZE для SQLite. Возвращает статистику."""
+        result = {"status": "ok", "size_before": 0, "size_after": 0}
+
+        try:
+            db_path = self.engine.url.database
+
+            if db_path and os.path.exists(db_path):
+                result["size_before"] = os.path.getsize(db_path)
+
+            with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                conn.exec_driver_sql("VACUUM")
+                conn.exec_driver_sql("ANALYZE")
+
+            if db_path and os.path.exists(db_path):
+                result["size_after"] = os.path.getsize(db_path)
+
+            saved = result["size_before"] - result["size_after"]
+            self.logger.info(f"Database optimized. Saved {saved} bytes")
+
+        except Exception as e:
+            self.logger.error(f"Error optimizing database: {e}")
+            result["status"] = "error"
+            result["error"] = str(e)
+
+        return result
+
+    def restore_titles(self, title_ids):
+        with self.Session as session:
+            titles = session.query(Title).filter(Title.title_id.in_(title_ids)).all()
+            for t in titles:
+                t.is_deleted = False
+                t.deleted_at = None
+            session.commit()
+

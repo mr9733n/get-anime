@@ -7,7 +7,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-# Модели для таблиц
 class Title(Base):
     __tablename__ = 'titles'
     title_id = Column(Integer, primary_key=True)
@@ -30,9 +29,9 @@ class Title(Base):
     type_episodes = Column(Integer)
     type_length = Column(String)
     title_genres = Column(String)
-    team_voice = Column(String)  # Сохраняется как строка в формате JSON
-    team_translator = Column(String)  # Сохраняется как строка в формате JSON
-    team_timing = Column(String)  # Сохраняется как строка в формате JSON
+    team_voice = Column(String)  # JSON
+    team_translator = Column(String)  # JSON
+    team_timing = Column(String)  # JSON
     season_key = Column(String)
     season_string = Column(String)
     season_code = Column(Integer)
@@ -42,10 +41,12 @@ class Title(Base):
     in_favorites = Column(Integer)
     blocked_copyrights = Column(Boolean)
     blocked_geoip = Column(Boolean)
-    blocked_geoip_list = Column(String)  # Сохраняется как строка в формате JSON
+    blocked_geoip_list = Column(String)  # JSON
     host_for_player = Column(String)
     alternative_player = Column(String)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     franchises = relationship("FranchiseRelease",back_populates="title",cascade="all, delete-orphan",)
     genres = relationship("TitleGenreRelation",back_populates="title",cascade="all, delete-orphan",)
@@ -106,7 +107,7 @@ class Schedule(Base):
 class History(Base):
     __tablename__ = 'history'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)  # Предполагается, что `user_id` будет использоваться для идентификации пользователя
+    user_id = Column(Integer, nullable=False)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
     episode_id = Column(Integer, ForeignKey('episodes.episode_id'), nullable=True)
     torrent_id = Column(Integer, ForeignKey('torrents.torrent_id'), nullable=True)
@@ -136,7 +137,6 @@ class Rating(Base):
 
     title = relationship("Title", back_populates="ratings")
 
-# Таблица связей между Title и Franchise
 class FranchiseRelease(Base):
     __tablename__ = 'franchise_releases'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -159,8 +159,8 @@ class Franchise(Base):
     __tablename__ = 'franchises'
     id = Column(Integer, primary_key=True, autoincrement=True)
     title_id = Column(Integer, ForeignKey('titles.title_id'), nullable=False)
-    franchise_id = Column(String, nullable=False)  # Добавим идентификатор франшизы как отдельное поле
-    franchise_name = Column(String, nullable=False)  # Название франшизы
+    franchise_id = Column(String, nullable=False)
+    franchise_name = Column(String, nullable=False)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     releases = relationship("FranchiseRelease", back_populates="franchise", cascade="all, delete-orphan")
@@ -173,7 +173,6 @@ class Genre(Base):
 
     titles = relationship("TitleGenreRelation", back_populates="genre")
 
-# Таблица связей между Title и Genre
 class TitleGenreRelation(Base):
     __tablename__ = 'title_genre_relation'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -187,8 +186,8 @@ class TitleGenreRelation(Base):
 class TeamMember(Base):
     __tablename__ = 'team_members'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)  # Имя участника команды
-    role = Column(String, nullable=False)  # Роль участника: voice, translator, timing
+    name = Column(String, nullable=False)
+    role = Column(String, nullable=False)
     last_updated = Column(DateTime, default=datetime.now(timezone.utc))
 
     titles = relationship("TitleTeamRelation", back_populates="team_member")
@@ -287,3 +286,20 @@ class AppState(Base):
     key = Column(String, primary_key=True)
     value = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+class DeletedTitleLog(Base):
+    """
+    Audit log: что именно было удалено (snapshot) + когда.
+    Хранит слепок ДО каскадного удаления.
+    """
+    __tablename__ = "deleted_titles_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title_id = Column(Integer, nullable=False, index=True)
+    title_name_ru = Column(String, nullable=True)
+    title_code = Column(String, nullable=True)
+
+    deleted_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    reason = Column(Text, nullable=True)
+    snapshot_json = Column(Text, nullable=False)
+    counts_json = Column(Text, nullable=True)

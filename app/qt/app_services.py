@@ -85,10 +85,15 @@ class AppStateService:
     def _save_state_to_db(self, app_state: dict) -> bool:
         """Сохраняет состояние в базу данных."""
         try:
-            state_items = [
-                (key, json.dumps(value, ensure_ascii=False) if value is not None else None)
-                for key, value in app_state.items()
-            ]
+            def encode(v):
+                if v is None:
+                    return None
+                # строки пишем как есть, сложные типы — JSON
+                if isinstance(v, str):
+                    return v
+                return json.dumps(v, ensure_ascii=False)
+
+            state_items = [(k, encode(v)) for k, v in app_state.items()]
             self.db_manager.state_manager.save_app_state(state_items)
             return True
         except Exception as e:
@@ -100,10 +105,22 @@ class AppStateService:
         try:
             state = self.db_manager.state_manager.load_app_state()
 
-            # Конвертируем строки "null" в None
-            for key, value in state.items():
-                if isinstance(value, str) and value.lower() == "null":
-                    state[key] = None
+            for key, value in list(state.items()):
+                if value is None:
+                    continue
+
+                if isinstance(value, str):
+                    # совместимость со старым "null"
+                    if value.lower() == "null":
+                        state[key] = None
+                        continue
+
+                    # пытаемся распарсить JSON (списки/словари/числа/и строку типа "system")
+                    try:
+                        state[key] = json.loads(value)
+                    except Exception:
+                        # не JSON — оставляем как есть
+                        state[key] = value
 
             return state
         except Exception as e:

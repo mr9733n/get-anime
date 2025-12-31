@@ -1,8 +1,15 @@
 # ui_s_generator.py
 import logging
-from PyQt5.QtWidgets import QTextBrowser, QVBoxLayout, QWidget, QLineEdit, QPushButton, QHBoxLayout, QComboBox
+from PyQt5.QtWidgets import (
+    QTextBrowser, QVBoxLayout, QWidget, QLineEdit,
+    QPushButton, QHBoxLayout, QComboBox, QMessageBox, QListWidget, QLabel, QInputDialog
+)
 
-from utils.runtime.runtime_manager import restart_application, LogWindow
+from utils.runtime.runtime_manager import restart_application
+from utils.runtime.settings_window import SettingsWindow
+from utils.runtime.audit_window import AuditLogWindow
+from utils.runtime.deleted_window import DeletedWindow
+from utils.runtime.log_window import LogWindow
 
 
 LINE_EDIT_STYLE = """
@@ -15,7 +22,7 @@ LINE_EDIT_STYLE = """
         color: #000;
     }
     QLineEdit:focus {
-        border: 1px solid #0078d4;  /* синий цвет при фокусе */
+        border: 1px solid #0078d4;
     }
 """
 BUTTON_STYLE = """
@@ -55,11 +62,6 @@ COMBOBOX_STYLE = """
         width: 20px;
         background: #e0e0e0;
     }
-    QComboBox::down-arrow {
-        image: url(down_arrow.png); /* Можно заменить на иконку, если нужно */
-        width: 16px;
-        height: 16px;
-    }
 """
 
 
@@ -69,6 +71,8 @@ class UISGenerator:
         self.app = app
         self.db_manager = db_manager
         self.current_template = getattr(self.app, "current_template", "default")
+
+        # UI elements
         self.template_apply_button = None
         self.template_selector = None
         self.log_window = None
@@ -78,6 +82,13 @@ class UISGenerator:
         self.studio_input = None
         self.delete_title_input = None
         self.delete_title_button = None
+        self.settings_window = None
+        self.settings_button = None
+        self.optimize_button = None
+        self.trash_button = None
+        self.trash_window = None
+        self.audit_button = None
+        self.audit_window = None
 
     def create_line_edit(self, placeholder_text, parent, max_width=150):
         """Создает QLineEdit с предустановленным стилем."""
@@ -195,14 +206,14 @@ class UISGenerator:
 
             system_browser.setHtml(self._generate_statistics_html(statistics, template))
             container_layout.addWidget(system_browser)
-            bottom_layout = QHBoxLayout()
 
+            bottom_layout = QHBoxLayout()
             self.template_selector = self.create_template_selector(container_widget)
             self.template_apply_button = self.create_button("APPLY", container_widget, self.switch_template, max_width=100)
-
             self.studio_input = self.create_line_edit("STUDIO NAME", container_widget, max_width=180)
             self.title_ids_input = self.create_line_edit("TITLE ID", container_widget, max_width=120)
             self.add_studio_button = self.create_button("ADD", container_widget, self.add_studio_to_db, max_width=100)
+            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
 
             # TODO: Disabled for a while
             bottom_layout.addStretch()
@@ -211,21 +222,25 @@ class UISGenerator:
             bottom_layout.addWidget(self.studio_input)
             bottom_layout.addWidget(self.title_ids_input)
             bottom_layout.addWidget(self.add_studio_button)
+            bottom_layout.addWidget(self.log_button)
             bottom_layout.addStretch()
 
             bottom_layout2 = QHBoxLayout()
-            self.delete_title_input = self.create_line_edit(
-                "DELETE TITLE IDs (comma-separated)", container_widget, max_width=260
-            )
-            self.delete_title_button = self.create_button(
-                "DELETE", container_widget, self.delete_titles_from_db, max_width=100
-            )
-            self.log_button = self.create_button("SHOW LOGS", container_widget, self.show_log_window, max_width=130)
+            self.delete_title_input = self.create_line_edit("DELETE TITLE IDs (comma-separated)", container_widget, max_width=200)
+            self.delete_title_button = self.create_button("DELETE", container_widget, self.delete_titles_from_db, max_width=100)
+            self.trash_button = self.create_button("DELETED", container_widget, self.show_trash_window, max_width=100)
+            self.optimize_button = self.create_button("OPTIMIZE DB", container_widget, self.optimize_database, 130)
+            self.settings_button = self.create_button("SETTINGS", container_widget, self.show_settings_window, 110)
+            self.audit_button = self.create_button("AUDIT", container_widget, self.show_audit_window, max_width=100)
+
 
             bottom_layout2.addStretch()
             bottom_layout2.addWidget(self.delete_title_input)
             bottom_layout2.addWidget(self.delete_title_button)
-            bottom_layout2.addWidget(self.log_button)
+            bottom_layout2.addWidget(self.trash_button)
+            bottom_layout2.addWidget(self.audit_button)
+            bottom_layout2.addWidget(self.optimize_button)
+            bottom_layout2.addWidget(self.settings_button)
             bottom_layout2.addStretch()
 
             container_layout.addLayout(bottom_layout)
@@ -247,6 +262,54 @@ class UISGenerator:
             self.log_window.close()
             self.log_window = None
             self.log_button.setText("SHOW LOGS")
+
+    def show_settings_window(self):
+        """Открывает окно настроек."""
+        if self.settings_window is None or not self.settings_window.isVisible():
+            self.settings_window = SettingsWindow(
+                config_manager=self.app.config_manager,
+                config_file=self.app.config_manager.config_file,
+                db_manager=self.db_manager,
+                theme=self.current_template,
+                on_close=lambda: self.settings_button.setText("SETTINGS"),
+                on_settings_changed=self._on_settings_saved,
+            )
+            self.settings_window.show()
+            self.settings_button.setText("HIDE")
+        else:
+            self.settings_window.close()
+            self.settings_window = None
+            self.settings_button.setText("SETTINGS")
+
+    def show_audit_window(self):
+        if getattr(self, "audit_window", None) is not None and self.audit_window.isVisible():
+            self.audit_window.close()
+            self.audit_window = None
+            return
+
+        self.audit_window = AuditLogWindow(
+            db_manager=self.db_manager,
+            button_style=BUTTON_STYLE,
+            line_edit_style=LINE_EDIT_STYLE,
+            theme=self.current_template,
+        )
+
+        self.audit_window.show()
+
+    def show_trash_window(self):
+        if self.trash_window is not None and self.trash_window.isVisible():
+            self.trash_window.close()
+            self.trash_window = None
+            return
+
+        self.trash_window = DeletedWindow(
+            db_manager=self.db_manager,
+            button_style=BUTTON_STYLE,
+            line_edit_style=LINE_EDIT_STYLE,
+            theme=self.current_template,
+        )
+
+        self.trash_window.show()
 
     def add_studio_to_db(self):
         """Функция для добавления новой студии в базу данных."""
@@ -272,6 +335,73 @@ class UISGenerator:
 
         except Exception as e:
             self.logger.error(f"Ошибка при добавлении студии в базу данных: {e}")
+
+    def delete_titles_from_db(self):
+        """Удаление одного или нескольких тайтлов по списку title_id через запятую."""
+        title_ids_str = self.delete_title_input.text().strip()
+
+        try:
+            if not title_ids_str:
+                self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
+                return
+
+            if not hasattr(self.db_manager, "soft_delete_titles"):
+                self.logger.error("db_manager.soft_delete_titles не реализован.")
+                return
+
+            reply = QMessageBox.question(
+                self.app,
+                "Confirm move to trash",
+                f"Переместить в корзину: {title_ids_str}?\n\nЭто НЕ удалит данные физически.\nВосстановление возможно.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                self.logger.info("Удаление отменено пользователем.")
+                return
+
+            result = self.db_manager.soft_delete_titles(title_ids_str)
+            deleted = result.get("deleted", [])
+            not_found = result.get("not_found", [])
+
+            if deleted:
+                self.logger.info(f"Удалены тайтлы: {deleted}")
+            if not_found:
+                self.logger.warning(f"Тайтлы не найдены в БД и не были удалены: {not_found}")
+
+            self.delete_title_input.clear()
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при удалении тайтлов: {e}")
+
+    def optimize_database(self):
+        """Оптимизирует БД напрямую."""
+        try:
+            result = self.db_manager.optimize_db()
+            if result["status"] == "ok":
+                saved_kb = (result["size_before"] - result["size_after"]) / 1024
+                msg = f"Optimized! Saved {saved_kb:.1f}KB"
+                self.logger.info(f"Database optimized, saved {saved_kb:.1f}KB")
+                if hasattr(self.app, "show_error_notification"):
+                    self.app.show_error_notification("Database optimized", msg)
+
+            else:
+                self.logger.error(f"Optimize failed: {result.get('error')}")
+        except Exception as e:
+            self.logger.error(f"Failed to optimize database: {e}")
+
+    def _on_settings_saved(self):
+        """Callback после сохранения настроек — перезапуск."""
+        self.logger.info("Settings saved. Saving state + restarting...")
+
+        try:
+            # сохранить текущий state через сервисы (новая архитектура)
+            if hasattr(self.app, "svc") and self.app.svc:
+                self.app.svc.save_state(self.app.get_current_state())
+        except Exception as e:
+            self.logger.error(f"Failed to save state before restart: {e}")
+
+        restart_application()
 
     def _handle_found_titles(self, title_ids, studio_name):
         """Обработка сохранения студий для одного или нескольких title_ids."""
@@ -344,31 +474,3 @@ class UISGenerator:
              </div>
          </div>
          '''
-
-    def delete_titles_from_db(self):
-        """Удаление одного или нескольких тайтлов по списку title_id через запятую."""
-        title_ids_str = self.delete_title_input.text().strip()
-
-        try:
-            if not title_ids_str:
-                self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
-                return
-
-            if not hasattr(self.db_manager, "delete_titles"):
-                self.logger.error("db_manager.delete_titles не реализован.")
-                return
-
-            result = self.db_manager.delete_titles(title_ids_str)
-
-            deleted = result.get("deleted", [])
-            not_found = result.get("not_found", [])
-
-            if deleted:
-                self.logger.info(f"Удалены тайтлы: {deleted}")
-            if not_found:
-                self.logger.warning(f"Тайтлы не найдены в БД и не были удалены: {not_found}")
-
-            self.delete_title_input.clear()
-
-        except Exception as e:
-            self.logger.error(f"Ошибка при удалении тайтлов: {e}")

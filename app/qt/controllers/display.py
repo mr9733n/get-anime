@@ -371,6 +371,9 @@ class DisplayController:
     def navigate_pagination(self, go_forward: bool = True) -> None:
         """Навигация по страницам текущих результатов."""
         try:
+            self.ui.show_loader("Loading titles...")
+            self.ui.set_buttons_enabled(False)
+
             show_mode = self.ctx.current_show_mode or "default"
             batch_size = 12
 
@@ -393,6 +396,9 @@ class DisplayController:
 
         except Exception as e:
             self.log.error(f"Ошибка при навигации: {e}")
+        finally:
+            self.ui.hide_loader()
+            self.ui.set_buttons_enabled(True)
 
     def setup_pagination_ui(
             self,

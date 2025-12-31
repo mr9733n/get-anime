@@ -125,6 +125,7 @@ class TitleDataFactory:
             self.logger.error(f"Error in get_titles: {str(e)}")
             return []
 
+
 class TitleHtmlFactory:
     def __init__(self, app, template_name):
         self.logger = logging.getLogger(__name__)

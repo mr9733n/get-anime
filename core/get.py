@@ -622,6 +622,7 @@ class GetManager:
                     joinedload(Title.provider_links)
                     .joinedload(TitleProviderMap.provider)
                 )
+                base_query= base_query.filter(Title.is_deleted == False)
 
                 if all(kw.isdigit() for kw in keywords):
                     # Ищем по ВНУТРЕННИМ title_id

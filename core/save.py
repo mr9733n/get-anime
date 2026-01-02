@@ -384,6 +384,7 @@ class SaveManager:
                         title.deleted_at = None
                         is_updated = True
                         was_restored = True
+                        self.logger.debug(f"Restored title_id: {title.title_id} for {provider_code}:{external_id}")
 
                     for key, value in title_fields.items():
                         if hasattr(title, key) and getattr(title, key) != value:
@@ -473,7 +474,7 @@ class SaveManager:
                 self.logger.error(f"Ошибка при сохранении франшизы в базе данных: {e}")
                 return False
 
-    def save_genre(self, title_id, genres, *, replace: bool = False):
+    def save_genre(self, title_id, genres, replace):
         with self.Session as session:
             try:
                 if replace:
@@ -481,33 +482,20 @@ class SaveManager:
                         .filter(TitleGenreRelation.title_id == title_id) \
                         .delete(synchronize_session=False)
 
-                for genre_data in genres:
-                    name = genre_data.get("name")
-                    if not name:
-                        continue
-
-                    genre = (
-                        session.query(Genre)
-                        .filter(Genre.name == name)
-                        .one_or_none()
-                    )
-                    if genre is None:
-                        genre = Genre(name=name)
-                        session.add(genre)
-                        session.flush()
-
-                    relation = (
-                        session.query(TitleGenreRelation)
-                        .filter_by(title_id=title_id, genre_id=genre.genre_id)
-                        .one_or_none()
-                    )
-                    if relation is None:
-                        session.add(
-                            TitleGenreRelation(
-                                title_id=title_id,
-                                genre_id=genre.genre_id
-                            )
-                        )
+                for genre in genres:
+                    existing_genre = session.query(Genre).filter_by(name=genre).first()
+                    if not existing_genre:
+                        new_genre = Genre(name=genre, last_updated=datetime.now(timezone.utc))
+                        session.add(new_genre)
+                        session.commit()
+                        genre_id = new_genre.genre_id
+                    else:
+                        genre_id = existing_genre.genre_id
+                    existing_relation = session.query(TitleGenreRelation).filter_by(title_id=title_id,
+                                                                                    genre_id=genre_id).first()
+                    if not existing_relation:
+                        new_relation = TitleGenreRelation(title_id=title_id, genre_id=genre_id, last_updated=datetime.now(timezone.utc))
+                        session.add(new_relation)
 
                 session.commit()
 

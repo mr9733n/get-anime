@@ -63,7 +63,7 @@ backup_database(source_db, backup_folder)
 
 # Создание временного конфига
 config_path = os.path.join(PROJECT_DIR, "config", "config.ini")
-build_config_path = create_temp_config(config_path, {"USE_GIT_VERSION": "0"})
+build_config_path = create_temp_config(config_path, {"use_git_version": "0"})
 
 # Компиляция Python файлов
 compile_directories(['app', 'core', 'utils', 'templates', 'providers'])

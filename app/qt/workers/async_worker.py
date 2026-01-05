@@ -1,7 +1,6 @@
 # app/qt/workers/async_worker.py
 """
 Универсальный Qt worker для запуска корутин.
-Перенесён из providers/animedia/v0/ для правильного разделения слоёв.
 """
 import asyncio
 import logging
@@ -45,7 +44,7 @@ class AsyncWorker(QThread):
         """
         loop = None
         try:
-            self.logger.info("Animedia async worker started…")
+            self.logger.info("AsyncWorker started...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
@@ -53,14 +52,13 @@ class AsyncWorker(QThread):
             result = loop.run_until_complete(coro)
 
             self.logger.info(
-                f"Animedia async worker finished – got {len(result) if hasattr(result, '__len__') else 'a'} items"
+                f"AsyncWorker finished – got {len(result) if hasattr(result, '__len__') else 'a'} items"
             )
             self.finished.emit(result)
 
         except Exception as exc:
-            self.logger.error(f"Animedia async worker error: {exc}", exc_info=True)
+            self.logger.error(f"AsyncWorker error: {exc}", exc_info=True)
             self.error.emit(str(exc))
-
         finally:
             if loop is not None:
                 loop.close()

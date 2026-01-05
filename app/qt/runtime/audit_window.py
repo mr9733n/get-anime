@@ -72,14 +72,21 @@ class AuditLogWindow(QWidget):
         rows = self.db_manager.get_deleted_titles_log(limit=limit, offset=0)
 
         for r in rows:
-            # храним log_id в тексте через префикс "id="
-            # формат: id=123 | title_id=456 | name | date | counts
-            counts = getattr(r, "counts_json", None) or "{}"
-            date = getattr(r, "deleted_at", None)
-            name = getattr(r, "title_name_ru", None) or ""
-            title_id = getattr(r, "title_id", None)
+            if isinstance(r, dict):
+                log_id = r.get("id")
+                title_id = r.get("title_id")
+                name = r.get("title_name_ru") or ""
+                date = r.get("deleted_at")
+                counts = r.get("counts_json") or "{}"
+            else:
+                log_id = getattr(r, "id", None)
+                title_id = getattr(r, "title_id", None)
+                name = getattr(r, "title_name_ru", None) or ""
+                date = getattr(r, "deleted_at", None)
+                counts = getattr(r, "counts_json", None) or "{}"
+
             self.list_widget.addItem(
-                f"id={r.id} | title_id={title_id} | {name} | deleted_at={date} | counts={counts}"
+                f"id={log_id} | title_id={title_id} | {name} | deleted_at={date} | counts={counts}"
             )
 
     def _selected_log_id(self):
@@ -129,15 +136,28 @@ class AuditLogWindow(QWidget):
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {bg};
+                color: #111;               /* <-- базовый цвет текста */
+            }}
+            QLabel {{
+                color: #111;
             }}
             QListWidget {{
                 background: rgba(255,255,255,0.95);
+                color: #111;               /* <-- текст списка */
                 border: 1px solid #dcdcdc;
                 border-radius: 8px;
                 font-size: 12px;
             }}
+            QListWidget::item {{
+                color: #111;               /* <-- текст item */
+                padding: 2px 4px;
+            }}
+            QListWidget::item:selected {{
+                background: rgba(0, 120, 215, 0.25);
+            }}
             QTextBrowser {{
                 background: rgba(255,255,255,0.95);
+                color: #111;               /* <-- текст JSON */
                 border: 1px solid #dcdcdc;
                 border-radius: 8px;
                 font-family: Consolas, monospace;

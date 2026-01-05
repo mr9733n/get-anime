@@ -4,6 +4,8 @@ import time
 import queue
 import logging
 import hashlib
+from collections import deque
+
 import requests
 import threading
 
@@ -17,7 +19,7 @@ MAX_IMAGE_SIZE_KB = 5000
 class PosterManager:
     def __init__(self, save_callback=None, net_client=None):
         self.logger = logging.getLogger(__name__)
-        self.poster_links = []
+        self.poster_links = deque()
         self.save_callback = save_callback
         self.net_client = net_client
         self.save_queue = queue.Queue()
@@ -25,18 +27,21 @@ class PosterManager:
         self._download_thread = None
         self._thread_complete_event = threading.Event()
         self._thread_complete_event.set()
+        self._stop_event = threading.Event()
+        self._bad_links = set()  # (title_id, size_key, link) или просто link
+        self._lock = threading.Lock()
 
     def write_poster_links(self, links):
         """
         links: Iterable[tuple[int, str, PosterSize]]
         """
-        existing_keys = {(tid, sk) for (tid, _, sk) in self.poster_links}
-
-        for title_id, link, size_key in links:
-            key = (title_id, size_key)
-            if key not in existing_keys:
-                self.poster_links.append((title_id, link, size_key))
-                existing_keys.add(key)
+        with self._lock:
+            existing_keys = {(tid, sk) for (tid, _, sk) in self.poster_links}
+            for title_id, link, size_key in links:
+                key = (title_id, size_key)
+                if key not in existing_keys:
+                    self.poster_links.append((title_id, link, size_key))
+                    existing_keys.add(key)
                 self.logger.debug(f"Added poster link for title_id={title_id}, size_key={size_key}: {link[-41:]}")
 
         self.start_background_download()
@@ -49,7 +54,10 @@ class PosterManager:
             self.logger.info("[!] Starting poster download thread")
             self._download_thread = threading.Thread(
                 target=self.download_posters_in_background,
+                name="PosterDownloadThread",
+                daemon=True,
             )
+
             self._download_thread.start()
 
     def _process_save_queue(self):
@@ -91,20 +99,45 @@ class PosterManager:
         if self._thread_complete_event.is_set():
             self.logger.info("[!] Starting poster save thread")
             self._thread_complete_event.clear()
-            self._save_thread = threading.Thread(target=self._process_save_queue)
+            self._save_thread = threading.Thread(
+                target=self._process_save_queue,
+                name="PosterSaveThread",
+                daemon=True,
+            )
+
             self._save_thread.start()
             return True
         return False
+
+    def stop(self, join_timeout: float = 2.0) -> None:
+        self.logger.info("[!] PosterManager stopping...")
+        self._stop_event.set()
+
+        try:
+            if self._download_thread and self._download_thread.is_alive():
+                self._download_thread.join(timeout=join_timeout)
+            if self._save_thread and self._save_thread.is_alive():
+                self._save_thread.join(timeout=join_timeout)
+        except Exception as e:
+            self.logger.warning(f"PosterManager stop join error: {e}")
 
     def download_posters_in_background(self):
         """
         Download posters asynchronously and store them in memory.
         """
         items_queued = False
-        while self.poster_links:
-            title_id, link, size_key = self.poster_links.pop(0)
+        while self.poster_links and not self._stop_event.is_set():
+            with self._lock:
+                if not self.poster_links:
+                    break
+                title_id, link, size_key = self.poster_links.popleft()
+
+            bad_key = (title_id, size_key, link)
+            if bad_key in self._bad_links:
+                continue
+
             retries = 0
-            while retries < MAX_RETRIES:
+            while retries < MAX_RETRIES and not self._stop_event.is_set():
                 try:
                     headers = {
                         'User-Agent': (
@@ -188,6 +221,9 @@ class PosterManager:
                     self.logger.error(
                         f"Failed to identify and process the image data from: {link}: {img_err}"
                     )
+                    if retries >= 1:
+                        self._bad_links.add(bad_key)
+                        break
                 except Exception as e:
                     retries += 1
                     self.logger.error(
@@ -196,7 +232,8 @@ class PosterManager:
 
                 if retries < MAX_RETRIES:
                     self.logger.info(f"Retrying in {RETRY_DELAY} seconds...")
-                    time.sleep(RETRY_DELAY)
+                    if self._stop_event.wait(RETRY_DELAY):
+                         break
                 else:
                     self.logger.error(
                         "Maximum number of retries reached. Unable to download posters "

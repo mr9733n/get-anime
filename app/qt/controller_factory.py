@@ -16,6 +16,9 @@ from app.qt.controllers.torrents import TorrentController, TorrentControllerDeps
 from app.qt.controllers.players import PlayerController, PlayerControllerDeps
 from app.qt.controllers.callback import CallbackController, CallbackControllerDeps
 from app.qt.controllers.bootstrap import BootstrapController, BootstrapControllerDeps
+from app.core.use_cases.title_search_use_case import TitleSearchUseCase
+from app.qt.app_constants import PROVIDER_ANILIBERTY, PROVIDER_ANIMEDIA
+from app.qt.ui_notify import Notifier
 
 if TYPE_CHECKING:
     from PyQt6.QtWidgets import QWidget
@@ -186,6 +189,16 @@ class ControllerFactory:
         )
 
         # === Phase 5: Actions ===
+        notifier = Notifier(self._parent_widget)
+
+        title_search_use_case = TitleSearchUseCase(
+            db=self._svc.db,
+            api=self._api_adapter,
+            persistence=self.persistence,
+            animedia_adapter=self._animedia_adapter,
+            provider_aniliberty=PROVIDER_ANILIBERTY,
+            provider_animedia=PROVIDER_ANIMEDIA,
+        )
 
         self.actions = ActionsController(
             ActionsControllerDeps(
@@ -197,6 +210,17 @@ class ControllerFactory:
                 persistence=self.persistence,
                 context=self._context,
                 animedia_adapter=self._animedia_adapter,
+                use_case=title_search_use_case,
+                on_show_title=lambda tid: self.display.display_info(tid),
+                on_show_titles=lambda tids: self.display.display_titles(tids),
+
+                on_notify_error=lambda t, m: notifier.error(t, m),
+                on_notify_warning=lambda t, m: notifier.warning(t, m),
+                on_notify_info=lambda t, m: notifier.info(t, m),
+                on_notify_success=lambda t, m: notifier.success(t, m),
+
+                on_refresh=lambda: self.display.refresh_display(),
+
             )
         )
 

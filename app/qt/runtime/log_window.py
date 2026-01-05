@@ -1,13 +1,9 @@
 # log_window.py
-import ctypes
-import sys
-import os
-import subprocess
 
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QRunnable, QThreadPool, QTimer, QFileSystemWatcher
+from PyQt6.QtCore import pyqtSignal, Qt, QThreadPool, QTimer, QFileSystemWatcher
 from PyQt6.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QLabel, QWidget
 
-from utils.runtime.runtime_manager import LogWorker
+from app.qt.runtime.runtime_manager import LogWorker
 
 
 class LogWindow(QWidget):

@@ -24,6 +24,7 @@ from app.qt.protocols import (
     IAniLibertyController,
     IDBManager,
 )
+from app.qt.ui_notify import Notifier
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -71,6 +72,8 @@ class DisplayController:
         # Transient UI elements
         self._error_label: QLabel | None = None
         self._tray_icon: QSystemTrayIcon | None = None
+
+        self._notifier = Notifier(self.parent)
 
     # === Lazy-loaded dependencies ===
 
@@ -157,30 +160,7 @@ class DisplayController:
     # === Public API: Error Notifications ===
 
     def show_error_notification(self, title: str, message: str) -> None:
-        """Показывает всплывающее уведомление об ошибке."""
-        self._error_label = QLabel(message, self.parent)
-        self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(255, 0, 0, 0.9);
-                color: white;
-                font-size: 14px;
-                padding: 6px;
-                border-radius: 4px;
-            }
-        """)
-        self._error_label.setAlignment(Qt.AlignmentFlag.AlignJustify)
-        self._error_label.setGeometry(50, 50, 500, 50)
-
-        self._tray_icon = QSystemTrayIcon(self.parent)
-        self._tray_icon.setIcon(self.parent.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
-
-        self._error_label.show()
-        self._tray_icon.show()
-
-        QTimer.singleShot(5000, self._error_label.hide)
-        QTimer.singleShot(5000, self._tray_icon.hide)
-        self._tray_icon.showMessage(title, message, QSystemTrayIcon.MessageIcon.Warning, 5000)
+        self._notifier.error(title, message)
 
     # === Public API: Display Methods ===
 

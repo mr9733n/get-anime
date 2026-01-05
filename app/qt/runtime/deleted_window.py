@@ -56,9 +56,17 @@ class DeletedWindow(QWidget):
             self.lst.addItem("db_manager.get_deleted_titles not implemented")
             return
 
-        titles = self.db_manager.get_deleted_titles(batch_size=300, offset=0)
+        titles = self.db_manager.get_deleted_titles(batch_size=300, offset=0) or []
+        if not titles:
+            self.lst.addItem("(empty) no deleted titles")
+            return
+
         for t in titles:
-            self.lst.addItem(f"{t.title_id} | {t.name_ru} | deleted_at={t.deleted_at}")
+            # поддержка dict и объектов
+            title_id = getattr(t, "title_id", None) if not isinstance(t, dict) else t.get("title_id")
+            name_ru = getattr(t, "name_ru", "") if not isinstance(t, dict) else t.get("name_ru", "")
+            deleted_at = getattr(t, "deleted_at", None) if not isinstance(t, dict) else t.get("deleted_at")
+            self.lst.addItem(f"{title_id} | {name_ru} | deleted_at={deleted_at}")
 
     def _parse_ids(self):
         ids_str = self.input_ids.text().strip()
@@ -76,10 +84,10 @@ class DeletedWindow(QWidget):
             self,
             "Confirm restore",
             f"Восстановить: {ids} ?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
 
         if not hasattr(self.db_manager, "restore_titles"):
@@ -135,11 +143,30 @@ class DeletedWindow(QWidget):
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {bg};
+                color: #111;
             }}
-            QListWidget {{
+            QLabel {{
+                color: #111;
+            }}
+            QLineEdit {{
+                color: #111;
                 background: rgba(255,255,255,0.95);
                 border: 1px solid #dcdcdc;
                 border-radius: 8px;
+                padding: 4px 6px;
+            }}
+            QListWidget {{
+                background: rgba(255,255,255,0.95);
+                color: #111;
+                border: 1px solid #dcdcdc;
+                border-radius: 8px;
                 font-size: 12px;
+            }}
+            QListWidget::item {{
+                color: #111;
+                padding: 2px 4px;
+            }}
+            QListWidget::item:selected {{
+                background: rgba(0, 120, 215, 0.25);
             }}
         """)

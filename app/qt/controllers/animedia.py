@@ -288,7 +288,7 @@ class AniMediaController:
             **kwargs,
     ) -> None:
         """Запускает асинхронный воркер."""
-        from providers.animedia.v0.qt_async_worker import AsyncWorker
+        from app.qt.workers import AsyncWorker
 
         self.ui.show_loader(loader_message)
         self.ui.set_buttons_enabled(False)

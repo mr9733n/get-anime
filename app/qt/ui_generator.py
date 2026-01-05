@@ -659,11 +659,11 @@ class UIGenerator:
         if shape == "square":
             ch = "ø" if active else "o"
         elif shape == "circle":
-            ch = "☑" if active else "✎"
+            ch = "☀" if active else "☼"
         elif shape == "diamond":
             ch = "◆" if active else "◇"
         else:
-            ch = "☀" if active else "☼"
+            ch = "☑" if active else "✎"
 
         return (
             f"<span style='"

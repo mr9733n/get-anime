@@ -1,4 +1,8 @@
-# providers/animedia/v0/qt_async_worker.py
+# app/qt/workers/async_worker.py
+"""
+Универсальный Qt worker для запуска корутин.
+Перенесён из providers/animedia/v0/ для правильного разделения слоёв.
+"""
 import asyncio
 import logging
 from typing import Callable, Any

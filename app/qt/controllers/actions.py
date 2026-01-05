@@ -13,7 +13,6 @@ from app.qt.protocols import (
     IUIManager,
     IAPIAdapter,
 )
-
 if TYPE_CHECKING:
     from logging import Logger
     from app.qt.app_context import AppContext
@@ -214,7 +213,7 @@ class ActionsController:
 
     def _update_via_animedia(self, tref: TitleRef) -> None:
         """Обновление через AniMedia (async)."""
-        from providers.animedia.v0.qt_async_worker import AsyncWorker
+        from app.qt.workers import AsyncWorker
 
         query_name = tref.name_en or tref.name_ru or str(tref.external_id or tref.title_id)
         self.log.info(f"Updating via AniMedia: query={query_name}")
@@ -290,7 +289,7 @@ class ActionsController:
 
     def _search_via_animedia(self, search_text: str) -> bool:
         """Асинхронный поиск через AniMedia."""
-        from providers.animedia.v0.qt_async_worker import AsyncWorker
+        from app.qt.workers import AsyncWorker
 
         try:
             self.log.info("...Try to load from Animedia (async)")

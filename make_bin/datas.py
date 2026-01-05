@@ -19,6 +19,7 @@ def get_main_app_datas(build_config_path: str) -> list[tuple[str, str]]:
     datas = [
         # Статические файлы
         (os.path.join(PROJECT_DIR, 'static', '*'), 'static'),
+        (os.path.join(PROJECT_DIR, 'qss', '*'), 'qss'),
         (os.path.join(PROJECT_DIR, 'templates'), 'templates'),
         (os.path.join(PROJECT_DIR, 'config', 'logging.conf'), 'config'),
         (os.path.join(PROJECT_DIR, 'db', '*'), 'db'),
@@ -112,7 +113,8 @@ def get_hookspath() -> list[str]:
     Возвращает пути к директориям с хуками PyInstaller.
     """
     return [
-        PROJECT_DIR,  # Где лежат hook-main.py, hook-sqlalchemy.py
+        # PROJECT_DIR,  # Где лежат hook-main.py, hook-sqlalchemy.py
+        os.path.join(PROJECT_DIR, 'make_bin', 'hooks'),
     ]
 
 

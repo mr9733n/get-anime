@@ -15,6 +15,9 @@ try:
         QLabel, QPushButton, QHBoxLayout, QFileDialog, QMessageBox
     )
     from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
+
     QT_VERSION = "PyQt6"
 except Exception:
     try:
@@ -25,6 +28,9 @@ except Exception:
             QLabel, QPushButton, QHBoxLayout, QFileDialog, QMessageBox
         )
         from PyQt5.QtWebEngineWidgets import QWebEngineView
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWebEngineWidgets import QWebEnginePage
+        from PyQt5.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings  # иногда так, зависит от сборки
         QT_VERSION = "PyQt5"
     except Exception as e:
         print(
@@ -75,6 +81,39 @@ def load_urls_from_file(path: str) -> list[str]:
     return urls
 
 
+class PermissivePage(QWebEnginePage):
+    def __init__(self, profile: QWebEngineProfile, parent=None):
+        super().__init__(profile, parent)
+
+    # Qt5: featurePermissionRequested(url, feature)
+    # Qt6: featurePermissionRequested(securityOrigin, feature)
+    def _grant(self, origin, feature):
+        try:
+            self.setFeaturePermission(origin, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
+        except Exception:
+            # Qt5 enum
+            self.setFeaturePermission(origin, feature, QWebEnginePage.PermissionGrantedByUser)
+
+    def on_feature_permission_requested(self, origin, feature):
+        # Даем то, что нужно плеерам чаще всего
+        allowed = {
+            getattr(QWebEnginePage.Feature, "MediaAudioCapture", None),
+            getattr(QWebEnginePage.Feature, "MediaVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "MediaAudioVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "DesktopVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "DesktopAudioVideoCapture", None),
+        }
+        if feature in allowed:
+            self._grant(origin, feature)
+        else:
+            # остальное можно оставлять по умолчанию/отклонять
+            pass
+
+    # Логи консоли — супер полезно: там будет NotAllowedError и т.п.
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        logger.info("JS[%s] %s (%s:%s)", level, message, sourceID, lineNumber)
+
+
 class BrowserWindow(QMainWindow):
     def __init__(self, urls: Iterable[str], *, show_list_tab: bool, initial_file: Optional[str] = None):
         super().__init__()
@@ -111,6 +150,45 @@ class BrowserWindow(QMainWindow):
             return
 
         view = QWebEngineView(self)
+
+        # профиль лучше один на все вкладки (cookie/ls/разрешения/настройки)
+        if not hasattr(self, "_profile"):
+            self._profile = QWebEngineProfile("mini_browser_profile", self)
+            # По желанию: постоянные куки/кеш
+            # self._profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+
+        page = PermissivePage(self._profile, view)
+        view.setPage(page)
+
+        # Фокус
+        view.setFocusPolicy(Qt.FocusPolicy.StrongFocus if QT_VERSION == "PyQt6" else Qt.StrongFocus)
+        view.setFocus()
+
+        # Разрешаем fullscreen (часто нужно для iframe player UI)
+        try:
+            page.fullScreenRequested.connect(
+                lambda req: (req.accept(), view.setWindowState(view.windowState() | Qt.WindowFullScreen)))
+        except Exception:
+            pass
+
+        # ВАЖНО: настройки, приближающие к “обычному браузеру”
+        s = page.settings()
+        # включаем то, что часто нужно именно UI плееров в iframe
+        try:
+            s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+        except Exception:
+            # Qt5 иногда атрибуты в другом enum — но смысл тот же
+            pass
+
+        # Подписка на permission requests
+        try:
+            page.featurePermissionRequested.connect(page.on_feature_permission_requested)
+        except Exception:
+            pass
+
         view.setUrl(QUrl(url))
 
         title = url if len(url) <= 70 else (url[:67] + "...")
@@ -331,16 +409,22 @@ def parse_args():
 
 
 def setup_proxy(proxy: Optional[str]):
-    if not proxy:
-        return
+    flags = []
 
-    p = proxy.strip()
-    if "://" not in p:
-        p = "socks5://" + p
+    if proxy:
+        p = proxy.strip()
+        if "://" not in p:
+            p = "socks5://" + p
+        flags.append(f"--proxy-server={p}")
 
-    proxy_flag = f"--proxy-server={p}"
-    existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (existing_flags + " " + proxy_flag).strip()
+    # ВАЖНО: автоплей/звук/жесты — помогает многим iframe-плеерам
+    flags += [
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
+    ]
+
+    existing = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (existing + " " + " ".join(flags)).strip()
 
 
 def main():

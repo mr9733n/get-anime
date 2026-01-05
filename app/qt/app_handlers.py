@@ -2,7 +2,7 @@
 import ast
 import base64
 from urllib.parse import urlparse, parse_qs, unquote
-from PyQt5.QtCore import QTimer
+from PyQt6.QtCore import QTimer
 from typing import Callable, Optional, Any
 
 from providers.animedia.v0.cache_manager import AniMediaCacheManager

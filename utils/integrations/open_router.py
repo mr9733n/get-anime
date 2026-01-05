@@ -77,10 +77,12 @@ class OpenRouter:
         """
         cmd = self.app.get_mini_browser_command()
 
-        if str(getattr(self.app, "proxy_enabled", "true")).lower() == "true": # TODO: hardcode allways enabled
+        # TODO: hardcode always enabled
         # if str(getattr(self.app, "proxy_enabled", "false")).lower() == "true":
-            proxy = str(getattr(self.app, "proxy_url", "")).strip()
-            if proxy:
-                cmd += ["--socks", proxy]
+            # proxy = str(getattr(self.app, "proxy_url", "")).strip()
+
+        proxy = str(getattr(self.app, "proxy_url", "")).strip()
+        if proxy:
+            cmd += ["--socks", proxy]
 
         return cmd

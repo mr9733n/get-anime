@@ -7,8 +7,8 @@ import logging
 import pathlib
 import importlib.resources as ir
 
-from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
-from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
+from PyQt6.QtWidgets import QWidget, QTextBrowser, QApplication
+from PyQt6.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
 from app.qt.app_context import AppContext
 from app.qt.app_services import AppServices
@@ -19,7 +19,7 @@ from app.qt.ui_generator import UIGenerator
 from app.qt.ui_am_generator import UIAMGenerator
 from app.qt.ui_s_generator import UISGenerator
 
-from static.layout_metadata import all_layout_metadata
+from app.qt.layout_metadata import all_layout_metadata
 
 from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
@@ -89,7 +89,7 @@ class AnimePlayerAppVer3(QWidget):
     def _init_styles(self) -> None:
         """Загружает стили (вызывается раньше всех UI методов)."""
         try:
-            qss_path = ir.files("static").joinpath("styles.qss")
+            qss_path = ir.files("qss").joinpath("styles.qss")
             self.ui_style = qss_path.read_text(encoding="utf-8")
         except Exception as e:
             self.ui_style = ""  # fallback

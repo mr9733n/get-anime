@@ -5,9 +5,9 @@ import logging
 import argparse
 from pathlib import Path
 
-from PyQt5.QtCore import QSharedMemory, QTimer
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QStyle
+from PyQt6.QtCore import QSharedMemory, QTimer
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QStyle
 
 from app.mpv.mpv_engine import MpvEngine
 from app.mpv.player_window import PlayerWindow
@@ -60,9 +60,9 @@ def main():
         message = "MPV player cannot be run without AnimePlayer application!"
         logging.getLogger().error(message)
         tray_icon = QSystemTrayIcon()
-        tray_icon.setIcon(app.style().standardIcon(QStyle.SP_MessageBoxWarning))
+        tray_icon.setIcon(app.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
         tray_icon.show()
-        tray_icon.showMessage("Error", message, QSystemTrayIcon.Warning, 5000)
+        tray_icon.showMessage("Error", message, QSystemTrayIcon.MessageIcon.Warning, 5000)
         QTimer.singleShot(500, lambda: sys.exit(1))
 
     sys.exit(app.exec())

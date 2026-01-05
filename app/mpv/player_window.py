@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 from urllib.parse import urlparse, urlunparse
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QSlider, QLineEdit, QLabel, QFrame,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QApplication
@@ -60,8 +60,8 @@ def fmt_ms(ms: int) -> str:
 
 class ClickSlider(QSlider):
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            if self.orientation() == Qt.Horizontal:
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.orientation() == Qt.Orientation.Horizontal:
                 x = event.pos().x()
                 ratio = x / max(1, self.width())
                 val = self.minimum() + int((self.maximum() - self.minimum()) * ratio)
@@ -80,8 +80,8 @@ class VideoWindow(QMainWindow):
         self.setWindowTitle("Video")
 
         self.video = QFrame(self)
-        self.video.setAttribute(Qt.WA_NativeWindow, True)
-        self.video.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
+        self.video.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.video.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
         self.video.setStyleSheet("background: black;")
         self.setCentralWidget(self.video)
 
@@ -206,7 +206,7 @@ class PlayerWindow(QMainWindow):
         row_ctl.addWidget(self.btn_shot)
         row_ctl.addWidget(self.btn_playlist)
 
-        self.vol = QSlider(Qt.Horizontal, root)
+        self.vol = QSlider(Qt.Orientation.Horizontal, root)
         self.vol.setRange(0, 100)
         self.vol.setValue(100)
         self.vol.valueChanged.connect(lambda x: self.engine.set_volume(x))
@@ -219,7 +219,7 @@ class PlayerWindow(QMainWindow):
 
         row_prog = QHBoxLayout()
         self.lbl_time = QLabel("00:00 / 00:00", root)
-        self.prog = ClickSlider(Qt.Horizontal, root)
+        self.prog = ClickSlider(Qt.Orientation.Horizontal, root)
         self.prog.setRange(0, 1000)
         self.prog.sliderPressed.connect(self._on_seek_press)
         self.prog.sliderReleased.connect(self._on_seek_release)
@@ -608,9 +608,9 @@ class PlayerWindow(QMainWindow):
         for i in range(self.playlist_widget.count()):
             item = self.playlist_widget.item(i)
             if i == self.playlist_index:
-                item.setBackground(QColor("#3a3a3a") if dark else Qt.lightGray)
+                item.setBackground(QColor("#3a3a3a") if dark else QBrush(QColor("lightgray")))
             else:
-                item.setBackground(QColor("#222222") if dark else Qt.white)
+                item.setBackground(QColor("#222222") if dark else QBrush(QColor("white")))
 
     def _tick(self):
         if not self.isVisible():

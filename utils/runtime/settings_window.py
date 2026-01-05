@@ -1,5 +1,5 @@
 # utils/runtime/settings_window.py
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QLineEdit, QCheckBox, QSpinBox, QPushButton,
     QGroupBox, QFormLayout, QMessageBox
@@ -301,12 +301,56 @@ class SettingsWindow(QWidget):
 
     def _apply_theme(self, theme: str):
         """Применяет тему."""
+        # базовые фоны
         styles = {
-            "default": "background-color: rgba(240, 240, 240, 1.0);",
-            "no_background_night": "background-color: rgba(140, 140, 140, 1.0);",
-            "no_background": "background-color: rgba(220, 220, 220, 1.0);",
+            "default": ("rgba(240, 240, 240, 1.0)", "#000"),
+            "no_background_night": ("rgba(40, 40, 40, 1.0)", "#eee"),
+            "no_background": ("rgba(220, 220, 220, 1.0)", "#000"),
         }
-        self.setStyleSheet(f"QWidget {{ {styles.get(theme, styles['default'])} }}")
+
+        bg, fg = styles.get(theme, styles["default"])
+
+        # ВАЖНО: задаём индикатор чекбокса явно
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {bg};
+                color: {fg};
+            }}
+
+            QGroupBox {{
+                border: 1px solid rgba(120, 120, 120, 0.8);
+                border-radius: 8px;
+                margin-top: 10px;
+                padding: 10px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 6px;
+            }}
+
+            QLineEdit, QSpinBox {{
+                background-color: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(120, 120, 120, 0.8);
+                border-radius: 6px;
+                padding: 4px 6px;
+            }}
+
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+                border: 1px solid rgba(160, 160, 160, 0.9);
+                border-radius: 4px;
+                background: rgba(0, 0, 0, 0.15);
+            }}
+            QCheckBox::indicator:checked {{
+                background: rgba(90, 170, 255, 0.9);
+                border: 1px solid rgba(90, 170, 255, 1.0);
+            }}
+            QCheckBox::indicator:checked:hover {{
+                background: rgba(110, 190, 255, 0.95);
+            }}
+        """)
 
     def closeEvent(self, event):
         # Callback вместо сигнала

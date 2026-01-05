@@ -50,6 +50,32 @@ STDLIB_HIDDENIMPORTS = [
     'urllib.parse',
 ]
 
+# PIL - добавьте ВСЕ плагины явно
+PIL_HIDDENIMPORTS = [
+    'PIL',
+    'PIL.Image',
+    'PIL._imaging',
+    'PIL.ImageFile',
+    'PIL.ImageOps',
+    'PIL.ImageEnhance',
+    'PIL.ImageDraw',
+    'PIL.ImageFont',
+    'PIL.ImageFilter',
+
+    # Плагины форматов - КРИТИЧНО для работы
+    'PIL.JpegImagePlugin',
+    'PIL.PngImagePlugin',
+    'PIL.WebPImagePlugin',  # ← Основной для WebP
+    'PIL.GifImagePlugin',
+    'PIL.BmpImagePlugin',
+    'PIL.IcoImagePlugin',
+    'PIL.TiffImagePlugin',
+
+    # Вспомогательные модули
+    'PIL._tkinter_finder',
+    'PIL._util',
+    'PIL._binary',
+]
 # === Базовые импорты для основного приложения ===
 BASE_HIDDENIMPORTS = [
     # PyQt5
@@ -70,9 +96,7 @@ BASE_HIDDENIMPORTS = [
     'cryptography',
 
     # PIL
-    'PIL',
-    'PIL.Image',
-    'PIL._tkinter_finder',
+    *PIL_HIDDENIMPORTS,
 
     # Numpy (если используется)
     'numpy',

@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from PyQt5.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon, QStyle, QGridLayout
-from PyQt5.QtCore import QTimer, Qt
+from PyQt6.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon, QStyle, QGridLayout
+from PyQt6.QtCore import QTimer, Qt
 
 from app.qt.app_state import ViewState
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
@@ -28,7 +28,7 @@ from app.qt.protocols import (
 if TYPE_CHECKING:
     from logging import Logger
     from app.qt.app_context import AppContext
-    from PyQt5.QtWidgets import QWidget
+    from PyQt6.QtWidgets import QWidget
 
 
 @dataclass
@@ -169,18 +169,18 @@ class DisplayController:
                 border-radius: 4px;
             }
         """)
-        self._error_label.setAlignment(Qt.AlignJustify)
+        self._error_label.setAlignment(Qt.AlignmentFlag.AlignJustify)
         self._error_label.setGeometry(50, 50, 500, 50)
 
         self._tray_icon = QSystemTrayIcon(self.parent)
-        self._tray_icon.setIcon(self.parent.style().standardIcon(QStyle.SP_MessageBoxWarning))
+        self._tray_icon.setIcon(self.parent.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
 
         self._error_label.show()
         self._tray_icon.show()
 
         QTimer.singleShot(5000, self._error_label.hide)
         QTimer.singleShot(5000, self._tray_icon.hide)
-        self._tray_icon.showMessage(title, message, QSystemTrayIcon.Warning, 5000)
+        self._tray_icon.showMessage(title, message, QSystemTrayIcon.MessageIcon.Warning, 5000)
 
     # === Public API: Display Methods ===
 

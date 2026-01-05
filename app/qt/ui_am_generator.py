@@ -5,7 +5,7 @@ from urllib.parse import quote
 import logging
 from typing import Callable, Iterable, Optional
 
-from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 
 from utils.media.image_manager import guess_mime
 from utils.parsing.animedia import parse_schedule_line

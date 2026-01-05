@@ -6,9 +6,9 @@ import logging
 import re
 from urllib.parse import quote
 
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import QByteArray, QBuffer
+from PyQt6.QtWidgets import QHBoxLayout
+# from PyQt6.QtGui import QPixmap
+# from PyQt6.QtCore import QByteArray, QBuffer
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 from utils.media.image_manager import guess_mime, convert_image
 
@@ -144,8 +144,9 @@ class UIGenerator:
     def generate_download_history_html(self, title_id, torrent_id):
         """Generates HTML to display download history"""
         try:
-            image_html_green = f"""◆"""
-            image_html_red = f"""◇"""
+            image_html_green = self._icon("diamond", True)
+            image_html_red = self._icon("diamond", False)
+
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -166,8 +167,9 @@ class UIGenerator:
     def generate_watch_all_episodes_html(self, title_id, episode_ids):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""🔳"""
-            image_html_red = f"""🔲"""
+            image_html_green = self._icon("square", True)
+            image_html_red = self._icon("square", False)
+
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -184,8 +186,9 @@ class UIGenerator:
     def generate_need_to_see_html(self, title_id):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""⚫"""
-            image_html_red = f"""⚪"""
+            image_html_green = self._icon("circle", True)
+            image_html_red = self._icon("circle", False)
+
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -204,8 +207,9 @@ class UIGenerator:
     def generate_watch_history_html(self, title_id, episode_id=None):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""🔳"""
-            image_html_red = f"""🔲"""
+            image_html_green = self._icon("square", True)
+            image_html_red = self._icon("square", False)
+
             # TODO: fix it later
             user_id = self.app.user_id
 
@@ -650,3 +654,28 @@ class UIGenerator:
         except Exception as e:
             self.logger.error(f"Error in generate_play_all_html: {str(e)}")
             return ""
+
+    def _icon(self, shape: str, active: bool) -> str:
+        if shape == "square":
+            ch = "ø" if active else "o"
+        elif shape == "circle":
+            ch = "☑" if active else "✎"
+        elif shape == "diamond":
+            ch = "◆" if active else "◇"
+        else:
+            ch = "☀" if active else "☼"
+
+        return (
+            f"<span style='"
+            f"display:inline-block;"
+            f"width:1.3em;"
+            f"text-align:center;"
+            f"font-size:16pt;"
+            f"line-height:1;"
+            f"font-family: Segoe UI, Arial, sans-serif;"
+            f"color:#000;"
+            f"text-decoration:none;"
+            f"vertical-align:middle;"
+            f"'>"
+            f"{ch}</span>"
+        )

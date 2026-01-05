@@ -41,6 +41,19 @@ QToolButton:pressed {{
     background-color: {pressed};
     border: 1px solid #555;
 }}
+QToolButton::menu-indicator {{
+    image: none;
+    width: 12px;
+    height: 12px;
+    subcontrol-position: right center;
+    subcontrol-origin: padding;
+    padding-right: 4px;
+}}
+QToolButton::menu-button {{
+    border: none;
+    border-left: 1px solid #666;
+    width: 16px;
+}}
 {end}
 /* -------------------------------------------------
    Стиль выпадающего меню
@@ -87,15 +100,38 @@ QComboBox {{
     background-color: {bg};
     border: 1px solid {border};
     border-radius: 6px;
-    padding: 6px;
+    padding: 6px 24px 6px 6px;
     font-size: 14px;
     color: {text};
 }}
-QComboBox::drop-down {{ border-left: 1px solid {border}; width: 20px; }}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid {border};
+    background-color: #e0e0e0;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}}
+QComboBox::down-arrow {{
+    width: 10px;
+    height: 10px;
+}}
 QComboBox QAbstractItemView {{
     background-color: #ffffff;
     border: 1px solid {border};
     selection-background-color: {hover};
-    selection-color: {text};
+    color: #000;
+    selection-color: #fff;
+    outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    padding: 6px;
+    min-height: 24px;
+    color: #000;
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background-color: {hover};
+    color: #fff;
 }}
 {end}

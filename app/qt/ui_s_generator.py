@@ -1,6 +1,6 @@
 # ui_s_generator.py
 import logging
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QTextBrowser, QVBoxLayout, QWidget, QLineEdit,
     QPushButton, QHBoxLayout, QComboBox, QMessageBox, QListWidget, QLabel, QInputDialog
 )
@@ -50,17 +50,43 @@ COMBOBOX_STYLE = """
         background: rgba(255, 255, 255, 1.0);
         border: 1px solid #dcdcdc;
         border-radius: 6px;
-        padding: 6px;
+        padding: 6px 24px 6px 6px;
         font-size: 14px;
         color: #000;
+        min-width: 80px;
     }
     QComboBox:hover {
         border: 1px solid #0078d4;
     }
     QComboBox::drop-down {
-        border: none;
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
         width: 20px;
+        border-left: 1px solid #dcdcdc;
         background: #e0e0e0;
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
+    }
+    QComboBox::down-arrow {
+        width: 10px;
+        height: 10px;
+    }
+    QComboBox QAbstractItemView {
+        background-color: #ffffff;
+        border: 1px solid #dcdcdc;
+        selection-background-color: #5c5c5c;
+        color: #000;
+        selection-color: #fff;
+        outline: none;
+    }
+    QComboBox QAbstractItemView::item {
+        padding: 6px;
+        min-height: 24px;
+        color: #000;
+    }
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #5c5c5c;
+        color: #fff;
     }
 """
 
@@ -192,17 +218,31 @@ class UISGenerator:
 
             system_browser.anchorClicked.connect(self.app.on_link_click)
             system_browser.setOpenExternalLinks(True)
-            system_browser.setStyleSheet(
-                """
-                text-align: left;
-                border: 1px solid #444;
-                color: #000;
-                font-size: 14pt;
-                font-weight: bold;
-                position: relative;
-                background: rgba(255, 255, 255, 0.5);  /* Полупрозрачный желтый фон */
-                """
-            )
+            is_dark = template in ("no_background_night", "night", "dark")  # подстрой под свои имена
+
+            text_color = "#eee" if is_dark else "#000"
+            bg = "rgba(20, 20, 20, 0.55)" if is_dark else "rgba(255, 255, 255, 0.5)"
+            border = "rgba(160, 160, 160, 0.45)" if is_dark else "#444"
+
+            system_browser.setStyleSheet(f"""
+                QTextBrowser {{
+                    text-align: left;
+                    border: 1px solid {border};
+                    color: {text_color};
+                    font-size: 14pt;
+                    font-weight: bold;
+                    position: relative;
+                    background: {bg};
+                }}
+                /* Ссылки */
+                QTextBrowser a {{
+                    color: {"#7cb7ff" if is_dark else "#004a9f"};
+                    text-decoration: underline;
+                }}
+                QTextBrowser a:hover {{
+                    color: {"#a6d3ff" if is_dark else "#0078d4"};
+                }}
+            """)
 
             system_browser.setHtml(self._generate_statistics_html(statistics, template))
             container_layout.addWidget(system_browser)
@@ -353,10 +393,10 @@ class UISGenerator:
                 self.app,
                 "Confirm move to trash",
                 f"Переместить в корзину: {title_ids_str}?\n\nЭто НЕ удалит данные физически.\nВосстановление возможно.",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            if reply != QMessageBox.Yes:
+            if reply != QMessageBox.StandardButton.Yes:
                 self.logger.info("Удаление отменено пользователем.")
                 return
 

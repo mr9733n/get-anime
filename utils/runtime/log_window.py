@@ -4,8 +4,8 @@ import sys
 import os
 import subprocess
 
-from PyQt5.QtCore import QObject, pyqtSignal, Qt, QRunnable, QThreadPool, QTimer, QFileSystemWatcher
-from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QLabel, QWidget
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QRunnable, QThreadPool, QTimer, QFileSystemWatcher
+from PyQt6.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QLabel, QWidget
 
 from utils.runtime.runtime_manager import LogWorker
 
@@ -26,7 +26,7 @@ class LogWindow(QWidget):
         # Текстовое поле для логов
         self.log_view = QTextEdit(self)
         self.log_view.setReadOnly(True)
-        self.log_view.setAlignment(Qt.AlignTop)  # Выравнивание текста сверху
+        self.log_view.setAlignment(Qt.AlignmentFlag.AlignTop)  # Выравнивание текста сверху
 
         # Кнопка обновления логов
         self.refresh_button = QPushButton("UPDATE")
@@ -34,7 +34,7 @@ class LogWindow(QWidget):
 
         # Информационная метка
         self.info_label = QLabel("⚡ Auto-updates every 60 seconds. 📜 Newest logs appear first.")
-        self.info_label.setAlignment(Qt.AlignCenter)
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Таймер для автообновления логов (каждые 60 секунд)
         self.timer = QTimer(self)

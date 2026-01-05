@@ -13,11 +13,11 @@ import time
 import sys
 import argparse
 
-from PyQt5.QtGui import QIcon
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
+from PyQt6.QtGui import QIcon, QBrush, QColor
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QSlider, QLabel, QHBoxLayout, QListWidget, QApplication, \
     QStyle, QSystemTrayIcon
-from PyQt5.QtCore import Qt, QTimer, QSharedMemory
+from PyQt6.QtCore import Qt, QTimer, QSharedMemory
 
 
 ES_CONTINUOUS       = 0x80000000  # постоянный режим
@@ -105,10 +105,11 @@ class VLCPlayer(QWidget):
         self.playlist_button = QPushButton("PLAYLIST")
         self.screenshot_button = QPushButton("SCREENSHOT")
         self.skip_credits_button = QPushButton("SKIP CREDITS")
-        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(100)
-        self.progress_slider = QSlider(Qt.Horizontal)
+
+        self.progress_slider = QSlider(Qt.Orientation.Horizontal)
         self.progress_slider.setRange(0, 100)
         self.time_label = QLabel("00:00 / 00:00")
         self.playlist_widget = QListWidget()
@@ -659,11 +660,11 @@ class VLCPlayer(QWidget):
         for i in range(self.playlist_widget.count()):
             item = self.playlist_widget.item(i)
             if item.text() == current_url:
-                item.setBackground(Qt.lightGray)
-                item.setForeground(Qt.black)
+                item.setBackground(QBrush(QColor("lightgray")))
+                item.setForeground(QBrush(QColor("black")))
             else:
-                item.setBackground(Qt.white)
-                item.setForeground(Qt.black)
+                item.setBackground(QBrush(QColor("white")))
+                item.setForeground(QBrush(QColor("black")))
 
     def handle_skip_credits(self):
         """Обрабатывает нажатие кнопки SKIP CREDITS – выполняется единичный пропуск титров."""
@@ -859,9 +860,9 @@ if __name__ == "__main__":
         message = "VLC player cannot be run without AnimePlayer application!"
         logging.getLogger().error(message)
         tray_icon = QSystemTrayIcon()
-        tray_icon.setIcon(app.style().standardIcon(QStyle.SP_MessageBoxWarning))
+        tray_icon.setIcon(app.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
         tray_icon.show()
-        tray_icon.showMessage("Error", message, QSystemTrayIcon.Warning, 5000)
+        tray_icon.showMessage("Error", message, QSystemTrayIcon.MessageIcon.Warning, 5000)
         QTimer.singleShot(500, lambda: sys.exit(1))
 
     sys.exit(app.exec_())

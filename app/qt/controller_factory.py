@@ -18,7 +18,7 @@ from app.qt.controllers.callback import CallbackController, CallbackControllerDe
 from app.qt.controllers.bootstrap import BootstrapController, BootstrapControllerDeps
 
 if TYPE_CHECKING:
-    from PyQt5.QtWidgets import QWidget
+    from PyQt6.QtWidgets import QWidget
     from app.qt.app_context import AppContext
     from app.qt.app_services import AppServices
 

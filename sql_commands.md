@@ -502,3 +502,9 @@ PRAGMA foreign_keys = ON;
 ```sql
 DROP TABLE posters_orphans;
 ```
+
+27. Add field to titles
+```sql
+ALTER TABLE titles ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE titles ADD COLUMN deleted_at DATETIME NULL;
+```

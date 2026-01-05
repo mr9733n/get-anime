@@ -239,13 +239,7 @@ class AniMediaRepository:
             video_host: str,
     ) -> Title:
         """Собрать domain model Title из распарсенных данных."""
-        status_str = meta.get("status", "")
-        status_map = {
-            "завершён": TitleStatus.FINISHED,
-            "в работе": TitleStatus.ONGOING,
-            "анонс": TitleStatus.ANNOUNCED,
-        }
-        status = status_map.get(status_str.lower(), TitleStatus.FINISHED)
+        status = TitleStatus.from_provider_string(meta.get("status"))
 
         return Title(
             external_id=int(self._extract_id(url)) or 0,

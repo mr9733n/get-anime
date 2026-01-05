@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from PyQt5.QtWidgets import QGridLayout, QLineEdit, QComboBox, QScrollArea, QWidget
+    from PyQt6.QtWidgets import QGridLayout, QLineEdit, QComboBox, QScrollArea, QWidget
     from app.qt.app_state import ViewState
 
 

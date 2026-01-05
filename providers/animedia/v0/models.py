@@ -10,6 +10,27 @@ class TitleStatus(Enum):
     FINISHED = 2
     ANNOUNCED = 3
 
+    @classmethod
+    def from_provider_string(cls, s: str | None) -> "TitleStatus":
+        """Парсинг строки статуса от провайдера."""
+        if not s:
+            return cls.FINISHED
+
+        s = s.strip().lower()
+
+        ongoing = {"онгоинги", "онгоинг", "ongoing", "в работе", "выходит"}
+        finished = {"завершенные", "завершённые", "завершен", "завершён", "finished", "complete"}
+        announced = {"анонс", "анонсы", "announced", "planned"}
+
+        if s in ongoing:
+            return cls.ONGOING
+        if s in finished:
+            return cls.FINISHED
+        if s in announced:
+            return cls.ANNOUNCED
+
+        return cls.FINISHED
+
     def to_legacy(self) -> dict[str, Any]:
         """Конвертация в legacy формат."""
         mapping = {

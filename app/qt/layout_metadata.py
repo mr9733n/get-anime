@@ -84,8 +84,8 @@
 
 all_layout_metadata = [
     {"layout": "top", "type": "input_field", "placeholder": "TITLE ID OR NAME", "min_width": 100, "max_width": 255, "callback_type": "complex","widget_key": "title_input"},
-    {"layout": "top","type": "split_button","text": "FIND", "default_callback_key": "get_search_by_title","menu_items": [{"text": "AniLiberty Random", "callback_key": "get_random_title"},{"text": "AniLiberty", "callback_key": "get_search_by_title_all"},{"text": "AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
-    {"layout": "top","type": "split_button","text": "UT⮂", "default_callback_key": "get_update_title","menu_items": [{"text": "On AniLiberty", "callback_key": "get_update_title_all"},{"text": "On AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
+    {"layout": "top","type": "split_button","text": "FIND", "default_callback_key": "get_search_by_title","menu_items": [{"text": "AniLiberty Random", "callback_key": "get_random_title"},{"text": "On AniLiberty", "callback_key": "get_search_by_title_all"},{"text": "On AniMedia", "callback_key": "get_search_by_title_am"}],"callback_type": "complex","color_index": 0,},
+    {"layout": "top","type": "split_button","text": "UT⮂", "default_callback_key": "get_update_title","menu_items": [{"text": "From AniLiberty", "callback_key": "get_update_title_all"},{"text": "From AniMedia", "callback_key": "get_update_title_am"}],"callback_type": "complex","color_index": 0,},
     # {"layout": "top", "type": "button", "text": "RND", "callback_key": "get_random_title", "callback_type": "complex", "color_index": 0},
     {"layout": "top","type": "split_button","text": "ANIMEDIA", "default_callback_key": "get_animedia_new_titles","menu_items": [{"text": "AniMedia Schedule", "callback_key": "get_animedia_new_titles"},{"text": "AniMedia Titles", "callback_key": "get_animedia_all_titles"}],"callback_type": "complex","color_index": 0,},
     # {"layout": "top", "type": "button", "text": "AMS", "callback_key": "get_animedia_new_titles", "callback_type": "complex", "color_index": 0},

@@ -4,13 +4,13 @@ from typing import Optional
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from core.save import SaveManager
-from core.process import ProcessManager
-from core.get import GetManager
-from core.delete import DeleteManager
-from core.utils import PlaceholderManager, TemplateManager, StateManager
-from core.tables import Base, DaysOfWeek, History, Title
-from core.types import PosterSize
+from storage.save import SaveManager
+from storage.process import ProcessManager
+from storage.get import GetManager
+from storage.delete import DeleteManager
+from storage.utils import PlaceholderManager, TemplateManager, StateManager
+from storage.tables import Base, DaysOfWeek, History, Title
+from storage.types import PosterSize
 # from app.qt.app_services import AppStateService
 
 

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from PyQt6.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon
 
-from core.queries.title_enricher import enrich_titles_for_render
+from storage.queries.title_enricher import enrich_titles_for_render
 from app.qt.app_state import ViewState
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.app_constants import (

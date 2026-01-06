@@ -9,10 +9,10 @@ from typing import Optional, Any
 from sqlalchemy import or_, and_, nullslast, select, func, update, delete, Integer, case, exists, Column
 from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker, aliased
-from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
+from storage.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
     Template, Genre, TeamMember, TitleTeamRelation, Episode, ProductionStudio, Provider, TitleProviderMap
-from core.types import PosterSize, POSTER_FIELDS
+from storage.types import PosterSize, POSTER_FIELDS
 from utils.media.image_manager import normalize_poster_blob_if_needed, sha256, make_small_poster
 
 
@@ -393,7 +393,7 @@ class SaveManager:
                                 continue
                             if isinstance(value, str) and not value.strip():
                                 continue
-                        
+
                         if hasattr(title, key) and getattr(title, key) != value:
                             setattr(title, key, value)
                             is_updated = True

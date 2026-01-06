@@ -6,10 +6,10 @@ import sqlalchemy
 from sqlalchemy import or_, and_
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
-from core.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
+from storage.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
     TitleGenreRelation, \
     Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio, DeletedTitleLog
-from core.types import PosterSize, POSTER_FIELDS
+from storage.types import PosterSize, POSTER_FIELDS
 
 
 class GetManager:

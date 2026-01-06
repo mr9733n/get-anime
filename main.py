@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QApplication
 
 from app.qt.app import AnimePlayerAppVer3
 from app.qt.app_services import AppStateService
-from core.database_manager import DatabaseManager
+from storage.database_manager import DatabaseManager
 from utils.security.library_loader import verify_library, load_library
 from app.qt.runtime.runtime_manager import test_exception
 from utils.config.config_manager import ConfigManager

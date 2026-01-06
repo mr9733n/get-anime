@@ -1,3 +1,7 @@
+# app/qt/controllers/system.py
+from __future__ import annotations
+
+
 class SystemController:
     def __init__(self, db_manager, state_service, logger):
         self.db = db_manager

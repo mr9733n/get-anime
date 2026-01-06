@@ -5,7 +5,7 @@ from typing import Any
 from datetime import timezone, datetime
 from sqlalchemy.orm import sessionmaker
 
-from core.tables import Title, DeletedTitleLog
+from storage.tables import Title, DeletedTitleLog
 
 
 class DeleteManager:

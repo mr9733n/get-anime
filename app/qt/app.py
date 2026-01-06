@@ -10,6 +10,11 @@ import importlib.resources as ir
 from PyQt6.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt6.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
+from app.core.backend import Backend, BackendDeps
+
+from app.infra.notify.null_notify import NullNotifier
+from app.qt.ui_notify import Notifier
+
 from app.qt.app_context import AppContext
 from app.qt.app_services import AppServices
 from app.qt.controller_factory import ControllerFactory, ControllerFactoryConfig
@@ -18,7 +23,6 @@ from app.qt.ui_manager import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_am_generator import UIAMGenerator
 from app.qt.ui_s_generator import UISGenerator
-
 from app.qt.layout_metadata import all_layout_metadata
 
 from providers.aniliberty.v1.api import APIClient
@@ -301,12 +305,24 @@ class AnimePlayerAppVer3(QWidget):
             playlist_manager=self.playlist_manager,
             api_adapter=self.api_adapter,
             url_resolver=self.url_resolver,
-            router_getter=lambda: self.router,
+            router_getter=lambda: self.open_router
+,
         ).build()
+
+        self.persistence = self._factory.persistence
+        self.notifier = Notifier(self)  # Qt-адаптер
+
+        self.backend = Backend(BackendDeps(
+            db=self.db_manager,
+            aniliberty_api=self.api_adapter,
+            animedia_adapter=self.animedia_adapter,
+            persistence=self.persistence,
+            notify=self.notifier,
+            logger=self.logger,
+        ))
 
         # Shortcut references
         self.bootstrap = self._factory.bootstrap
-        self.persistence = self._factory.persistence
         self.poster = self._factory.poster
         self.torrent = self._factory.torrent
         self.state = self._factory.state
@@ -342,7 +358,7 @@ class AnimePlayerAppVer3(QWidget):
             refresh_display=self.refresh_display,
             reload_poster=self.get_poster_or_placeholder,
         )
-        self.router = OpenRouter(self)
+        self.open_router = OpenRouter(self)
 
     def _finalize_ui(self) -> None:
         """Финализирует инициализацию UI."""
@@ -838,3 +854,5 @@ class AnimePlayerAppVer3(QWidget):
     def closeEvent(self, event) -> None:
         """Обрабатывает закрытие окна."""
         QApplication.instance().quit()
+
+

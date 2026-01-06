@@ -621,6 +621,20 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add audit log screen
 - [x] Add Screen for deleted titles with permanent delete func 
 - [x] Change delete logic to unlink -> move to delete table
+
+### 8.39 Refactoring
+- [ ] Split UI from backend
+- [ ] Create full functional backend
+- [x] Moved to PyQt6
+- [x] Fixes in builder
+- [x] More checks for poster downloading
+- [x] Add more tests 
+- [x] Created new controllers, adapters, ports
+- [x] Removed db calling from ui screens
+- [ ] ... 
+- [ ] ...
+
+### 8.40 Fixes
 - [ ] Fix highlighting episode in VLC playlist
 - [ ] fix get title from db by query
 - [ ] fix switching template

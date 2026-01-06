@@ -2,7 +2,7 @@
 import logging
 from PyQt6.QtWidgets import (
     QTextBrowser, QVBoxLayout, QWidget, QLineEdit,
-    QPushButton, QHBoxLayout, QComboBox, QMessageBox, QListWidget, QLabel, QInputDialog
+    QPushButton, QHBoxLayout, QComboBox, QMessageBox
 )
 
 from app.qt.runtime.runtime_manager import restart_application
@@ -92,10 +92,10 @@ COMBOBOX_STYLE = """
 
 
 class UISGenerator:
-    def __init__(self, app, db_manager):
+    def __init__(self, app):
         self.logger = logging.getLogger(__name__)
         self.app = app
-        self.db_manager = db_manager
+        self.system = None
         self.current_template = getattr(self.app, "current_template", "default")
 
         # UI elements
@@ -135,20 +135,9 @@ class UISGenerator:
     def get_current_template(self):
         """Возвращает текущий шаблон из состояния приложения или из текущего атрибута self.app."""
         try:
-            if hasattr(self.app, "db_manager") and hasattr(self.app.db_manager, "app_state_manager"):
-                current_state = self.app.db_manager.app_state_manager.load_state()
-
-                if not current_state:
-                    self.logger.warning("Состояние приложения пустое, используем self.app.current_template")
-                    return self.current_template, {}
-
-                template_name = current_state.get("template_name", "default")
-
-
-                if isinstance(template_name, str) and template_name.startswith('"') and template_name.endswith('"'):
-                    template_name = template_name.strip('"')
-
-                return template_name, current_state
+            if self.system is not None and hasattr(self.system, "get_current_template_and_state"):
+                name, st = self.system.get_current_template_and_state()
+                return name, (st or {})
 
         except Exception as e:
             self.logger.error(f"Error in get_current_template: {e}")
@@ -157,14 +146,26 @@ class UISGenerator:
 
     def create_template_selector(self, parent):
         """Создает выпадающий список с доступными шаблонами и устанавливает текущий."""
+        combo_box = QComboBox(parent)
+        combo_box.setMaximumWidth(200)
+        combo_box.setStyleSheet(COMBOBOX_STYLE)
+
         try:
-            combo_box = QComboBox(parent)
-            combo_box.setMaximumWidth(200)
-            combo_box.setStyleSheet(COMBOBOX_STYLE)
-            templates = self.db_manager.get_available_templates()
+            if not self.system:
+                # fallback: чтобы UI не ломался
+                combo_box.addItems(["default"])
+                combo_box.setCurrentIndex(0)
+                self.logger.warning("SystemController is not set yet; template selector fallback to ['default']")
+                return combo_box
+
+            templates = self.system.list_templates() or ["default"]
             current_template, _ = self.get_current_template()
-            templates = [t.strip() for t in templates]
-            current_template = current_template.strip()
+
+            templates = [t.strip() for t in templates if t and t.strip()]
+            if not templates:
+                templates = ["default"]
+
+            current_template = (current_template or "default").strip()
 
             if "default" in templates:
                 templates.remove("default")
@@ -173,29 +174,31 @@ class UISGenerator:
             combo_box.addItems(templates)
 
             if current_template in templates:
-                index = templates.index(current_template)
-                combo_box.setCurrentIndex(index)
-                self.logger.info(f"Выбран текущий шаблон: {current_template} (index: {index})")
+                combo_box.setCurrentIndex(templates.index(current_template))
             else:
                 self.logger.warning(f"Текущий шаблон '{current_template}' отсутствует в списке!")
 
             return combo_box
+
         except Exception as e:
-            self.logger.error(f"Ошибка в create_template_selector: {e}")
-            return None
+            self.logger.error(f"Ошибка в create_template_selector: {e}", exc_info=True)
+            # fallback
+            combo_box.clear()
+            combo_box.addItems(["default"])
+            combo_box.setCurrentIndex(0)
+            return combo_box
 
     def switch_template(self):
         """Переключает текущий шаблон, сохраняя в state и перезапуская приложение."""
         try:
             template_name = self.template_selector.currentText()
-            _, current_state = self.get_current_template()
+            if not self.system:
+                self.logger.error("SystemController is not set")
+                return
+            self.system.switch_template(template_name)
 
-            if not isinstance(current_state, dict):
-                current_state = {}
 
-            current_state["template_name"] = template_name
 
-            self.app.db_manager.app_state_manager.save_state(current_state)
             self.logger.info(f"Шаблон сохранен в state: {template_name}")
             self.logger.info("Перезапуск приложения для применения шаблона...")
             restart_application()
@@ -236,7 +239,7 @@ class UISGenerator:
                 }}
                 /* Ссылки */
                 QTextBrowser a {{
-                    color: {"#7cb7ff" if is_dark else "#004a9f"};
+                    color: {"#7cb7ff" if is_dark else "#000a9f"};
                     text-decoration: underline;
                 }}
                 QTextBrowser a:hover {{
@@ -309,7 +312,7 @@ class UISGenerator:
             self.settings_window = SettingsWindow(
                 config_manager=self.app.config_manager,
                 config_file=self.app.config_manager.config_file,
-                db_manager=self.db_manager,
+                system_controller=self.system,
                 theme=self.current_template,
                 on_close=lambda: self.settings_button.setText("SETTINGS"),
                 on_settings_changed=self._on_settings_saved,
@@ -328,7 +331,7 @@ class UISGenerator:
             return
 
         self.audit_window = AuditLogWindow(
-            db_manager=self.db_manager,
+            system_controller=self.system,
             button_style=BUTTON_STYLE,
             line_edit_style=LINE_EDIT_STYLE,
             theme=self.current_template,
@@ -343,7 +346,7 @@ class UISGenerator:
             return
 
         self.trash_window = DeletedWindow(
-            db_manager=self.db_manager,
+            system_controller=self.system,
             button_style=BUTTON_STYLE,
             line_edit_style=LINE_EDIT_STYLE,
             theme=self.current_template,
@@ -385,8 +388,8 @@ class UISGenerator:
                 self.logger.error("Пустой ввод: укажите хотя бы один title_id для удаления.")
                 return
 
-            if not hasattr(self.db_manager, "soft_delete_titles"):
-                self.logger.error("db_manager.soft_delete_titles не реализован.")
+            if self.system is None:
+                self.logger.error("SystemController.trash_titles not available.")
                 return
 
             reply = QMessageBox.question(
@@ -400,7 +403,7 @@ class UISGenerator:
                 self.logger.info("Удаление отменено пользователем.")
                 return
 
-            result = self.db_manager.soft_delete_titles(title_ids_str)
+            result = self.system.trash_titles(title_ids_str)
             deleted = result.get("deleted", [])
             not_found = result.get("not_found", [])
 
@@ -417,7 +420,13 @@ class UISGenerator:
     def optimize_database(self):
         """Оптимизирует БД напрямую."""
         try:
-            result = self.db_manager.optimize_db()
+            if not self.system:
+                self.logger.error("SystemController is not set; cannot optimize DB")
+                if hasattr(self.app, "show_error_notification"):
+                    self.app.show_error_notification("Optimize DB", "System controller is not ready")
+                return
+
+            result = self.system.optimize_db()
             if result["status"] == "ok":
                 saved_kb = (result["size_before"] - result["size_after"]) / 1024
                 msg = f"Optimized! Saved {saved_kb:.1f}KB"
@@ -445,10 +454,8 @@ class UISGenerator:
 
     def _handle_found_titles(self, title_ids, studio_name):
         """Обработка сохранения студий для одного или нескольких title_ids."""
-        if len(title_ids) == 1:
-            self.db_manager.save_studio_to_db([title_ids[0]], studio_name)
-        else:
-            self.db_manager.save_studio_to_db(title_ids, studio_name)
+        if self.system:
+            self.system.add_studio(studio_name=studio_name, title_ids=title_ids)
 
         self.logger.debug(f"Обработка завершена для title_ids: {title_ids} с названием студии: {studio_name}")
 

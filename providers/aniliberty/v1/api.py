@@ -45,6 +45,7 @@ class APIClient:
             max_cache_items=max_cache_items,
             enable_dumps=enable_dumps,
         )
+        self.logger.info(f"[***] AniLiberty client created for '{base_url}'")
 
     def close(self) -> None:
         self.transport.close()

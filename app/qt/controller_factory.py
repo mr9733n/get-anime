@@ -16,6 +16,7 @@ from app.qt.controllers.torrents import TorrentController, TorrentControllerDeps
 from app.qt.controllers.players import PlayerController, PlayerControllerDeps
 from app.qt.controllers.callback import CallbackController, CallbackControllerDeps
 from app.qt.controllers.bootstrap import BootstrapController, BootstrapControllerDeps
+from app.qt.controllers.system import SystemController
 from app.core.use_cases.title_search_use_case import TitleSearchUseCase
 from app.qt.app_constants import PROVIDER_ANILIBERTY, PROVIDER_ANIMEDIA
 from app.qt.ui_notify import Notifier
@@ -105,6 +106,7 @@ class ControllerFactory:
         self.animedia: AniMediaController | None = None
         self.player: PlayerController | None = None
         self.callback: CallbackController | None = None
+        self.system: SystemController | None = None
 
     def build(self) -> ControllerFactory:
         """Создаёт все контроллеры в правильном порядке."""
@@ -171,6 +173,11 @@ class ControllerFactory:
         )
 
         # === Phase 4: Display (central) ===
+        self.system = SystemController(
+            db_manager=self._svc.db,
+            state_service=self._svc,  # или self.state? см ниже
+            logger=self._logger,
+        )
 
         self.display = DisplayController(
             DisplayControllerDeps(

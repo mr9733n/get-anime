@@ -5,10 +5,10 @@ from PyQt6.QtWidgets import (
 )
 
 class DeletedWindow(QWidget):
-    def __init__(self, db_manager, button_style: str = "", line_edit_style: str = "", theme: str = "default"):
+    def __init__(self, system_controller, button_style: str = "", line_edit_style: str = "", theme: str = "default"):
 
         super().__init__()
-        self.db_manager = db_manager
+        self.system = system_controller
         self.button_style = button_style
         self.line_edit_style = line_edit_style
 
@@ -52,11 +52,11 @@ class DeletedWindow(QWidget):
 
     def refresh(self):
         self.lst.clear()
-        if not hasattr(self.db_manager, "get_deleted_titles"):
+        if not hasattr(self.system, "get_deleted_titles"):
             self.lst.addItem("db_manager.get_deleted_titles not implemented")
             return
 
-        titles = self.db_manager.get_deleted_titles(batch_size=300, offset=0) or []
+        titles = self.system.get_deleted_titles(batch_size=300, offset=0) or []
         if not titles:
             self.lst.addItem("(empty) no deleted titles")
             return
@@ -90,11 +90,11 @@ class DeletedWindow(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        if not hasattr(self.db_manager, "restore_titles"):
+        if not hasattr(self.system, "restore_titles"):
             QMessageBox.warning(self, "Restore", "db_manager.restore_titles не реализован.")
             return
 
-        self.db_manager.restore_titles(ids)
+        self.system.restore_titles(ids)
         self.input_ids.clear()
         self.refresh()
 
@@ -113,11 +113,11 @@ class DeletedWindow(QWidget):
             QMessageBox.information(self, "Purge", "Отменено.")
             return
 
-        if not hasattr(self.db_manager, "purge_titles"):
+        if not hasattr(self.system, "purge_titles"):
             QMessageBox.warning(self, "Purge", "db_manager.purge_titles не реализован.")
             return
 
-        result = self.db_manager.purge_titles(self.input_ids.text().strip())
+        result = self.system.purge_titles(self.input_ids.text().strip())
         if not isinstance(result, dict):
             QMessageBox.warning(self, "Purge", f"Unexpected result from purge: {result}")
             return

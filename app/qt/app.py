@@ -237,7 +237,7 @@ class AnimePlayerAppVer3(QWidget):
 
         self.ui_generator = UIGenerator(self, self.ctx.current_template)
         self.ui_am_generator = UIAMGenerator(self, self.ctx.current_template)
-        self.ui_s_generator = UISGenerator(self, self.db_manager)
+        self.ui_s_generator = UISGenerator(self)
 
     def _init_services(self) -> None:
         """Инициализирует сервисный слой."""
@@ -316,6 +316,12 @@ class AnimePlayerAppVer3(QWidget):
         self.animedia = self._factory.animedia
         self.player = self._factory.player
         self.callback = self._factory.callback
+        self.system = self._factory.system
+
+        if getattr(self, "ui_s_generator", None) is not None:
+            self.ui_s_generator.system = self.system
+            # (опционально) чтобы окна знали актуальную тему
+            self.ui_s_generator.current_template = self.ctx.current_template
 
     def _init_link_handler(self) -> None:
         """Инициализирует обработчик ссылок."""

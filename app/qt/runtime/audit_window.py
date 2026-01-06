@@ -1,4 +1,7 @@
 import json
+import html
+import re
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QTextBrowser,
@@ -10,9 +13,9 @@ class AuditLogWindow(QWidget):
     Окно аудита удалений: показывает строки из deleted_titles_log
     и позволяет посмотреть snapshot_json.
     """
-    def __init__(self, db_manager, button_style: str = "", line_edit_style: str = "", theme: str = "default"):
+    def __init__(self, system_controller, button_style: str = "", line_edit_style: str = "", theme: str = "default"):
         super().__init__()
-        self.db_manager = db_manager
+        self.system = system_controller
 
         self.button_style = button_style
         self.line_edit_style = line_edit_style
@@ -60,7 +63,7 @@ class AuditLogWindow(QWidget):
         self.list_widget.clear()
         self.snapshot_view.clear()
 
-        if not hasattr(self.db_manager, "get_deleted_titles_log"):
+        if not hasattr(self.system, "get_deleted_titles_log"):
             self.list_widget.addItem("db_manager.get_deleted_titles_log not implemented")
             return
 
@@ -69,7 +72,7 @@ class AuditLogWindow(QWidget):
         if limit_str.isdigit():
             limit = max(1, min(2000, int(limit_str)))
 
-        rows = self.db_manager.get_deleted_titles_log(limit=limit, offset=0)
+        rows = self.system.get_deleted_titles_log(limit=limit, offset=0)
 
         for r in rows:
             if isinstance(r, dict):
@@ -108,11 +111,11 @@ class AuditLogWindow(QWidget):
         if not log_id:
             return
 
-        if not hasattr(self.db_manager, "get_deleted_titles_log_item"):
+        if not hasattr(self.system, "get_deleted_titles_log_item"):
             self.snapshot_view.setText("db_manager.get_deleted_titles_log_item not implemented")
             return
 
-        row = self.db_manager.get_deleted_titles_log_item(log_id)
+        row = self.system.get_deleted_titles_log_item(log_id)
         if row is None:
             self.snapshot_view.setText("Log item not found")
             return
@@ -120,8 +123,7 @@ class AuditLogWindow(QWidget):
         raw = getattr(row, "snapshot_json", "") or ""
         try:
             obj = json.loads(raw)
-            pretty = json.dumps(obj, ensure_ascii=False, indent=2)
-            self.snapshot_view.setText(pretty)
+            self._set_snapshot_html(obj)
         except Exception:
             # если вдруг snapshot не JSON (не должен), покажем как есть
             self.snapshot_view.setText(raw)
@@ -163,4 +165,69 @@ class AuditLogWindow(QWidget):
                 font-family: Consolas, monospace;
                 font-size: 12px;
             }}
+            /* JSON highlight */
+            .json-wrap {{
+                padding: 6px;
+            }}
+            pre.jpre {{
+                margin: 0;
+                white-space: pre-wrap;      /* перенос длинных строк */
+                word-break: break-word;
+                font-family: Consolas, monospace;
+                font-size: 12px;
+                line-height: 1.35;
+            }}
+            .jk {{ font-weight: 700; }}       /* key */
+            .js {{ }}                          /* string */
+            .jn {{ font-weight: 700; }}       /* number */
+            .jb {{ font-weight: 700; }}       /* bool/null */
+            .jp {{ opacity: 0.65; }}          /* punctuation */
+
+            /* Слегка различим цвета (без зависимости от темы можно оставить так) */
+            .jk {{ color: #0b5394; }}         /* keys */
+            .js {{ color: #38761d; }}         /* strings */
+            .jn {{ color: #7f6000; }}         /* numbers */
+            .jb {{ color: #741b47; }}         /* bool/null */
+
         """)
+
+    def _json_to_highlighted_html(self, obj) -> str:
+        """
+        Возвращает HTML с подсветкой JSON.
+        Работает через pretty-json + регулярки.
+        """
+        pretty = json.dumps(obj, ensure_ascii=False, indent=2)
+        safe = html.escape(pretty)
+
+        # Подсветка:
+        # 1) ключи: "key":
+        safe = re.sub(
+            r'(&quot;.*?&quot;)(\s*):',
+            r'<span class="jk">\1</span><span class="jp">\2</span>:',
+            safe
+        )
+
+        # 2) строки (значения): "text"
+        # (после ключей всё равно останутся строки-значения — подсветим их отдельно)
+        safe = re.sub(
+            r'(?<!class=&quot;jk&quot;)(?<!jk&quot;)(?<!jk\&quot;)(?<!jk)(?<!jk&gt;)'  # лёгкая защита от двойной подсветки
+            r'(&quot;[^&quot;]*&quot;)',
+            r'<span class="js">\1</span>',
+            safe
+        )
+
+        # 3) числа
+        safe = re.sub(r'(?<![\w])(-?\d+(?:\.\d+)?)(?![\w])', r'<span class="jn">\1</span>', safe)
+
+        # 4) true/false/null
+        safe = re.sub(r'(?<![\w])(true|false|null)(?![\w])', r'<span class="jb">\1</span>', safe)
+
+        return f"<pre class='jpre'>{safe}</pre>"
+
+    def _set_snapshot_html(self, obj) -> None:
+        html_doc = (
+            "<div class='json-wrap'>"
+            + self._json_to_highlighted_html(obj)
+            + "</div>"
+        )
+        self.snapshot_view.setHtml(html_doc)

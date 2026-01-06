@@ -31,7 +31,7 @@ class SettingsWindow(QWidget):
             self,
             config_manager,
             config_file: str,
-            db_manager=None,
+            system_controller=None,
             theme: str = "default",
             on_close: Callable[[], None] | None = None,
             on_settings_changed: Callable[[], None] | None = None,
@@ -40,7 +40,7 @@ class SettingsWindow(QWidget):
         self.logger = logging.getLogger(__name__)
         self.config_manager = config_manager
         self.config_file = config_file
-        self.db_manager = db_manager
+        self.system = system_controller
 
         # Callbacks вместо сигналов
         self._on_close = on_close
@@ -257,7 +257,7 @@ class SettingsWindow(QWidget):
 
     def _optimize_db(self):
         """Оптимизирует базу данных."""
-        if not self.db_manager:
+        if not self.system:
             self.db_status_label.setText("DB manager not available")
             return
 
@@ -265,7 +265,7 @@ class SettingsWindow(QWidget):
         self.db_status_label.setText("Optimizing...")
 
         try:
-            result = self.db_manager.optimize_db()
+            result = self.system.optimize_db()
 
             if result["status"] == "ok":
                 before_mb = result["size_before"] / (1024 * 1024)
@@ -283,18 +283,18 @@ class SettingsWindow(QWidget):
 
     def _clear_state(self):
         """Очищает сохранённое состояние."""
-        if not self.db_manager:
+        if not self.system:
             return
 
         reply = QMessageBox.question(
             self, "Clear State",
             "Clear all saved application state?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.state_manager.clear_app_state()
+                self.system.state_manager.clear_app_state()
                 QMessageBox.information(self, "State", "State cleared successfully.")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to clear state: {e}")

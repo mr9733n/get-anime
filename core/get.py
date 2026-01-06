@@ -826,6 +826,23 @@ class GetManager:
             )
             return title
 
+    def get_title_ids_by_external_ids(self, provider_code: str, external_ids: list[str]) -> dict[str, int]:
+        external_ids = [str(x) for x in external_ids if x]
+        if not external_ids:
+            return {}
+
+        with self.Session as session:
+            rows = (
+                session.query(TitleProviderMap.external_title_id, TitleProviderMap.title_id)
+                .join(Provider, Provider.provider_id == TitleProviderMap.provider_id)
+                .filter(
+                    Provider.code == provider_code,
+                    TitleProviderMap.external_title_id.in_(external_ids),
+                )
+                .all()
+            )
+            return {str(ext): int(tid) for ext, tid in rows if ext is not None and tid is not None}
+
     def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
         with self.Session as session:
             rows = (

@@ -260,6 +260,9 @@ class DatabaseManager:
     def get_title_by_external_id(self, provider_code: str, external_id: int | str):
         return self.get_manager.get_title_by_external_id(provider_code, external_id)
 
+    def get_title_ids_by_external_ids(self, provider_code: str, external_ids: list[str]) -> dict[str, int]:
+        return self.get_manager.get_title_ids_by_external_ids(provider_code, external_ids)
+
     def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
         return self.get_manager.get_title_ids_by_provider(provider_code)
 

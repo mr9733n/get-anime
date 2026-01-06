@@ -275,10 +275,7 @@ class DisplayController:
             elif show_mode in list_modes:
                 kind = "text_list"
 
-            if show_mode not in special_modes:
-                self.ctx._template_cache = self.db.get_template(self.ctx.current_template, kind=kind)
-            else:
-                self.ctx._template_cache = ("", "")
+            self.ctx._template_cache = self.db.get_template(self.ctx.current_template, kind=kind)
 
             factory = TitleDisplayFactory(self.parent)
 

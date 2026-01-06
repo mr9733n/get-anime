@@ -235,7 +235,7 @@ class AnimePlayerAppVer3(QWidget):
         """Инициализирует UI генераторы."""
         self.ui_manager = UIManager(self, self.ui_style)
 
-        self.ui_generator = UIGenerator(self, self.db_manager, self.ctx.current_template)
+        self.ui_generator = UIGenerator(self, self.ctx.current_template)
         self.ui_am_generator = UIAMGenerator(self, self.db_manager, self.ctx.current_template)
         self.ui_s_generator = UISGenerator(self, self.db_manager)
 

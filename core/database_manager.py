@@ -11,7 +11,7 @@ from core.delete import DeleteManager
 from core.utils import PlaceholderManager, TemplateManager, StateManager
 from core.tables import Base, DaysOfWeek, History, Title
 from core.types import PosterSize
-from app.qt.app_services import AppStateService
+# from app.qt.app_services import AppStateService
 
 
 class DatabaseManager:
@@ -22,7 +22,7 @@ class DatabaseManager:
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
 
         # TODO: fix this backward compat
-        self.app_state_manager = AppStateService(self)
+        # self.app_state_manager = AppStateService(self)
         # Инициализация менеджеров
         self.template_manager = TemplateManager(self.engine)
         self.placeholder_manager = PlaceholderManager(self.engine)
@@ -170,8 +170,8 @@ class DatabaseManager:
     def get_statistics_from_db(self):
         return self.get_manager.get_statistics_from_db()
 
-    def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
-        return self.get_manager.get_franchises_from_db(batch_size, offset, title_id)
+    def get_franchises_from_db(self, title_id=None, batch_size=None, offset=0):
+        return self.get_manager.get_franchises_from_db(title_id, batch_size, offset)
 
     def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None):
         """Need to see Titles without episodes"""

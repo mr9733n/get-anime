@@ -387,6 +387,13 @@ class SaveManager:
                         self.logger.debug(f"Restored title_id: {title.title_id} for {provider_code}:{external_id}")
 
                     for key, value in title_fields.items():
+                        # TODO: do not rewrite if empty
+                        if key == "host_for_player":
+                            if value is None:
+                                continue
+                            if isinstance(value, str) and not value.strip():
+                                continue
+                        
                         if hasattr(title, key) and getattr(title, key) != value:
                             setattr(title, key, value)
                             is_updated = True

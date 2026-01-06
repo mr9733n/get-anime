@@ -338,45 +338,72 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке списка шаблонов: {e}")
                 return []
 
-    def get_franchises_from_db(self, batch_size=None, offset=0, title_id=None):
-        """Получает все тайтлы вместе с информацией о франшизах."""
+    def get_franchises_from_db(self, title_id=None, batch_size=None, offset=0):
         with self.Session as session:
             try:
                 total_count = 0
-                if title_id:
-                    # New style
-                    franchise_subquery = session.query(FranchiseRelease.ext_fr_id).filter(
-                        FranchiseRelease.title_id == title_id
-                    ).scalar_subquery()
-
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.ext_fr_id == franchise_subquery,
-                        FranchiseRelease.franchise_id.isnot(None)
+                if not title_id:
+                    q = (
+                        session.query(Title)
+                        .join(FranchiseRelease)
+                        .join(Franchise)
+                        .filter(FranchiseRelease.franchise_id.isnot(None))
                     )
-                    total_count = query.count()
-                    if total_count == 0:
-                        # old style
-                        franchise_subquery = session.query(FranchiseRelease.franchise_id).filter(
-                            FranchiseRelease.title_id == title_id
-                        ).scalar_subquery()
+                    total_count = int(q.count() or 0)
 
-                        query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                            FranchiseRelease.franchise_id == franchise_subquery,
-                            FranchiseRelease.franchise_id.isnot(None)
-                        )
                 else:
-                    query = session.query(Title).join(FranchiseRelease).join(Franchise).filter(
-                        FranchiseRelease.franchise_id.isnot(None)
+                    uuids = (
+                        session.query(Franchise.franchise_id)
+                        .join(FranchiseRelease, FranchiseRelease.franchise_id == Franchise.id)
+                        .filter(FranchiseRelease.title_id == title_id)
+                        .distinct()
+                        .all()
                     )
+                    uuids = [x[0] for x in uuids if x and x[0]]
 
-                if offset >= total_count:
+                    if uuids:
+                        q = (
+                            session.query(Title)
+                            .join(FranchiseRelease)
+                            .join(Franchise)
+                            .filter(Franchise.franchise_id.in_(uuids))
+                        )
+                        total_count = int(q.count() or 0)
+                    else:
+                        fr_ids = (
+                            session.query(FranchiseRelease.franchise_id)
+                            .filter(
+                                FranchiseRelease.title_id == title_id,
+                                FranchiseRelease.franchise_id.isnot(None)
+                            )
+                            .distinct()
+                            .all()
+                        )
+                        fr_ids = [x[0] for x in fr_ids if x and x[0] is not None]
+
+                        if not fr_ids:
+                            return []  # <-- нет связей, нет франшизы
+
+                        q = (
+                            session.query(Title)
+                            .join(FranchiseRelease)
+                            .join(Franchise)
+                            .filter(FranchiseRelease.franchise_id.in_(fr_ids))
+                        )
+                        total_count = int(q.count() or 0)
+
+                # нормализуем offset
+                offset = int(offset or 0)
+
+                if total_count and offset >= total_count:
                     offset = 0
 
                 if batch_size:
-                    query = query.offset(offset).limit(batch_size)
+                    q = q.offset(offset).limit(batch_size)
 
-                titles = query.options(joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)).all()
-                return titles
+                return q.options(
+                    joinedload(Title.franchises).joinedload(FranchiseRelease.franchise)
+                ).all()
 
             except Exception as e:
                 self.logger.error(f"Ошибка при получении тайтлов с франшизами: {e}")

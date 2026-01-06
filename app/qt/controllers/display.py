@@ -4,9 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from PyQt6.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon, QStyle, QGridLayout
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon
 
+from core.queries.title_enricher import enrich_titles_for_render
 from app.qt.app_state import ViewState
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.app_constants import (
@@ -223,7 +223,6 @@ class DisplayController:
                 current_offset=self.ctx.current_offset,
                 batch_size=batch_size,
             )
-
             # Обновляем состояние
             self._update_view_state(titles, title_ids, show_mode)
 
@@ -263,6 +262,15 @@ class DisplayController:
         try:
             special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
             self.poster.clear_previous_posters()
+            if show_mode not in special_modes:
+                titles = enrich_titles_for_render(self.db, self.ctx.user_id, titles)
+
+            # cache template for this render pass (avoid UI->DB calls)
+            try:
+                self.ctx._template_cache = self.db.get_template(self.ctx.current_template)
+            except Exception as e:
+                self.log.error(f"Failed to load template '{self.ctx.current_template}': {e}")
+                self.ctx._template_cache = ("", "", "", "")
 
             factory = TitleDisplayFactory(self.parent)
 

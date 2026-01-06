@@ -305,25 +305,35 @@ class GetManager:
                 self.logger.error(f"Ошибка при загрузке данных о команде из базы данных: {e}")
                 return None
 
-    def get_template(self, name=None):
+    def get_template(self, name: str | None = None, kind: str = "titles") -> tuple[str, str]:
         """
         Загружает темплейт из базы данных по имени.
         """
-        if name is None:
-            name = 'default'
+        if not name:
+            name = "default"
+
         with self.Session as session:
             try:
-                template = session.query(Template).filter_by(name=name).first()
-                if template:
-                    self.logger.debug(f"Template '{name}' loaded successfully.")
-                    return template.titles_html, template.one_title_html, template.text_list_html, template.styles_css
-                else:
+                tmpl = session.query(Template).filter_by(name=name).first()
+                if not tmpl:
                     self.logger.warning(f"Template '{name}' not found.")
-                    return None, None, None, None
+                    return "", ""
+
+                if kind == "titles":
+                    html = tmpl.titles_html
+                elif kind == "one_title":
+                    html = tmpl.one_title_html
+                elif kind == "text_list":
+                    html = tmpl.text_list_html
+                else:
+                    self.logger.warning(f"Unknown template kind='{kind}', fallback to titles.")
+                    html = tmpl.titles_html
+
+                return (html or ""), (tmpl.styles_css or "")
 
             except Exception as e:
                 self.logger.error(f"Error loading template '{name}': {e}")
-                return None, None, None, None
+                return "", ""
 
     def get_available_templates(self):
         """

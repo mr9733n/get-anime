@@ -266,11 +266,19 @@ class DisplayController:
                 titles = enrich_titles_for_render(self.db, self.ctx.user_id, titles)
 
             # cache template for this render pass (avoid UI->DB calls)
-            try:
-                self.ctx._template_cache = self.db.get_template(self.ctx.current_template)
-            except Exception as e:
-                self.log.error(f"Failed to load template '{self.ctx.current_template}': {e}")
-                self.ctx._template_cache = ("", "", "", "")
+            special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
+            list_modes = {'titles_list', 'franchise_list', 'need_to_see_list', 'ongoing_list'}
+
+            kind = "titles"
+            if show_mode == SHOW_ONE_TITLE:
+                kind = "one_title"
+            elif show_mode in list_modes:
+                kind = "text_list"
+
+            if show_mode not in special_modes:
+                self.ctx._template_cache = self.db.get_template(self.ctx.current_template, kind=kind)
+            else:
+                self.ctx._template_cache = ("", "")
 
             factory = TitleDisplayFactory(self.parent)
 

@@ -178,18 +178,20 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            _, one_title_html, _, styles_css = getattr(self.app.ctx, "_template_cache", ("", "", "", ""))
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
 
-            if not one_title_html:
+            if not html:
                 self.logger.error("Template cache is empty for template=%s", self.current_template)
                 return ""
 
+            template = Template(html)
+
             poster_html = self.app.ui_generator.generate_poster_html(title, need_placeholder=True)
             reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
-            template = Template(one_title_html)
+
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 poster_html=poster_html,
                 reload_poster_html=reload_poster_html,
                 provider_html=provider_html,
@@ -219,16 +221,16 @@ class TitleHtmlFactory:
             year_html = self.app.ui_generator.generate_year_html(title, show_text_list=True)
             status_html = self.app.ui_generator.generate_status_html(title, show_text_list=True)
 
-            _, _, show_text_list_html, styles_css = getattr(self.app.ctx, "_template_cache", ("", "", "", ""))
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
 
-            if not show_text_list_html:
+            if not html:
                 self.logger.error("Template cache is empty for template=%s", self.current_template)
                 return ""
 
-            template = Template(show_text_list_html)
+            template = Template(html)
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 year_html=year_html,
                 status_html=status_html,
             )
@@ -254,20 +256,21 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            titles_html, _, _, styles_css = getattr(self.app.ctx, "_template_cache", ("", "", "", ""))
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
 
-            if not titles_html:
+            if not html:
                 self.logger.error("Template cache is empty for template=%s", self.current_template)
                 return ""
+
+            template = Template(html)
 
             poster_html = self.app.ui_generator.generate_poster_html(title, need_background=True)
             reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
             show_more_html = self.app.ui_generator.generate_show_more_html(title.title_id)
 
-            template = Template(titles_html)
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 poster_html=poster_html,
                 reload_poster_html=reload_poster_html,
                 provider_html=provider_html,

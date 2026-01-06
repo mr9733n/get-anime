@@ -112,7 +112,7 @@ class UIAMGenerator:
         load_more_href: str | None = None,
         load_more_label: str = "LOAD MORE TITLES",
     ) -> str:
-        _, _, _, styles_css = self.db_manager.get_template(self.current_template)
+        _, styles_css = self.db_manager.get_template(self.current_template)
 
         if not blocks:
             empty = "Нет данных AniMedia для отображения." if mode == SHOW_AM_TITLES else "Нет данных расписания AniMedia."

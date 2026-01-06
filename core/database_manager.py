@@ -203,11 +203,11 @@ class DatabaseManager:
         """Searches for titles by keywords in code, name_ru, name_en, alternative_name, or by title_id, and returns a list of title_ids."""
         return self.get_manager.get_titles_by_keywords(search_string)
 
-    def get_template(self, name=None):
+    def get_template(self, name: str | None = None, kind: str = "titles") -> tuple[str, str]:
         """
         Загружает темплейт из базы данных по имени.
         """
-        return self.get_manager.get_template(name)
+        return self.get_manager.get_template(name, kind)
 
     def get_available_templates(self):
         """

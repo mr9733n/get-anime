@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
@@ -75,7 +76,15 @@ class OpenRouter:
           - get_mini_browser_command(): list[str]  (например [sys.executable, path_to_mini_browser_py])
           - proxy_enabled/proxy_url
         """
-        cmd = self.app.get_mini_browser_command()
+        cmd = None
+        try:
+            if getattr(sys, 'frozen', False):
+                cmd = self.app.get_mini_browsaer_executable_path()
+            else:
+                cmd = self.app.get_mini_browser_command()
+
+        except Exception as e:
+            self.app.logger.error(f"Mini Browser cmd failed: {e}", exc_info=True)
 
         # TODO: hardcode always enabled
         # if str(getattr(self.app, "proxy_enabled", "false")).lower() == "true":
@@ -85,4 +94,5 @@ class OpenRouter:
         if proxy:
             cmd += ["--socks", proxy]
 
+        self.app.logger.debug(f"Mini Browser cmd: {cmd}")
         return cmd

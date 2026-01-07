@@ -31,7 +31,6 @@ class VideoWindow(QWidget):
         super().__init__()
         self.setWindowTitle("VLC Video Player")
         self.video_widget = QVideoWidget(self)
-        self.setCentralWidget(self.video_widget)
         self.media_player = media_player
         self.media_player.set_hwnd(self.video_widget.winId())
 
@@ -281,7 +280,7 @@ class VLCPlayer(QWidget):
 
         Args:
             path (str): Путь к локальному файлу или URL плейлиста.
-            title_id (str): Идентификатор текущего тайтла.
+            title_id (int): Идентификатор текущего тайтла.
             skip_data (str): Закодированные данные о пропусках в base64.
         """
         self.playlist_widget.clear()

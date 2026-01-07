@@ -3,7 +3,7 @@
 from PyQt6.QtCore import pyqtSignal, Qt, QThreadPool, QTimer, QFileSystemWatcher
 from PyQt6.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QLabel, QWidget
 
-from app.qt.runtime.runtime_manager import LogWorker
+from utils.runtime.runtime_manager import LogWorker
 
 
 class LogWindow(QWidget):

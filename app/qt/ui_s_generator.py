@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QComboBox, QMessageBox
 )
 
-from app.qt.runtime.runtime_manager import restart_application
+from utils.runtime.runtime_manager import restart_application
 from app.qt.runtime.settings_window import SettingsWindow
 from app.qt.runtime.audit_window import AuditLogWindow
 from app.qt.runtime.deleted_window import DeletedWindow

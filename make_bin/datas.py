@@ -151,8 +151,8 @@ def get_files_to_delete() -> dict[str, list[str]]:
         'AnimePlayer/_internal/PIL': [
             "_imagingtk.cp312-win_amd64.pyd",  # VirusTotal false positive
             "_webp.cp312-win_amd64.pyd",  # VirusTotal false positive
-            "_imagingtk.cp313-win_amd64.pyd",  # Python 3.13
-            "_webp.cp313-win_amd64.pyd",  # Python 3.13
+            # "_imagingtk.cp313-win_amd64.pyd",  # Python 3.13
+            # "_webp.cp313-win_amd64.pyd",  # Python 3.13
         ]
     }
 

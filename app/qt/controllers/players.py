@@ -50,6 +50,12 @@ class PlayerControllerDeps:
     mpv_log_enabled: bool = False
     mpv_verbose: str = "info"
     mpv_player_executable_name: str = "mpv_player.exe"
+    vlc_player_executable_name: str = "vlc_player.exe"
+    mini_browser_executable_name: str = "mini_browser.exe"
+    mini_browser_dir: str = "qt_browser"
+    mini_browser_py: str = "mini_browser.py"
+    mpv_log_name: str = "mpv.log"
+    vlc_log_name: str  = "vlc.log"
     video_player_path: str = ""
     prod_key: str | None = None
 
@@ -238,10 +244,16 @@ class PlayerController:
 
         return playlist
 
+    def get_mini_browsaer_executable_path(self) -> list[str]:
+        """Возвращает путь к Mini Browser executable."""
+        # TODO: Этот метод нужно адаптировать под структуру
+        return [os.path.join(os.path.dirname(sys.executable), self._deps.mini_browser_executable_name)]
+
     def get_mini_browser_command(self) -> list[str]:
         """Возвращает команду для запуска мини-браузера (DEV mode)."""
         app_dir = Path(__file__).resolve().parents[2]
-        mini_browser_py = app_dir / "qt_browser" / "mini_browser.py"
+        mini_browser_py = app_dir / self._deps.mini_browser_dir / self._deps.mini_browser_py
+        self.log.debug(f"[***] DEV Mini browser command: {mini_browser_py}")
         return [sys.executable, str(mini_browser_py)]
 
     # === Private: Link Resolution ===
@@ -321,7 +333,7 @@ class PlayerController:
         if self._deps.prod_key:
             cmd.extend(["--prod_key", str(self._deps.prod_key)])
         if self._deps.mpv_log_enabled:
-            cmd.extend(["--log", str(Path("logs") / "mpv.log")])
+            cmd.extend(["--log", str(Path("logs") / self._deps.mpv_log_name)])
         if str(self._deps.mpv_verbose).lower() in ("info", "debug"):
             cmd.extend(["--verbose"])
 
@@ -339,7 +351,7 @@ class PlayerController:
         from app.mpv.mpv_engine import MpvEngine
         from app.mpv.player_window import PlayerWindow
 
-        log_file = str(Path("logs") / "mpv.log") if self._deps.mpv_log_enabled else None
+        log_file = str(Path("logs") / self._deps.mpv_log_name) if self._deps.mpv_log_enabled else None
         loglevel = "info" if str(self._deps.mpv_verbose).lower() in ("info", "debug") else "warn"
 
         engine = MpvEngine(proxy=None, loglevel=loglevel, log_file=log_file)
@@ -415,7 +427,7 @@ class PlayerController:
 
         vlc_kwargs = {"current_template": self.ctx.current_template}
         if self._deps.log_enabled:
-            vlc_kwargs["log"] = self._deps.log_enabled
+            vlc_kwargs["log"] = str(self._deps.log_enabled)
             vlc_kwargs["log_level"] = self._deps.verbose
 
         self._vlc_window = VLCPlayer(**vlc_kwargs)
@@ -429,8 +441,8 @@ class PlayerController:
 
     def _get_vlc_executable_path(self) -> str:
         """Возвращает путь к VLC executable."""
-        # Этот метод нужно адаптировать под вашу структуру
-        return os.path.join(os.path.dirname(sys.executable), "vlc_player.exe")
+        # TODO: Этот метод нужно адаптировать под структуру
+        return os.path.join(os.path.dirname(sys.executable), self._deps.vlc_player_executable_name)
 
     # === Private: Playlist Helpers ===
 

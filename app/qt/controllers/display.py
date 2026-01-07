@@ -247,59 +247,66 @@ class DisplayController:
             self.ui.hide_loader()
             self.ui.set_buttons_enabled(True)
 
-    def display_titles_in_ui(
-            self,
-            titles: list,
-            show_mode: str = "default",
-            row_start: int = 0,
-            col_start: int = 0,
-    ) -> None:
-        """Отображает тайтлы в UI grid."""
+    def display_titles_in_ui(self, titles: list, show_mode: str = "default", row_start: int = 0,
+                             col_start: int = 0) -> None:
         if self.ctx.posters_layout is None:
             self.log.error("posters_layout is None: UI not initialized.")
             return
 
         try:
+            if not titles:
+                self.poster.clear_previous_posters()
+                self.log.debug("Displayed %s with 0 titles.", show_mode)
+                if hasattr(self.parent, "state_changed"):
+                    self.parent.state_changed.emit()
+                return
+
             special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
+            list_modes = {"titles_list", "franchise_list", "need_to_see_list", "ongoing_list"}
+
             self.poster.clear_previous_posters()
+
             if show_mode not in special_modes:
                 titles = enrich_titles_for_render(self.db, self.ctx.user_id, titles)
 
-            # cache template for this render pass (avoid UI->DB calls)
-            special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
-            list_modes = {'titles_list', 'franchise_list', 'need_to_see_list', 'ongoing_list'}
+            if show_mode == "default":
+                effective_show_mode = SHOW_ONE_TITLE if len(titles) == 1 else "default"
+            else:
+                effective_show_mode = show_mode
 
-            kind = "titles"
-            if show_mode == SHOW_ONE_TITLE:
+            if effective_show_mode == SHOW_ONE_TITLE:
                 kind = "one_title"
-            elif show_mode in list_modes:
+            elif effective_show_mode in list_modes:
                 kind = "text_list"
+            else:
+                kind = "titles"
 
             self.ctx._template_cache = self.db.get_template(self.ctx.current_template, kind=kind)
 
             factory = TitleDisplayFactory(self.parent)
 
-            if show_mode in special_modes:
-                widget, _ = factory.create(show_mode, titles)
+            if effective_show_mode in special_modes:
+                widget, _ = factory.create(effective_show_mode, titles)
                 self.ctx.posters_layout.addWidget(widget, 0, 0, 1, 2)
-            elif len(titles) == 1:
+
+            elif effective_show_mode == SHOW_ONE_TITLE:
                 widget, _ = factory.create(SHOW_ONE_TITLE, titles[0])
                 self.ctx.posters_layout.addWidget(widget, 0, 0, 1, 2)
+
             else:
                 for index, title in enumerate(titles):
-                    title_widget, num_columns = factory.create(show_mode, title)
+                    title_widget, num_columns = factory.create(effective_show_mode, title)
                     row = (index + row_start) // num_columns
                     column = (index + col_start) % num_columns
                     self.ctx.posters_layout.addWidget(title_widget, row, column)
 
-            self.log.debug(f"Displayed {show_mode} with {len(titles)} titles.")
+            self.log.debug("Displayed %s (effective=%s) with %d titles.", show_mode, effective_show_mode, len(titles))
 
-            # Emit signal через parent
-            if hasattr(self.parent, 'state_changed'):
+            if hasattr(self.parent, "state_changed"):
                 self.parent.state_changed.emit()
 
         except Exception as e:
-            self.log.error(f"Ошибка display_titles_in_ui: {e}")
+            self.log.error(f"Ошибка display_titles_in_ui: {e}", exc_info=True)
 
     def display_titles_for_day(self, day_of_week: int, force_reload: bool = False) -> None:
         """Отображает тайтлы для указанного дня недели."""

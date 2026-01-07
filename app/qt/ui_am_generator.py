@@ -189,7 +189,7 @@ class UIAMGenerator:
             total_items = ctx.am_total_count or 0
             current_end = ctx.current_offset + 12  # offset + page_size
 
-            if current_end < total_items:
+            if current_end >= total_items:
                 rows.append(f"""
                   <div style="text-align:center; margin:20px 20px;">
                     <a class="am-iconbtn" href="{load_more_href}">

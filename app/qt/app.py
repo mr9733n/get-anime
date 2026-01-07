@@ -554,6 +554,10 @@ class AnimePlayerAppVer3(QWidget):
         """Открывает ссылку в браузере."""
         self.player.open_web_link(link, title_id, skip_data)
 
+    def get_mini_browsaer_executable_path(self) -> list[str]:
+        """Возвращает executable name для мини-браузера."""
+        return self.player.get_mini_browsaer_executable_path()
+
     def get_mini_browser_command(self) -> list[str]:
         """Возвращает команду для мини-браузера."""
         return self.player.get_mini_browser_command()

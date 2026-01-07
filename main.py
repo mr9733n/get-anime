@@ -16,7 +16,7 @@ from app.qt.app import AnimePlayerAppVer3
 from app.qt.app_services import AppStateService
 from storage.database_manager import DatabaseManager
 from utils.security.library_loader import verify_library, load_library
-from app.qt.runtime.runtime_manager import test_exception
+from utils.runtime.runtime_manager import test_exception
 from utils.config.config_manager import ConfigManager
 
 APP_MINOR_VERSION = '0.3.8'

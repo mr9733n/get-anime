@@ -31,6 +31,7 @@ def enrich_titles_for_render(db_manager, user_id: int, titles: list[Any]) -> Any
         torrents = []
         need_to_see = False
         title_watched = False
+        watched_episodes: set[int] = set()
         all_episodes_watched = False
         downloaded_torrents: set[int] = set()
 
@@ -73,6 +74,14 @@ def enrich_titles_for_render(db_manager, user_id: int, titles: list[Any]) -> Any
             need_to_see = False
 
         try:
+            for e in t.episodes or []:
+                is_watched, _ = db_manager.get_history_status(user_id, t.title_id, episode_id=e.episode_id)
+                if is_watched:
+                    watched_episodes.add(int(e.episode_id))
+        except Exception:
+            watched_episodes = set()
+
+        try:
             is_watched, _ = db_manager.get_history_status(user_id, t.title_id, episode_id=None)
             title_watched = bool(is_watched)
         except Exception:
@@ -105,6 +114,8 @@ def enrich_titles_for_render(db_manager, user_id: int, titles: list[Any]) -> Any
         setattr(t, "_pref_torrents", torrents)
         setattr(t, "_pref_need_to_see", need_to_see)
         setattr(t, "_pref_title_watched", title_watched)
+        setattr(t, "_pref_watched_episodes", watched_episodes)
+
         setattr(t, "_pref_all_episodes_watched", all_episodes_watched)
         setattr(t, "_pref_downloaded_torrents", downloaded_torrents)
 

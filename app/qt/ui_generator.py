@@ -206,25 +206,27 @@ class UIGenerator:
     def generate_watch_history_html(self, title_id, episode_id=None, title=None):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = self._icon("square", True)
-            image_html_red = self._icon("square", False)
             user_id = self.app.user_id
+            on = self._icon("square", True)
+            off = self._icon("square", False)
 
-            if episode_id is None and title is not None:
-                pref = getattr(title, "_pref_title_watched", None)
+            if title is None:
+                self.logger.debug("Missing enrichment: title is None title_id=%s", title_id)
+                watched = False
+            elif episode_id is None:
+                watched = bool(getattr(title, "_pref_title_watched", False))
             else:
-                pref = None
+                watched_set = getattr(title, "_pref_watched_episodes", set())
+                watched = int(episode_id) in watched_set
 
-            if pref is None:
-                self.logger.debug("Missing enrichment: _pref_title_watched title_id=%s", title_id)
-            is_watched = bool(pref) if pref is not None else False
+            icon = on if watched else off
 
-            return (
-                f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">'
-                f'{image_html_green if is_watched else image_html_red}</a>'
-            )
+            safe_episode = "None" if episode_id is None else episode_id
+
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{safe_episode}" title="Set watch status">{icon}</a>'
+
         except Exception as e:
-            self.logger.error(f"Error in generate_watch_history_html: {str(e)}")
+            self.logger.error("Error in generate_watch_history_html: %s", e, exc_info=True)
             return ""
 
     def generate_torrents_html(self, title):
@@ -585,7 +587,7 @@ class UIGenerator:
                 )
 
                 for episode_id, episode_name, link, episode_skip_data_encoded in episode_links:
-                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
+                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id, title=title)
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
 

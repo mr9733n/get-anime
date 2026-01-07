@@ -33,7 +33,7 @@ def get_main_app_datas(build_config_path: str) -> list[tuple[str, str]]:
         (os.path.join(PROJECT_DIR, 'app', 'qt_browser', '__pycache__'), 'app/qt_browser/__pycache__'),
 
         # Core
-        (os.path.join(PROJECT_DIR, 'core', '__pycache__'), 'core/__pycache__'),
+        (os.path.join(PROJECT_DIR, 'storage', '__pycache__'), 'storage/__pycache__'),
 
         # Utils подмодули (исправленные пути!)
         (os.path.join(PROJECT_DIR, 'utils', 'config', '__pycache__'), 'utils/config/__pycache__'),

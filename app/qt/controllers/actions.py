@@ -219,12 +219,12 @@ class ActionsController:
         try:
             if not getattr(result, "ok", False):
                 msg = getattr(result, "error", None) or "No titles found."
-                self.display.show_error_notification("Search", msg)
+                self._notify_error("Search", msg)
                 return
 
             title_ids = getattr(result, "title_ids", None) or []
             if not title_ids:
-                self.display.show_error_notification("Search", "No titles found.")
+                self._notify_warning("Search", "No titles found.")
                 return
 
             self.ctx.current_data = getattr(result, "current_data", None)
@@ -232,14 +232,14 @@ class ActionsController:
 
         except Exception as e:
             self.log.error(f"Error in _on_search_use_case_result: {e}", exc_info=True)
-            self.display.show_error_notification("Error", "Unexpected error.")
+            self._notify_error("Error", "Unexpected error.")
         finally:
             cleanup_ui(self.ui)
 
     def _on_search_use_case_error(self, message: str) -> None:
         try:
             self.log.error(f"Search worker error: {message}")
-            self.display.show_error_notification("Search error", message)
+            self._notify_error("Search error", message)
         finally:
             cleanup_ui(self.ui)
 

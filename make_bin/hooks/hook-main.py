@@ -21,7 +21,7 @@ hiddenimports = (
     )
 
 datas = (collect_data_files('app') +
-         collect_data_files('core') +
+         collect_data_files('storage') +
          collect_data_files('utils') +
          collect_data_files('providers')
          )

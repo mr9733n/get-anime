@@ -631,6 +631,7 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Add more tests 
 - [x] Created new controllers, adapters, ports
 - [x] Removed db calling from ui screens
+- [x] Fix regress watched episodes
 - [ ] ... 
 - [ ] ...
 

@@ -1,4 +1,4 @@
-# app/core/ports/__init__.py
+# backend/core/ports/__init__.py
 """
 Порты (интерфейсы) для внешних зависимостей.
 
@@ -9,18 +9,18 @@
 что позволяет использовать duck typing без явного наследования.
 """
 
-from app.core.ports.repositories import (
+from backend.core.ports.repositories import (
     ITitleRepository,
     IPosterRepository,
     IScheduleRepository,
     IHistoryRepository,
 )
-from app.core.ports.providers import (
+from backend.core.ports.providers import (
     IAnimeProvider,
     ISearchResult,
     ITitleDetails,
 )
-from app.core.ports.services import (
+from backend.core.ports.services import (
     IPlaylistService,
     IPosterDownloader,
 )

@@ -17,7 +17,7 @@ from app.qt.controllers.players import PlayerController, PlayerControllerDeps
 from app.qt.controllers.callback import CallbackController, CallbackControllerDeps
 from app.qt.controllers.bootstrap import BootstrapController, BootstrapControllerDeps
 from app.qt.controllers.system import SystemController
-from app.core.use_cases.title_search_use_case import TitleSearchUseCase
+from backend.core.use_cases.title_search_use_case import TitleSearchUseCase
 from app.qt.app_constants import PROVIDER_ANILIBERTY, PROVIDER_ANIMEDIA
 from app.qt.ui_notify import Notifier
 

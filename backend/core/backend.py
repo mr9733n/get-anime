@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.ports.notify import NotifierPort
-from app.core.use_cases.title_search_use_case import TitleSearchUseCase
+from backend.core.ports.notify import NotifierPort
+from backend.core.use_cases.title_search_use_case import TitleSearchUseCase
 
 
 @dataclass

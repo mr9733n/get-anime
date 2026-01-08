@@ -1,4 +1,4 @@
-# app/core/ports/repositories.py
+# backend/core/ports/repositories.py
 """
 Порты для репозиториев (хранилищ данных).
 Абстрагируют доступ к БД.

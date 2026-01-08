@@ -1,4 +1,4 @@
-# utils/runtime/settings_window.py
+# app/qt/system_windows/settings_window.py
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QLineEdit, QCheckBox, QSpinBox, QPushButton,

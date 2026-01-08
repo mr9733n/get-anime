@@ -10,9 +10,9 @@ import importlib.resources as ir
 from PyQt6.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt6.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
-from app.core.backend import Backend, BackendDeps
+from backend.core.backend import Backend, BackendDeps
 
-from app.infra.notify.null_notify import NullNotifier
+from backend.infra.notify.null_notify import NullNotifier
 from app.qt.ui_notify import Notifier
 
 from app.qt.app_context import AppContext

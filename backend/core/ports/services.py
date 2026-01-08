@@ -1,4 +1,4 @@
-# app/core/ports/services.py
+# backend/core/ports/services.py
 """
 Порты для сервисов.
 """

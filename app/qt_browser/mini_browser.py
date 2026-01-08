@@ -5,7 +5,6 @@ import argparse
 import tempfile
 from typing import Iterable, List, Optional
 
-QT_VERSION = None  # "PyQt6" или "PyQt5"
 
 try:
     from PyQt6.QtCore import QUrl
@@ -18,30 +17,14 @@ try:
     from PyQt6.QtCore import Qt
     from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 
-    QT_VERSION = "PyQt6"
-except Exception:
-    try:
-        from PyQt5.QtCore import QUrl
-        from PyQt5.QtWidgets import (
-            QApplication, QMainWindow, QTabWidget,
-            QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-            QLabel, QPushButton, QHBoxLayout, QFileDialog, QMessageBox
-        )
-        from PyQt5.QtWebEngineWidgets import QWebEngineView
-        from PyQt5.QtCore import Qt
-        from PyQt5.QtWebEngineWidgets import QWebEnginePage
-        from PyQt5.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings  # иногда так, зависит от сборки
-        QT_VERSION = "PyQt5"
-    except Exception as e:
-        print(
-            "[!] Не удалось импортировать ни PyQt6(+WebEngine), ни PyQt5(+WebEngine).\n"
-            f"    Ошибка: {e}\n"
-            "    Установи один из вариантов (внутри venv):\n"
-            "    - python -m pip install PyQt5 PyQtWebEngine\n"
-            "      или\n"
-            "    - python -m pip install PyQt6 PyQt6-WebEngine"
-        )
-        sys.exit(1)
+except Exception as e:
+    print(
+        "[!] Не удалось импортировать ни PyQt6(+WebEngine).\n"
+        f"    Ошибка: {e}\n"
+        "    Установи один из вариантов (внутри venv):\n"
+        "    - python -m pip install PyQt6 PyQt6-WebEngine"
+    )
+    sys.exit(1)
 
 logger = logging.getLogger("mini_browser")
 logger.setLevel(logging.INFO)
@@ -66,7 +49,7 @@ def load_urls_from_file(path: str) -> list[str]:
     if not path:
         return []
     if not os.path.exists(path):
-        print(f"[mini_browser] file not found: {path}")
+        logger.info(f"[mini_browser] file not found: {path}")
         return []
 
     urls: list[str] = []
@@ -85,14 +68,12 @@ class PermissivePage(QWebEnginePage):
     def __init__(self, profile: QWebEngineProfile, parent=None):
         super().__init__(profile, parent)
 
-    # Qt5: featurePermissionRequested(url, feature)
     # Qt6: featurePermissionRequested(securityOrigin, feature)
     def _grant(self, origin, feature):
         try:
             self.setFeaturePermission(origin, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
-        except Exception:
-            # Qt5 enum
-            self.setFeaturePermission(origin, feature, QWebEnginePage.PermissionGrantedByUser)
+        except Exception as e:
+            logger.error(f"Error featurePermissionRequested: {e}")
 
     def on_feature_permission_requested(self, origin, feature):
         # Даем то, что нужно плеерам чаще всего
@@ -117,7 +98,7 @@ class PermissivePage(QWebEnginePage):
 class BrowserWindow(QMainWindow):
     def __init__(self, urls: Iterable[str], *, show_list_tab: bool, initial_file: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle(f"Mini Qt Browser ({QT_VERSION})")
+        self.setWindowTitle(f"Mini Qt Browser")
         self.resize(1100, 800)
 
         self.tabs = QTabWidget(self)
@@ -161,13 +142,13 @@ class BrowserWindow(QMainWindow):
         view.setPage(page)
 
         # Фокус
-        view.setFocusPolicy(Qt.FocusPolicy.StrongFocus if QT_VERSION == "PyQt6" else Qt.StrongFocus)
+        view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         view.setFocus()
 
         # Разрешаем fullscreen (часто нужно для iframe player UI)
         try:
             page.fullScreenRequested.connect(
-                lambda req: (req.accept(), view.setWindowState(view.windowState() | Qt.WindowFullScreen)))
+                lambda req: (req.accept(), view.setWindowState(view.windowState())))
         except Exception:
             pass
 
@@ -180,7 +161,6 @@ class BrowserWindow(QMainWindow):
             s.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True)
             s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
         except Exception:
-            # Qt5 иногда атрибуты в другом enum — но смысл тот же
             pass
 
         # Подписка на permission requests
@@ -456,11 +436,7 @@ def main():
     window.start()
     window.show()
 
-    # PyQt6: exec(), PyQt5: exec_()
-    if QT_VERSION == "PyQt6":
-        sys.exit(app.exec())
-    else:
-        sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

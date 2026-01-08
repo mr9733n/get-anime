@@ -3,7 +3,8 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hiddenimports = (
     collect_submodules('app.qt') +
-    collect_submodules('core') +
+    collect_submodules('storage') +
+    collect_submodules('backend') +
 
     collect_submodules('providers.animedia.v0') +
     collect_submodules('providers.aniliberty.v1') +

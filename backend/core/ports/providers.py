@@ -1,4 +1,4 @@
-# app/core/ports/providers.py
+# backend/core/ports/providers.py
 """
 Порты для внешних провайдеров аниме.
 Абстрагируют работу с API (AniLiberty, AniMedia, etc).

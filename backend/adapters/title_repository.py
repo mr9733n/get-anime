@@ -1,4 +1,4 @@
-# app/adapters/title_repository.py
+# backend/adapters/title_repository.py
 """
 Адаптер: DBManager → ITitleRepository
 """

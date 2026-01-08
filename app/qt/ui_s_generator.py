@@ -6,10 +6,10 @@ from PyQt6.QtWidgets import (
 )
 
 from utils.runtime.runtime_manager import restart_application
-from app.qt.runtime.settings_window import SettingsWindow
-from app.qt.runtime.audit_window import AuditLogWindow
-from app.qt.runtime.deleted_window import DeletedWindow
-from app.qt.runtime.log_window import LogWindow
+from app.qt.system_windows.settings_window import SettingsWindow
+from app.qt.system_windows.audit_window import AuditLogWindow
+from app.qt.system_windows.deleted_window import DeletedWindow
+from app.qt.system_windows.log_window import LogWindow
 
 
 LINE_EDIT_STYLE = """

@@ -1,4 +1,4 @@
-# app/adapters/aniliberty_provider.py
+# backend/adapters/aniliberty_provider.py
 """
 Адаптер: APIAdapter → IAnimeProvider
 """

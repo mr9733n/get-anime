@@ -269,6 +269,9 @@ class DatabaseManager:
     def get_provider_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_provider_by_title_id(title_id)
 
+    def get_provider_links_by_title_ids(self, title_ids: list[int]) -> dict[int, list[dict]]:
+        return self.get_manager.get_provider_links_by_title_ids(title_ids)
+
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_studio_by_title_id(title_id)
 

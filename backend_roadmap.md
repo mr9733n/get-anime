@@ -1,180 +1,120 @@
-# Проверочные команды (PowerShell)
+# Backend Roadmap — Anime Player
 
-## titles.search
+## 📍 Текущий статус
 
-```powershell
-'{"op":"titles.search","params":{"query":"sakamoto"}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+**Backend выделен из Qt-приложения и стабилен.**
+Архитектура чистая, контроллеры изолированы от БД, JSON-tool работает.
+
 ```
-
-## titles.get (single)
-
-```powershell
-'{"op":"titles.get","params":{"title_id":2128}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## titles.get (batch)
-
-```powershell
-'{"op":"titles.get","params":{"title_ids":[2128,2129]}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## titles.list_episodes (single)
-
-```powershell
-'{"op":"titles.list_episodes","params":{"title_id":2128}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## titles.list_episodes (batch)
-
-```powershell
-'{"op":"titles.list_episodes","params":{"title_ids":[2128,2129]}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## streams.get (у тебя уже работает — проверка регресса)
-
-```powershell
-'{"op":"streams.get","params":{"title_id":2128,"episode_number":1}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## playlist.compose_multi (by_title)
-
-```powershell
-'{"op":"playlist.compose_multi","params":{"title_ids":[2128,2129],"quality":"best","mode":"by_title","name":"pack_2128_2129"}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## playlist.compose_multi (preview)
-
-```powershell
-'{"op":"playlist.compose_multi","params":{"title_ids":[2128,2129],"quality":"best","mode":"preview","preview_count":1,"name":"preview_pack"}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
-```
-
-## playlist.compose_multi (continue)
-
-```powershell
-'{"op":"playlist.compose_multi","params":{"title_ids":[2128,2129],"quality":"best","mode":"continue","user_id":42,"name":"continue_pack"}}' |
-python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+[ DONE: Core Architecture ] → [ DONE: Titles Read ] → NEXT
 ```
 
 ---
 
-# 3) Фиксация прогресса + TLDR.md для нового чата
+## 🟢 DONE — Базовая архитектура
 
-Ниже готовый “боевой” `tldr.md` — копируй как есть:
+* [x] Standalone backend (без Qt / mpv / vlc)
+* [x] JSON-tool (stdin → stdout)
+* [x] Stateless backend
+* [x] Core / Infra / Transport разделены
+* [x] Контроллеры не работают с БД напрямую
+* [x] Работа с БД только через порты
+* [x] Enricher вынесен в infra
 
-````md
-# Backend (DB-only) JSON Tool — TLDR
+---
 
-## Что это
-Standalone backend для Anime каталога.
-One-shot режим: stdin -> обработка -> stdout -> exit.
-Никаких импортов Qt/mpv/vlc. State только в SQLite + файлы (playlists).
+## 🟢 DONE — Titles (чтение из БД)
 
-## Запуск
-```powershell
-'{"op":"titles.search","params":{"query":"sakamoto"}}' |
-python -m app.transport.json_tool.backend_tool --db .\db\anime_player.db
-````
+* [x] `titles.search`
+* [x] `titles.get` (single / batch)
+* [x] `titles.list_episodes`
+* [x] provider_links через порт (batched)
+* [x] Episodes с абсолютными stream URL
+* [x] Posters / previews / torrents через assets-host
+* [x] User prefs (history / need_to_see / watched)
 
-## Протокол
+---
 
-Request:
+## 🟡 NEXT — Связанные сущности Title
 
-```json
-{"op":"...","params":{...}}
-```
+**Цель:** сделать `TitleDetailsDTO` действительно полным.
 
-Response:
+### Planned
 
-```json
-{"ok":true,"result":{...},"error":null}
-```
+* [ ] Ratings
+* [ ] Watch history (read-only)
+* [ ] Production studio
+* [ ] Team members
+* [ ] Franchises
 
-## Реализовано (актуально)
+📌 Правило:
 
-### titles.search
+> никаких heavy-join
+> только batched read-порты
 
-Params:
+---
 
-* query: string (required)
-* provider: string (optional)
-  Result:
-* title_ids: [int]
-* providers: [string]
+## 🟡 DTO-оптимизация под UI
 
-### titles.get
+* [ ] `TitleCardDTO` (облегчённый)
+* [ ] Разделение:
 
-Params:
+  * list-view → `TitleCardDTO`
+  * detail-view → `TitleDetailsDTO`
+* [ ] Опциональный `compact=true`
 
-* title_id: int OR
-* title_ids: [int]
-  Result:
-* titles: [TitleDetailsDTO...]
+---
 
-TitleDetailsDTO включает episodes[*] и host_for_player.
-EpisodeDTO содержит поля hls_* и hls_*_abs (absolute URLs через host_for_player).
+## 🟡 Schedule / Providers
 
-### titles.list_episodes
+* [ ] `schedule.get` (DB-only)
+* [ ] Schedule порт
+* [ ] AniLiberty (через provider)
+* [ ] AniMedia (через cache)
+* [ ] Lazy enrich при открытии тайтла
 
-Params:
+---
 
-* title_id: int OR
-* title_ids: [int]
-  Result:
-* episodes: [EpisodeDTO...] OR
-* episodes_by_title: { "<title_id>": [EpisodeDTO...] }
+## 🟡 Асинхронные задачи
 
-### streams.get
+* [ ] Event / Job abstraction
+* [ ] Poster download / resize jobs
+* [ ] Cache warmup
+* [ ] CLI-friendly utilities
 
-Params:
+---
 
-* title_id: int
-* episode_number: int
-  Result:
-* stream: StreamInfoDTO
-  URL уже абсолютные (https://{host_for_player}+path)
+## 🟡 Инфраструктура (опционально)
 
-### playlist.compose
+* [ ] Read-only cache
+* [ ] Metrics / debug
+* [ ] Web API поверх backend
+* [ ] Документация API
 
-Params:
+---
 
-* title_id: int
-* quality: best|fhd|hd|sd (optional)
-  Result:
-* path: string (.m3u)
+## 🧱 Принципы, которые нельзя нарушать
 
-### playlist.compose_multi
+* ❌ Контроллер ≠ БД
+* ❌ ORM наружу
+* ❌ Shared state
+* ✅ Ports everywhere
+* ✅ Узкие batched запросы
+* ✅ Явные DTO
 
-Params:
+---
 
-* title_ids: [int] (required)
-* quality: best|fhd|hd|sd (optional)
-* mode: by_title|preview|latest|continue (optional)
-* name: string (optional)
-* preview_count: int (optional, для preview)
-* user_id: int (optional, для continue; default 42)
-  Result:
-* path: string (.m3u)
+## 🧭 Как пользоваться roadmap
 
-Modes:
+* **Backend_TLDR.md** → что есть сейчас
+* **backend_roadmap.md** → что делать дальше
+* **anime_player_app_roadmap.md** → история проекта
 
-* by_title: все эпизоды по тайтлам (сначала тайтл1, потом тайтл2)
-* preview: первые N эпизодов каждого тайтла (preview_count)
-* latest: последний эпизод каждого тайтла (по номеру)
-* continue: следующий непосмотренный эпизод по history/progress (через ProgressRepo)
+---
 
-## Архитектура
+## 🔒 Точка фиксации
 
-* transport: app/transport/json_tool/backend_tool.py + handlers registry
-* core: dto + controllers (titles/streams/playlists)
-* infra: db repos (progress_repo), adapters/repositories
-* bootstrap: standalone deps wiring
+> Backend готов к дальнейшему развитию
+> без архитектурных изменений.
 
 

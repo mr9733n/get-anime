@@ -9,15 +9,28 @@ from backend.core.controllers.playlists_controller import PlaylistsController
 from backend.core.ports.playlists import IPlaylistStorage, IPlaylistComposer
 from backend.core.use_cases.playlist_composer import PlaylistComposer
 from backend.infra.playlists.playlist_storage import PlaylistManagerStorage
+from utils.config.config_manager import ConfigManager
+from backend.infra.db.titles_port_sqlalchemy import SqlAlchemyTitlesPort
+from backend.infra.db.titles_enricher_sqlalchemy import SqlAlchemyTitlesEnricherPort
 
 
 class StandaloneBackend:
-    def __init__(self, *, db: Any, playlists_dir: str | Path = "playlists", progress_repo=None):
+    def __init__(
+            self,
+            *,
+            db: Any,
+            playlists_dir: str | Path = "playlists",
+            progress_repo=None,
+            config_file: str | Path = "config/config.ini",
+    ):
         self._db = db
         self._playlists_dir = Path(playlists_dir)
         self._progress = progress_repo
 
-        self.titles = TitlesController(self._db)
+        cfg = ConfigManager(str(config_file))
+        titles_port = SqlAlchemyTitlesPort(self._db)
+        enricher = SqlAlchemyTitlesEnricherPort(self._db)
+        self.titles = TitlesController(titles_port, enricher, config_manager=cfg)
         self.streams = StreamsController(self._db)
         storage: IPlaylistStorage = PlaylistManagerStorage(playlists_dir=playlists_dir)
         composer: IPlaylistComposer = PlaylistComposer()
@@ -29,8 +42,11 @@ class StandaloneBackend:
             progress_repo=progress_repo,
         )
     # --- titles ---
-    def titles_search(self, query: str, provider: str | None = None):
-        return self.titles.titles_search(query=query, provider=provider)
+    def titles_ids_search(self, query: str, provider: str | None = None):
+        return self.titles.titles_ids_search(query=query, provider=provider)
+
+    def titles_search(self, query: str, user_id: int = 42, enrich: bool = True,):
+        return self.titles.titles_search(query=query, user_id=user_id, enrich=enrich)
 
     def titles_get(self, *, title_ids: list[int]):
         return self.titles.titles_get(title_ids=title_ids)

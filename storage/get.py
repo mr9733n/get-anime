@@ -870,6 +870,38 @@ class GetManager:
 
             return link.provider.name
 
+    def get_provider_links_by_title_ids(self, title_ids: list[int]) -> dict[int, list[dict]]:
+        """
+        Возвращает provider links для списка тайтлов:
+        { title_id: [ {id, provider_id, provider_code, provider_name, external_title_id}, ... ] }
+        """
+        if not title_ids:
+            return {}
+
+        title_ids = [int(x) for x in title_ids]
+
+        with self.Session as session:
+            links = (
+                session.query(TitleProviderMap)
+                .options(joinedload(TitleProviderMap.provider))
+                .filter(TitleProviderMap.title_id.in_(title_ids))
+                .all()
+            )
+
+            out: dict[int, list[dict]] = {tid: [] for tid in title_ids}
+            for link in links:
+                tid = int(link.title_id)
+                p = getattr(link, "provider", None)
+                out.setdefault(tid, []).append({
+                    "id": int(getattr(link, "id")),
+                    "provider_id": int(getattr(link, "provider_id")),
+                    "provider_code": getattr(p, "code", None) if p else None,
+                    "provider_name": getattr(p, "name", None) if p else None,
+                    "external_title_id": str(getattr(link, "external_title_id")),
+                })
+
+            return out
+
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         """Возвращает название студии по title_id, либо None, если студии нет."""
         with self.Session as session:

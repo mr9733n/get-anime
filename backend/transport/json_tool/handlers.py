@@ -8,7 +8,7 @@ from backend.transport.json_tool.serializers import to_jsonable
 Handler = Callable[[Any, dict], dict]  # (backend, params) -> response dict
 
 
-def h_titles_search(backend, params):
+def h_titles_ids_search(backend, params):
     query = (params.get("query") or "").strip()
     provider = params.get("provider")
     provider = provider.strip() if isinstance(provider, str) and provider.strip() else None
@@ -16,16 +16,28 @@ def h_titles_search(backend, params):
     return ok({"title_ids": res.title_ids, "providers": res.providers})
 
 
+def h_titles_search(backend, params):
+    query = (params.get("query") or "").strip()
+    user_id = int(params.get("user_id", 42))
+    enrich = bool(params.get("enrich", True))
+    limit = int(params.get("limit", 50))
+    offset = int(params.get("offset", 0))
+    dtos = backend.titles.titles_search(query=query, user_id=user_id, enrich=enrich, limit=limit, offset=offset)
+    return ok({"titles": to_jsonable(dtos)})
+
+
 def h_titles_get(backend, params):
+    user_id = int(params.get("user_id", 42))
+    enrich = bool(params.get("enrich", True))
     if "title_ids" in params:
         title_ids = params["title_ids"]
         if not isinstance(title_ids, list):
             raise ValueError("title_ids must be a list[int]")
         title_ids = [int(x) for x in title_ids]
-        dtos = backend.titles_get(title_ids=title_ids)
+        dtos = backend.titles.titles_get(title_ids=title_ids, user_id=user_id, enrich=enrich)
     elif "title_id" in params:
         title_id = int(params["title_id"])
-        dtos = backend.titles_get(title_ids=[title_id])  # всегда list
+        dtos = backend.titles.titles_get(title_ids=[title_id], user_id=user_id, enrich=enrich)
     else:
         raise ValueError("titles.get expects title_id or title_ids")
 
@@ -87,6 +99,7 @@ def h_titles_list_episodes(backend, params):
 
 
 HANDLERS: dict[str, Handler] = {
+    "titles_ids.search": h_titles_ids_search,
     "titles.search": h_titles_search,
     "titles.get": h_titles_get,
     "streams.get": h_streams_get,

@@ -3,9 +3,9 @@ import base64
 import html
 from urllib.parse import quote
 import logging
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional, Any
 
-from PyQt5.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QTextBrowser
 
 from utils.media.image_manager import guess_mime
 from utils.parsing.animedia import parse_schedule_line
@@ -13,10 +13,9 @@ from app.qt.app_constants import PROVIDER_ANIMEDIA, SHOW_AM_SCHEDULE, SHOW_AM_TI
 
 
 class UIAMGenerator:
-    def __init__(self, app, db_manager, template_name):
+    def __init__(self, app, template_name):
         self.logger = logging.getLogger(__name__)
         self.app = app
-        self.db_manager = db_manager
         self.current_template = template_name
 
     def create_animedia_schedule_browser(self, schedule):
@@ -112,7 +111,7 @@ class UIAMGenerator:
         load_more_href: str | None = None,
         load_more_label: str = "LOAD MORE TITLES",
     ) -> str:
-        _, _, _, styles_css = self.db_manager.get_template(self.current_template)
+        _, styles_css = getattr(self.app.ctx, "_template_cache", ("", ""))
 
         if not blocks:
             empty = "Нет данных AniMedia для отображения." if mode == SHOW_AM_TITLES else "Нет данных расписания AniMedia."
@@ -231,16 +230,18 @@ class UIAMGenerator:
             href = "am_search/" + quote(title) + "/" + (original_id or "")
 
             if not original_id:
-                return ""
+                self.logger.debug("AM parse: missing original_id for line=%r", line)
+                continue
 
-            title_db = self.db_manager.get_title_by_external_id(PROVIDER_ANIMEDIA, original_id)
-            if not title_db:
-                return ""
-            title_id = title_db.title_id
+            title_id = getattr(self.app.ctx, "am_title_id_map", {}).get(str(original_id))
+            if not title_id:
+                self.logger.debug("AM: title not in DB for external_id=%s", original_id)
+                continue
+
             reload_poster = reload_poster_href + f"{title_id}/{poster_size_key}"
 
             img_html = self._get_poster_img_html(
-                title_id=title_id,
+                title_id=str(title_id),
                 size_key=poster_size_key,
                 w=poster_w,
                 h=poster_h,
@@ -312,7 +313,7 @@ class UIAMGenerator:
                 <a href="{href}">{safe_title}</a>
               </div>
               <div class="am-meta">{html.escape(meta_text) if meta_text else ""}</div>
-              <div class="am-toolbar">{reload_poster_html}</div>
+              {reload_poster_html}
             </td>
           </tr>
         </table>
@@ -340,9 +341,9 @@ class UIAMGenerator:
 
     @staticmethod
     def _section_title_titles(page: Optional[int]) -> str:
-        if page is None:
-            return "Каталог аниме"
-        return f"Page [{page}]" if page else "Каталог AniMedia"
+        if page in (None, 0):
+            return "Каталог AniMedia"
+        return f"Page [{page}]"
 
     @staticmethod
     def _meta_join(*parts) -> str:

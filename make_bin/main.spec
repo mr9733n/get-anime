@@ -63,10 +63,10 @@ backup_database(source_db, backup_folder)
 
 # Создание временного конфига
 config_path = os.path.join(PROJECT_DIR, "config", "config.ini")
-build_config_path = create_temp_config(config_path, {"USE_GIT_VERSION": "0"})
+build_config_path = create_temp_config(config_path, {"use_git_version": "0"})
 
 # Компиляция Python файлов
-compile_directories(['app', 'core', 'utils', 'templates', 'providers'])
+compile_directories(['app', 'storage', 'utils', 'templates', 'providers'])
 
 # Путь к app_constants для обновления хэшей
 app_py_path = os.path.join(PROJECT_DIR, 'app', 'qt', 'app_constants.py')
@@ -83,7 +83,7 @@ v = Analysis(
     hiddenimports=get_vlc_hiddenimports(),
     hookspath=hookspath,
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['make_bin/rthooks/rthook_pil_plugins.py'],
     excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

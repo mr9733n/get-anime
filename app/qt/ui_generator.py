@@ -6,18 +6,15 @@ import logging
 import re
 from urllib.parse import quote
 
-from PyQt5.QtWidgets import QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import QByteArray, QBuffer
+from PyQt6.QtWidgets import QHBoxLayout
 from app.qt.app_helpers import TitleBrowserFactory, TitleHtmlFactory
 from utils.media.image_manager import guess_mime, convert_image
 
 
 class UIGenerator:
-    def __init__(self, app, db_manager, template_name):
+    def __init__(self, app, template_name):
         self.logger = logging.getLogger(__name__)
         self.app = app
-        self.db_manager = db_manager
         self.current_template = template_name
         self.title_html_factory = TitleHtmlFactory(app, self.current_template)
         self.title_browser_factory = TitleBrowserFactory(app)
@@ -55,10 +52,15 @@ class UIGenerator:
         """
         return self.title_html_factory.generate_html(title, show_mode)
 
-    def generate_provider_html(self, title_id):
+    def generate_provider_html(self, title_id, title=None):
         """Generates HTML to display provider"""
         try:
-            provider = self.db_manager.get_provider_by_title_id(title_id)
+            provider = None
+            if title is not None:
+                provider = getattr(title, "_pref_provider", None)
+            if not provider:
+                self.logger.debug("Missing enrichment: _pref_provider title_id=%s", title_id)
+                return ""
             provider_link = provider.lower()
             html = f'<span class="decorate_name">{provider}<span>'
             html_link = f'{self.blank_spase}<a href="filter_by_provider/{provider_link}" title="Filter by Provider">{html}</a>{self.blank_spase}'
@@ -68,16 +70,16 @@ class UIGenerator:
             self.logger.error(error_message)
             return ""
 
-    def generate_studio_html(self, title_id):
+    def generate_studio_html(self, title_id, title=None):
         """Generates HTML to display studio"""
         try:
-            # TODO: Add filtering here
-            studio = self.db_manager.get_studio_by_title_id(title_id)
-            if studio:
-                html = f'<p>Студия: {studio}{self.blank_spase}</p>'
-            else:
-                html = f''
-            return html
+            pref = getattr(title, "_pref_studio", None) if title is not None else None
+            if not pref:
+                self.logger.debug("Missing enrichment: _pref_studio title_id=%s", title_id)
+                return ""
+            studio = pref
+            return f'<p>Студия: {studio}{self.blank_spase}</p>'
+
         except Exception as e:
             error_message = f"Error in generate_studio_html: {str(e)}"
             self.logger.error(error_message)
@@ -108,31 +110,31 @@ class UIGenerator:
     def generate_rating_html(self, title):
         """Generates HTML to display ratings and allows updating"""
         try:
-            ratings = self.db_manager.get_rating_from_db(title.title_id)
             rating_icons = []
             image_html_full = f"""★"""
             image_html_blank = f"""☆"""
-            if ratings:
-                rating_name = ratings.rating_name
-                rating_value = ratings.rating_value
-                for i in range(self.max_rating):
-                    if i < rating_value:
-                        rating_icons.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_full}</a>')
-                    else:
-                        rating_icons.append(
-                            f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
-            else:
-                rating_name = self.rating_name
-                for i in range(self.max_rating):
-                    rating_icons.append(
-                        f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{image_html_blank}</a>')
+
+            rating_name = getattr(title, "_pref_rating_name", None)
+            rating_value = getattr(title, "_pref_rating_value", None)
+
+            if rating_name is None or rating_value is None:
+                self.logger.debug("Missing enrichment: _pref_rating_name and _pref_rating_value title_id=%s", title.title_id)
+
+            rating_name = rating_name or self.rating_name
+            rating_value = int(rating_value or 0)
+
+            for i in range(self.max_rating):
+                icon = image_html_full if i < rating_value else image_html_blank
+                rating_icons.append(
+                    f'<a href="set_rating/{title.title_id}/{rating_name}/{i + 1}" title="Set rating">{icon}</a>'
+                )
 
             # TODO: fix blank spase
             blank_spase = self.blank_spase
             rating_value = ''.join(rating_icons)
-            watch_html = self.generate_watch_history_html(title.title_id)
-            need_to_see_html = self.generate_need_to_see_html(title.title_id)
+            watch_html = self.generate_watch_history_html(title.title_id, title=title)
+            need_to_see_html = self.generate_need_to_see_html(title.title_id, title=title)
+
             rating_name_html = f'<a href="set_rating/{title.title_id}/{rating_name}/0" title="Reset rating">{rating_name}</a>'
             rating_html = f'{watch_html}{blank_spase}{title.title_id}{blank_spase}{need_to_see_html}{blank_spase * 2}{rating_name_html}:{blank_spase}{rating_value}'
             return rating_html
@@ -141,84 +143,90 @@ class UIGenerator:
             self.logger.error(error_message)
             return ""
 
-    def generate_download_history_html(self, title_id, torrent_id):
+    def generate_download_history_html(self, title, torrent_id):
         """Generates HTML to display download history"""
         try:
-            image_html_green = f"""◆"""
-            image_html_red = f"""◇"""
-            # TODO: fix it later
+            image_html_green = self._icon("diamond", True)
+            image_html_red = self._icon("diamond", False)
             user_id = self.app.user_id
 
-            if torrent_id:
-                _, is_download = self.db_manager.get_history_status(user_id, title_id, torrent_id=torrent_id)
-                self.logger.debug(
-                    f"user_id/title_id/torrent_id: {user_id}/{title_id}/{torrent_id} Status: {bool(is_download)}")
-                if is_download:
-                    html = f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_green}</a>'
-                    return html
-                return f'<a href="set_download_status/{user_id}/{title_id}/{torrent_id}" title="Set download status">{image_html_red}</a>'
-            return ""
+            downloaded = getattr(title, "_pref_downloaded_torrents", None)
+            is_download = bool(downloaded and int(torrent_id) in downloaded)
+
+            icon = image_html_green if is_download else image_html_red
+            return f'<a href="set_download_status/{user_id}/{title.title_id}/{torrent_id}" title="Set download status">{icon}</a>'
         except Exception as e:
-            error_message = f"Error in generate_download_history_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error in generate_download_history_html: {str(e)}")
             return ""
 
-    def generate_watch_all_episodes_html(self, title_id, episode_ids):
+    def generate_watch_all_episodes_html(self, title_id, episode_ids, title=None):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""🔳"""
-            image_html_red = f"""🔲"""
-            # TODO: fix it later
+            image_html_green = self._icon("square", True)
+            image_html_red = self._icon("square", False)
             user_id = self.app.user_id
 
-            all_watched = self.db_manager.get_all_episodes_watched_status(user_id, title_id)
-            self.logger.debug(f"user_id/title_id/episode_ids: {user_id}/{title_id}/{len(episode_ids)} Status: {bool(all_watched)}")
-            if all_watched:
-                return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_green}</a>'
-            return f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">{image_html_red}</a>'
+            pref = getattr(title, "_pref_all_episodes_watched", None) if title is not None else None
+            if pref is None:
+                self.logger.debug("Missing enrichment: _pref_all_episodes_watched title_id=%s", title_id)
+                all_watched = False
+            else:
+                all_watched = bool(pref)
+
+            return (
+                f'<a href="set_watch_all_episodes_status/{user_id}/{title_id}/{episode_ids}" title="Set watch all episodes">'
+                f'{image_html_green if all_watched else image_html_red}</a>'
+            )
         except Exception as e:
-            error_message = f"Error in generate_watch_all_episodes_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error in generate_watch_all_episodes_html: {str(e)}")
             return ""
 
-    def generate_need_to_see_html(self, title_id):
+    def generate_need_to_see_html(self, title_id, title=None):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""⚫"""
-            image_html_red = f"""⚪"""
-            # TODO: fix it later
+            image_html_green = self._icon("circle", True)
+            image_html_red = self._icon("circle", False)
             user_id = self.app.user_id
 
-            if title_id:
-                is_need_to_see = self.db_manager.get_need_to_see(user_id, title_id)
-                self.logger.debug(f"user_id/title_id : {user_id}/{title_id} Status: {bool(is_need_to_see)}")
-                if is_need_to_see:
-                    return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_green}</a>'
-                return f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">{image_html_red}</a>'
-            return ""
+            pref = getattr(title, "_pref_need_to_see", None) if title is not None else None
+            if pref is None:
+                self.logger.debug("Missing enrichment: _pref_need_to_see title_id=%s", title_id)
+                is_need_to_see = False
+            else:
+                is_need_to_see = bool(pref)
+
+            return (
+                f'<a href="set_need_to_see/{user_id}/{title_id}" title="Set need to see">'
+                f'{image_html_green if is_need_to_see else image_html_red}</a>'
+            )
         except Exception as e:
-            error_message = f"Error in generate_nee_to_see_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error(f"Error in generate_nee_to_see_html: {str(e)}")
             return ""
 
-    def generate_watch_history_html(self, title_id, episode_id=None):
+    def generate_watch_history_html(self, title_id, episode_id=None, title=None):
         """Generates HTML to display watch history"""
         try:
-            image_html_green = f"""🔳"""
-            image_html_red = f"""🔲"""
-            # TODO: fix it later
             user_id = self.app.user_id
+            on = self._icon("square", True)
+            off = self._icon("square", False)
 
-            if episode_id or title_id:
-                is_watched, _ = self.db_manager.get_history_status(user_id, title_id, episode_id=episode_id)
-                self.logger.debug(f"user_id/title_id/episode_id: {user_id}/{title_id}/{episode_id} Status: {bool(is_watched)}")
-                if is_watched:
-                    return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_green}</a>'
-                return f'<a href="set_watch_status/{user_id}/{title_id}/{episode_id}" title="Set watch status">{image_html_red}</a>'
-            return ""
+            if title is None:
+                self.logger.debug("Missing enrichment: title is None title_id=%s", title_id)
+                watched = False
+            elif episode_id is None:
+                watched = bool(getattr(title, "_pref_title_watched", False))
+            else:
+                watched_set = getattr(title, "_pref_watched_episodes", set())
+                watched = int(episode_id) in watched_set
+
+            icon = on if watched else off
+
+            safe_episode = "None" if episode_id is None else episode_id
+
+            return f'<a href="set_watch_status/{user_id}/{title_id}/{safe_episode}" title="Set watch status">{icon}</a>'
+
         except Exception as e:
-            error_message = f"Error in generate_watch_history_html: {str(e)}"
-            self.logger.error(error_message)
+            self.logger.error("Error in generate_watch_history_html: %s", e, exc_info=True)
             return ""
 
     def generate_torrents_html(self, title):
@@ -227,8 +235,9 @@ class UIGenerator:
             self.app.torrent_data = {}
             # TODO: fix blank spase
             blank_spase = self.blank_spase
-            torrents = self.db_manager.get_torrents_from_db(title.title_id)
-
+            torrents = getattr(title, "_pref_torrents", None)
+            if torrents is None:
+                self.logger.debug("Missing enrichment: _pref_torrents title_id=%s", title.title_id)
             if not torrents:
                 return "<p>Torrents not available</p>"
 
@@ -239,7 +248,8 @@ class UIGenerator:
                 torrent_encoder = torrent.encoder if torrent.encoder else "Unknown Encoder"
                 torrent_episodes_range = torrent.episodes_range if torrent.episodes_range else "Unknown Episodes Range"
                 torrent_size = torrent.size_string if torrent.size_string else "Unknown Size"
-                download_html = self.generate_download_history_html(title.title_id, torrent.torrent_id)
+                download_html = self.generate_download_history_html(title, torrent.torrent_id)
+
                 if torrent.url:
                     torrent_link_html = f'<a href="download_torrent/{title.title_id}/{torrent.torrent_id}/{title.code}?link={quote(torrent.url)}" title="Download torrent file">{torrent_quality_type}{blank_spase}{torrent_quality}{blank_spase}{torrent_encoder}{blank_spase}{torrent_episodes_range}{blank_spase}({torrent_size})</a>'
                 else:
@@ -336,7 +346,9 @@ class UIGenerator:
     def generate_team_html(self, title):
         """Генерирует HTML для отображения team_data с поддержкой кликабельных ссылок и разбивкой по ролям."""
         try:
-            team_data = self.db_manager.get_team_from_db(title.title_id)
+            team_data = getattr(title, "_pref_team", None)
+            if team_data is None:
+                self.logger.debug("Missing enrichment: _pref_team title_id=%s", title.title_id)
             if team_data:
                 try:
                     role_translation = {
@@ -443,8 +455,9 @@ class UIGenerator:
     def generate_franchise_html(self, title):
         """Генерирует HTML для отображения франшиз, связанных с указанным тайтлом."""
         try:
-            franchise_titles = self.db_manager.get_franchises_from_db(title_id=title.title_id)
-
+            franchise_titles = getattr(title, "_pref_franchises", None)
+            if franchise_titles is None:
+                self.logger.debug("Missing enrichment: _pref_franchises title_id=%s", title.title_id)
             if not franchise_titles:
                 return ""
 
@@ -565,7 +578,7 @@ class UIGenerator:
                         f"Нет ссылки для эпизода '{episode_name}' для выбранного качества '{selected_quality}'"
                     )
 
-            watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids)
+            watch_all_episodes_html = self.generate_watch_all_episodes_html(title.title_id, episode_ids, title)
 
             if episode_links:
                 episodes_html = (
@@ -574,7 +587,7 @@ class UIGenerator:
                 )
 
                 for episode_id, episode_name, link, episode_skip_data_encoded in episode_links:
-                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id)
+                    watched_html = self.generate_watch_history_html(title.title_id, episode_id=episode_id, title=title)
                     link_encoded = base64.urlsafe_b64encode(link.encode()).decode()
                     # Передаём в URL именно данные пропусков для этого эпизода
 
@@ -650,3 +663,28 @@ class UIGenerator:
         except Exception as e:
             self.logger.error(f"Error in generate_play_all_html: {str(e)}")
             return ""
+
+    def _icon(self, shape: str, active: bool) -> str:
+        if shape == "square":
+            ch = "ø" if active else "o"
+        elif shape == "circle":
+            ch = "☀" if active else "☼"
+        elif shape == "diamond":
+            ch = "◆" if active else "◇"
+        else:
+            ch = "☑" if active else "✎"
+
+        return (
+            f"<span style='"
+            f"display:inline-block;"
+            f"width:1.3em;"
+            f"text-align:center;"
+            f"font-size:16pt;"
+            f"line-height:1;"
+            f"font-family: Segoe UI, Arial, sans-serif;"
+            f"color:#000;"
+            f"text-decoration:none;"
+            f"vertical-align:middle;"
+            f"'>"
+            f"{ch}</span>"
+        )

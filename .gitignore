@@ -22,7 +22,7 @@ idea/get-anime.iml
 __pycache__/*
 helper/__pycache__/*
 utils/__pycache__/*
-core/__pycache__/*
+storage/__pycache__/*
 managers/__pycache__/*
 ui/__pycache__/*
 app/__pycache__/*
@@ -56,3 +56,4 @@ anime_player.db.zip
 /dist_517
 /app/demo_qt_browser/playlists
 /libs
+*.zip

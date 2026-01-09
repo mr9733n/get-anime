@@ -1,0 +1,137 @@
+/* -------------------------------------------------
+   Шаблон для QPushButton
+   ------------------------------------------------- */
+{button}
+QPushButton {{
+    background-color: {bg};
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+}}
+QPushButton:hover {{
+    background-color: {hover};
+    border: 1px solid #888;
+}}
+QPushButton:pressed {{
+    background-color: {pressed};
+    border: 1px solid #555;
+}}
+{end}
+/* -------------------------------------------------
+   Тот же стиль, но для QToolButton
+   ------------------------------------------------- */
+{tool_button}
+QToolButton {{
+    background-color: {bg};
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+}}
+QToolButton:hover {{
+    background-color: {hover};
+    border: 1px solid #888;
+}}
+QToolButton:pressed {{
+    background-color: {pressed};
+    border: 1px solid #555;
+}}
+QToolButton::menu-indicator {{
+    image: none;
+    width: 12px;
+    height: 12px;
+    subcontrol-position: right center;
+    subcontrol-origin: padding;
+    padding-right: 4px;
+}}
+QToolButton::menu-button {{
+    border: none;
+    border-left: 1px solid #666;
+    width: 16px;
+}}
+{end}
+/* -------------------------------------------------
+   Стиль выпадающего меню
+   ------------------------------------------------- */
+{menu}
+QMenu {{
+    background-color: {bg};
+    border: 1px solid {border};
+    padding: 4px;
+    border-radius: 6px;
+}}
+QMenu::item {{
+    padding: 6px 12px;
+    color: {text};
+    background-color: transparent;
+}}
+QMenu::item:selected {{
+    background-color: {selected_bg};
+    color: {selected_text};
+}}
+{end}
+/* -------------------------------------------------
+   Стиль QLineEdit
+   ------------------------------------------------- */
+{line_edit}
+QLineEdit {{
+    background-color: #f7f7f7;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 14px;
+    color: #333;
+}}
+QLineEdit:focus {{
+    border: 1px solid #0078d4;
+    background-color: #ffffff;
+}}
+{end}
+/* -------------------------------------------------
+   Стиль QComboBox
+   ------------------------------------------------- */
+{combo}
+QComboBox {{
+    background-color: {bg};
+    border: 1px solid {border};
+    border-radius: 6px;
+    padding: 6px 24px 6px 6px;
+    font-size: 14px;
+    color: {text};
+}}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid {border};
+    background-color: #e0e0e0;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}}
+QComboBox::down-arrow {{
+    width: 10px;
+    height: 10px;
+}}
+QComboBox QAbstractItemView {{
+    background-color: #ffffff;
+    border: 1px solid {border};
+    selection-background-color: {hover};
+    color: #000;
+    selection-color: #fff;
+    outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    padding: 6px;
+    min-height: 24px;
+    color: #000;
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background-color: {hover};
+    color: #fff;
+}}
+{end}

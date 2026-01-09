@@ -243,8 +243,31 @@ class AniMediaController:
         self.ctx.current_offset = st.am_offset
         self.display.setup_pagination_ui(total_count, st.am_page_size, description)
 
+        self._prepare_for_render(visible_data, cache_key)
         # Отображаем
         self.display.display_titles_in_ui(visible_data, show_mode=show_mode)
+
+    def _prepare_for_render(self, visible_data, cache_key):
+        # --- prepare original_id -> title_id for visible page (no DB inside UI render) ---
+        try:
+            original_ids: list[str] = []
+            for block in visible_data or []:
+                for line in (block.get("titles") or []):
+                    try:
+                        _, _, _, _, _, original_id = parse_schedule_line(cache_key, line)
+                    except Exception:
+                        original_id = None
+                    if original_id:
+                        original_ids.append(str(original_id))
+
+            original_ids = sorted(set(original_ids))
+            self.ctx.am_title_id_map = (
+                self.db.get_title_ids_by_external_ids(PROVIDER_ANIMEDIA, original_ids)
+                if original_ids else {}
+            )
+        except Exception as e:
+            self.log.debug("Failed to build am_title_id_map: %s", e, exc_info=True)
+            self.ctx.am_title_id_map = {}
 
     def _warmup_titles_and_posters(
             self,
@@ -288,7 +311,7 @@ class AniMediaController:
             **kwargs,
     ) -> None:
         """Запускает асинхронный воркер."""
-        from providers.animedia.v0.qt_async_worker import AsyncWorker
+        from app.qt.workers import AsyncWorker
 
         self.ui.show_loader(loader_message)
         self.ui.set_buttons_enabled(False)

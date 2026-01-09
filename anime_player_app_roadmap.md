@@ -614,13 +614,43 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Drop AM cache 
 
 ### 8.39 Fixes
-- [ ] Add Screen for deleted titles with permanent delete func 
-- [ ] Change delete logic to unlink -> move to delete table
+- [x] Add Settings to System screen
+- [x] Add Optimize DB button on System screen
+- [x] Add loader to pagination
+- [x] Add audit table log
+- [x] Add audit log screen
+- [x] Add Screen for deleted titles with permanent delete func 
+- [x] Change delete logic to unlink -> move to delete table
+
+### 8.39 Refactoring
+- [x] Moved to PyQt6
+- [x] Fixes in builder
+- [x] More checks for poster downloading
+- [x] Add more tests 
+- [x] Created new controllers, adapters, ports
+- [x] Removed db calling from ui screens
+- [x] Fix regress watched episodes
+- [x] fix building binary
+- [x] fix mini browser execution
+- [x] Add more tests
+- [-] Split UI from backend
+- [x] Freeze Qt app, only major bugs
+- [x] Create backend
+
+### 8.40 New backend
+- [ ] backend_roadmap.md
+
+### 8.40 New provider api
+- [ ] Add provider OnWaveDub.org
+
+### 8.40 Fixes in Qt
+- [ ] Fix crash on fullscreen in mini browser
+- [ ] Add fullscreen mode in mpv
 - [ ] Fix highlighting episode in VLC playlist
-- [ ] fix get title from db by query
-- [ ] fix switching template
-- [ ] save franchise_id to titles table [title_franchises]
-- [ ] add dll hash on build, remove hardcode
+- [ ] Fix get title from db by query - data not enriched
+- [ ] Fix switching template - losing state and config
+- [ ] Save franchise_id to titles table [title_franchises]
+- [ ] Add dll hash on build, remove hardcode
 
 ### 8.40 Refactoring Player DB Sync Utility 0.0.0.2
 - [ ] Split logic im moduls (managers) from db_sync_gui

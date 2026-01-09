@@ -6,23 +6,23 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # === PyQt5 импорты (общие для всех Qt приложений) ===
 PYQT5_HIDDENIMPORTS = [
-    'PyQt5',
-    'PyQt5.QtCore',
-    'PyQt5.QtGui',
-    'PyQt5.QtWidgets',
-    'PyQt5.sip',
-    'PyQt5.QtNetwork',
-    'PyQt5.QtPrintSupport',
-    'PyQt5.QtSvg',
-    'PyQt5.QtOpenGL',
+    'PyQt6',
+    'PyQt6.QtCore',
+    'PyQt6.QtGui',
+    'PyQt6.QtWidgets',
+    'PyQt6.sip',
+    'PyQt6.QtNetwork',
+    'PyQt6.QtPrintSupport',
+    'PyQt6.QtSvg',
+    'PyQt6.QtOpenGL',
 ]
 
 # === PyQtWebEngine импорты (для браузера) ===
 PYQT_WEBENGINE_HIDDENIMPORTS = [
-    'PyQt5.QtWebEngine',
-    'PyQt5.QtWebEngineCore',
-    'PyQt5.QtWebEngineWidgets',
-    'PyQt5.QtWebChannel',
+    'PyQt6.QtWebEngine',
+    'PyQt6.QtWebEngineCore',
+    'PyQt6.QtWebEngineWidgets',
+    'PyQt6.QtWebChannel',
 ]
 
 # === Стандартные модули Python которые могут не подхватиться ===
@@ -50,6 +50,32 @@ STDLIB_HIDDENIMPORTS = [
     'urllib.parse',
 ]
 
+# PIL - добавьте ВСЕ плагины явно
+PIL_HIDDENIMPORTS = [
+    'PIL',
+    'PIL.Image',
+    'PIL._imaging',
+    'PIL.ImageFile',
+    'PIL.ImageOps',
+    'PIL.ImageEnhance',
+    'PIL.ImageDraw',
+    'PIL.ImageFont',
+    'PIL.ImageFilter',
+
+    # Плагины форматов - КРИТИЧНО для работы
+    'PIL.JpegImagePlugin',
+    'PIL.PngImagePlugin',
+    'PIL.WebPImagePlugin',  # ← Основной для WebP
+    'PIL.GifImagePlugin',
+    'PIL.BmpImagePlugin',
+    'PIL.IcoImagePlugin',
+    'PIL.TiffImagePlugin',
+
+    # Вспомогательные модули
+    'PIL._tkinter_finder',
+    'PIL._util',
+    'PIL._binary',
+]
 # === Базовые импорты для основного приложения ===
 BASE_HIDDENIMPORTS = [
     # PyQt5
@@ -70,9 +96,7 @@ BASE_HIDDENIMPORTS = [
     'cryptography',
 
     # PIL
-    'PIL',
-    'PIL.Image',
-    'PIL._tkinter_finder',
+    *PIL_HIDDENIMPORTS,
 
     # Numpy (если используется)
     'numpy',
@@ -175,7 +199,7 @@ LITE_HIDDENIMPORTS = [
 LITE_EXCLUDES = [
     "cryptography",
     "numpy",
-    "PyQt5",
+    "PyQt6",
     "PyQtWebEngine",
 ]
 
@@ -204,8 +228,8 @@ def get_collected_submodules() -> list[str]:
         # Static
         'static',
 
-        # Core
-        'core',
+        # Storage
+        'storage',
 
         # Providers
         'providers.animedia.v0',
@@ -245,7 +269,7 @@ def get_collected_datas() -> list[tuple]:
     """
     datas = []
 
-    modules_to_collect = ['app', 'core', 'utils', 'providers']
+    modules_to_collect = ['app', 'storage', 'utils', 'providers']
 
     for module in modules_to_collect:
         try:

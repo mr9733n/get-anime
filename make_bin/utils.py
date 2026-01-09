@@ -221,11 +221,11 @@ def create_temp_config(config_path: str, replacements: dict, prod_key: str = Non
                 if not replaced:
                     f.write(line)
 
-            # Добавляем PROD_KEY
+            # Добавляем prod_key
             if prod_key is None:
                 prod_key = str(uuid.uuid4())
-            f.write(f"PROD_KEY={prod_key}\n")
-            os.environ["PROD_KEY"] = prod_key
+            f.write(f"prod_key={prod_key}\n")
+            os.environ["prod_key"] = prod_key
 
         print(f"✅ Temporary config.ini created: {build_config_path}")
 

@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable, Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.qt.app_state import ViewState
-    from PyQt5.QtWidgets import QLayout
+    from PyQt6.QtWidgets import QLayout
 
 
 # === UI Protocols ===

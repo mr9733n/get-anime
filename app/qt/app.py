@@ -7,8 +7,13 @@ import logging
 import pathlib
 import importlib.resources as ir
 
-from PyQt5.QtWidgets import QWidget, QTextBrowser, QApplication
-from PyQt5.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
+from PyQt6.QtWidgets import QWidget, QTextBrowser, QApplication
+from PyQt6.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
+
+from backend.core.backend import Backend, BackendDeps
+
+from backend.infra.notify.null_notify import NullNotifier
+from app.qt.ui_notify import Notifier
 
 from app.qt.app_context import AppContext
 from app.qt.app_services import AppServices
@@ -18,8 +23,7 @@ from app.qt.ui_manager import UIManager
 from app.qt.ui_generator import UIGenerator
 from app.qt.ui_am_generator import UIAMGenerator
 from app.qt.ui_s_generator import UISGenerator
-
-from static.layout_metadata import all_layout_metadata
+from app.qt.layout_metadata import all_layout_metadata
 
 from providers.aniliberty.v1.api import APIClient
 from providers.aniliberty.v1.adapter import APIAdapter
@@ -89,7 +93,7 @@ class AnimePlayerAppVer3(QWidget):
     def _init_styles(self) -> None:
         """Загружает стили (вызывается раньше всех UI методов)."""
         try:
-            qss_path = ir.files("static").joinpath("styles.qss")
+            qss_path = ir.files("qss").joinpath("styles.qss")
             self.ui_style = qss_path.read_text(encoding="utf-8")
         except Exception as e:
             self.ui_style = ""  # fallback
@@ -235,9 +239,9 @@ class AnimePlayerAppVer3(QWidget):
         """Инициализирует UI генераторы."""
         self.ui_manager = UIManager(self, self.ui_style)
 
-        self.ui_generator = UIGenerator(self, self.db_manager, self.ctx.current_template)
-        self.ui_am_generator = UIAMGenerator(self, self.db_manager, self.ctx.current_template)
-        self.ui_s_generator = UISGenerator(self, self.db_manager)
+        self.ui_generator = UIGenerator(self, self.ctx.current_template)
+        self.ui_am_generator = UIAMGenerator(self, self.ctx.current_template)
+        self.ui_s_generator = UISGenerator(self)
 
     def _init_services(self) -> None:
         """Инициализирует сервисный слой."""
@@ -301,12 +305,24 @@ class AnimePlayerAppVer3(QWidget):
             playlist_manager=self.playlist_manager,
             api_adapter=self.api_adapter,
             url_resolver=self.url_resolver,
-            router_getter=lambda: self.router,
+            router_getter=lambda: self.open_router
+,
         ).build()
+
+        self.persistence = self._factory.persistence
+        self.notifier = Notifier(self)  # Qt-адаптер
+
+        self.backend = Backend(BackendDeps(
+            db=self.db_manager,
+            aniliberty_api=self.api_adapter,
+            animedia_adapter=self.animedia_adapter,
+            persistence=self.persistence,
+            notify=self.notifier,
+            logger=self.logger,
+        ))
 
         # Shortcut references
         self.bootstrap = self._factory.bootstrap
-        self.persistence = self._factory.persistence
         self.poster = self._factory.poster
         self.torrent = self._factory.torrent
         self.state = self._factory.state
@@ -316,6 +332,12 @@ class AnimePlayerAppVer3(QWidget):
         self.animedia = self._factory.animedia
         self.player = self._factory.player
         self.callback = self._factory.callback
+        self.system = self._factory.system
+
+        if getattr(self, "ui_s_generator", None) is not None:
+            self.ui_s_generator.system = self.system
+            # (опционально) чтобы окна знали актуальную тему
+            self.ui_s_generator.current_template = self.ctx.current_template
 
     def _init_link_handler(self) -> None:
         """Инициализирует обработчик ссылок."""
@@ -336,7 +358,7 @@ class AnimePlayerAppVer3(QWidget):
             refresh_display=self.refresh_display,
             reload_poster=self.get_poster_or_placeholder,
         )
-        self.router = OpenRouter(self)
+        self.open_router = OpenRouter(self)
 
     def _finalize_ui(self) -> None:
         """Финализирует инициализацию UI."""
@@ -531,6 +553,10 @@ class AnimePlayerAppVer3(QWidget):
     def open_web_link(self, link: str, title_id: int = None, skip_data: str = None) -> None:
         """Открывает ссылку в браузере."""
         self.player.open_web_link(link, title_id, skip_data)
+
+    def get_mini_browsaer_executable_path(self) -> list[str]:
+        """Возвращает executable name для мини-браузера."""
+        return self.player.get_mini_browsaer_executable_path()
 
     def get_mini_browser_command(self) -> list[str]:
         """Возвращает команду для мини-браузера."""
@@ -832,3 +858,5 @@ class AnimePlayerAppVer3(QWidget):
     def closeEvent(self, event) -> None:
         """Обрабатывает закрытие окна."""
         QApplication.instance().quit()
+
+

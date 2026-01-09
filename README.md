@@ -83,18 +83,17 @@ python main.py
 ```
 
 ## Build the application:
-- old version build_513.spec
-- new version build_617.spec
 - requirements.txt was updated
+- uv added
 
-None: If you want use AniMedia wrapper, you need to run before build:
-```powershell
-$env:PLAYWRIGHT_BROWSERS_PATH="0"
-python -m playwright install chromium
+### MacOS / Linux
+```cmd
+./Makefile
 ```
 
-```bash
-pyinstaller build_617.spec --noconfirm
+### Windows:
+```cmd
+.\make.bat
 ```
 
 ## Utilities: 

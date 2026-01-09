@@ -4,9 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from PyQt5.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon, QStyle, QGridLayout
-from PyQt5.QtCore import QTimer, Qt
+from PyQt6.QtWidgets import QVBoxLayout, QLabel, QSystemTrayIcon
 
+from storage.queries.title_enricher import enrich_titles_for_render
 from app.qt.app_state import ViewState
 from app.qt.app_helpers import TitleDisplayFactory, TitleDataFactory
 from app.qt.app_constants import (
@@ -24,11 +24,12 @@ from app.qt.protocols import (
     IAniLibertyController,
     IDBManager,
 )
+from app.qt.ui_notify import Notifier
 
 if TYPE_CHECKING:
     from logging import Logger
     from app.qt.app_context import AppContext
-    from PyQt5.QtWidgets import QWidget
+    from PyQt6.QtWidgets import QWidget
 
 
 @dataclass
@@ -71,6 +72,8 @@ class DisplayController:
         # Transient UI elements
         self._error_label: QLabel | None = None
         self._tray_icon: QSystemTrayIcon | None = None
+
+        self._notifier = Notifier(self.parent)
 
     # === Lazy-loaded dependencies ===
 
@@ -157,30 +160,7 @@ class DisplayController:
     # === Public API: Error Notifications ===
 
     def show_error_notification(self, title: str, message: str) -> None:
-        """Показывает всплывающее уведомление об ошибке."""
-        self._error_label = QLabel(message, self.parent)
-        self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(255, 0, 0, 0.9);
-                color: white;
-                font-size: 14px;
-                padding: 6px;
-                border-radius: 4px;
-            }
-        """)
-        self._error_label.setAlignment(Qt.AlignJustify)
-        self._error_label.setGeometry(50, 50, 500, 50)
-
-        self._tray_icon = QSystemTrayIcon(self.parent)
-        self._tray_icon.setIcon(self.parent.style().standardIcon(QStyle.SP_MessageBoxWarning))
-
-        self._error_label.show()
-        self._tray_icon.show()
-
-        QTimer.singleShot(5000, self._error_label.hide)
-        QTimer.singleShot(5000, self._tray_icon.hide)
-        self._tray_icon.showMessage(title, message, QSystemTrayIcon.Warning, 5000)
+        self._notifier.error(title, message)
 
     # === Public API: Display Methods ===
 
@@ -243,7 +223,6 @@ class DisplayController:
                 current_offset=self.ctx.current_offset,
                 batch_size=batch_size,
             )
-
             # Обновляем состояние
             self._update_view_state(titles, title_ids, show_mode)
 
@@ -268,45 +247,66 @@ class DisplayController:
             self.ui.hide_loader()
             self.ui.set_buttons_enabled(True)
 
-    def display_titles_in_ui(
-            self,
-            titles: list,
-            show_mode: str = "default",
-            row_start: int = 0,
-            col_start: int = 0,
-    ) -> None:
-        """Отображает тайтлы в UI grid."""
+    def display_titles_in_ui(self, titles: list, show_mode: str = "default", row_start: int = 0,
+                             col_start: int = 0) -> None:
         if self.ctx.posters_layout is None:
             self.log.error("posters_layout is None: UI not initialized.")
             return
 
         try:
+            if not titles:
+                self.poster.clear_previous_posters()
+                self.log.debug("Displayed %s with 0 titles.", show_mode)
+                if hasattr(self.parent, "state_changed"):
+                    self.parent.state_changed.emit()
+                return
+
             special_modes = {SHOW_SYSTEM, SHOW_AM_SCHEDULE, SHOW_AM_TITLES}
+            list_modes = {"titles_list", "franchise_list", "need_to_see_list", "ongoing_list"}
+
             self.poster.clear_previous_posters()
+
+            if show_mode not in special_modes:
+                titles = enrich_titles_for_render(self.db, self.ctx.user_id, titles)
+
+            if show_mode == "default":
+                effective_show_mode = SHOW_ONE_TITLE if len(titles) == 1 else "default"
+            else:
+                effective_show_mode = show_mode
+
+            if effective_show_mode == SHOW_ONE_TITLE:
+                kind = "one_title"
+            elif effective_show_mode in list_modes:
+                kind = "text_list"
+            else:
+                kind = "titles"
+
+            self.ctx._template_cache = self.db.get_template(self.ctx.current_template, kind=kind)
 
             factory = TitleDisplayFactory(self.parent)
 
-            if show_mode in special_modes:
-                widget, _ = factory.create(show_mode, titles)
+            if effective_show_mode in special_modes:
+                widget, _ = factory.create(effective_show_mode, titles)
                 self.ctx.posters_layout.addWidget(widget, 0, 0, 1, 2)
-            elif len(titles) == 1:
+
+            elif effective_show_mode == SHOW_ONE_TITLE:
                 widget, _ = factory.create(SHOW_ONE_TITLE, titles[0])
                 self.ctx.posters_layout.addWidget(widget, 0, 0, 1, 2)
+
             else:
                 for index, title in enumerate(titles):
-                    title_widget, num_columns = factory.create(show_mode, title)
+                    title_widget, num_columns = factory.create(effective_show_mode, title)
                     row = (index + row_start) // num_columns
                     column = (index + col_start) % num_columns
                     self.ctx.posters_layout.addWidget(title_widget, row, column)
 
-            self.log.debug(f"Displayed {show_mode} with {len(titles)} titles.")
+            self.log.debug("Displayed %s (effective=%s) with %d titles.", show_mode, effective_show_mode, len(titles))
 
-            # Emit signal через parent
-            if hasattr(self.parent, 'state_changed'):
+            if hasattr(self.parent, "state_changed"):
                 self.parent.state_changed.emit()
 
         except Exception as e:
-            self.log.error(f"Ошибка display_titles_in_ui: {e}")
+            self.log.error(f"Ошибка display_titles_in_ui: {e}", exc_info=True)
 
     def display_titles_for_day(self, day_of_week: int, force_reload: bool = False) -> None:
         """Отображает тайтлы для указанного дня недели."""
@@ -371,6 +371,9 @@ class DisplayController:
     def navigate_pagination(self, go_forward: bool = True) -> None:
         """Навигация по страницам текущих результатов."""
         try:
+            self.ui.show_loader("Loading titles...")
+            self.ui.set_buttons_enabled(False)
+
             show_mode = self.ctx.current_show_mode or "default"
             batch_size = 12
 
@@ -393,6 +396,9 @@ class DisplayController:
 
         except Exception as e:
             self.log.error(f"Ошибка при навигации: {e}")
+        finally:
+            self.ui.hide_loader()
+            self.ui.set_buttons_enabled(True)
 
     def setup_pagination_ui(
             self,

@@ -1,7 +1,8 @@
 # ui_manager.py
-from PyQt5.QtCore import QEventLoop, Qt
-from PyQt5.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
-    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu, QAction
+from PyQt6.QtCore import QEventLoop, Qt
+from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QGridLayout, QWidget, QScrollArea, QHBoxLayout, QComboBox, \
+    QLabel, QLineEdit, QPushButton, QDialog, QVBoxLayout, QApplication, QToolButton, QMenu
+from PyQt6.QtGui import QAction
 
 
 class UIManager:
@@ -125,9 +126,23 @@ class UIManager:
     ):
         btn = QToolButton(self.parent)
         btn.setText(text)
-        btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         btn.setAutoRaise(False)
-        btn.setStyleSheet(self._make_style('tool_button', color_index))
+
+        # Базовый стиль + фикс menu-indicator для PyQt6
+        base_style = self._make_style('tool_button', color_index)
+        menu_indicator_fix = """
+            QToolButton::menu-indicator {
+                image: none;
+                width: 12px;
+            }
+            QToolButton::menu-button {
+                border: none;
+                border-left: 1px solid #666;
+                width: 16px;
+            }
+        """
+        btn.setStyleSheet(base_style + menu_indicator_fix)
 
         menu = QMenu(btn)
         menu.setObjectName("customMenu")
@@ -141,7 +156,7 @@ class UIManager:
             menu.addAction(act)
 
         btn.setMenu(menu)
-        btn.setPopupMode(QToolButton.MenuButtonPopup)
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
         # TODO: setFixedWidth
         # def sync_width():
@@ -227,12 +242,12 @@ class UIManager:
 
         pagination_widget = QWidget()
         pagination_widget_layout = QHBoxLayout(pagination_widget)
-        pagination_widget_layout.setAlignment(Qt.AlignCenter)
+        pagination_widget_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         prev_page_button = QPushButton("←", self.parent)
         prev_page_button.setFixedWidth(50)
         pagination_info = QLabel("0 .. 0", self.parent)
-        pagination_info.setAlignment(Qt.AlignCenter)
+        pagination_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         next_page_button = QPushButton("→", self.parent)
         next_page_button.setFixedWidth(50)
 
@@ -339,7 +354,7 @@ class LoadingDialog(QDialog):
     def start(self):
         """Запускает лоадер"""
         self.show()
-        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)  # Обновляем UI
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)  # Обновляем UI
 
     def stop(self):
         """Останавливает лоадер"""

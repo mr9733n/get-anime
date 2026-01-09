@@ -5,7 +5,6 @@ import argparse
 import tempfile
 from typing import Iterable, List, Optional
 
-QT_VERSION = None  # "PyQt6" или "PyQt5"
 
 try:
     from PyQt6.QtCore import QUrl
@@ -15,27 +14,17 @@ try:
         QLabel, QPushButton, QHBoxLayout, QFileDialog, QMessageBox
     )
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    QT_VERSION = "PyQt6"
-except Exception:
-    try:
-        from PyQt5.QtCore import QUrl
-        from PyQt5.QtWidgets import (
-            QApplication, QMainWindow, QTabWidget,
-            QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-            QLabel, QPushButton, QHBoxLayout, QFileDialog, QMessageBox
-        )
-        from PyQt5.QtWebEngineWidgets import QWebEngineView
-        QT_VERSION = "PyQt5"
-    except Exception as e:
-        print(
-            "[!] Не удалось импортировать ни PyQt6(+WebEngine), ни PyQt5(+WebEngine).\n"
-            f"    Ошибка: {e}\n"
-            "    Установи один из вариантов (внутри venv):\n"
-            "    - python -m pip install PyQt5 PyQtWebEngine\n"
-            "      или\n"
-            "    - python -m pip install PyQt6 PyQt6-WebEngine"
-        )
-        sys.exit(1)
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
+
+except Exception as e:
+    print(
+        "[!] Не удалось импортировать ни PyQt6(+WebEngine).\n"
+        f"    Ошибка: {e}\n"
+        "    Установи один из вариантов (внутри venv):\n"
+        "    - python -m pip install PyQt6 PyQt6-WebEngine"
+    )
+    sys.exit(1)
 
 logger = logging.getLogger("mini_browser")
 logger.setLevel(logging.INFO)
@@ -60,7 +49,7 @@ def load_urls_from_file(path: str) -> list[str]:
     if not path:
         return []
     if not os.path.exists(path):
-        print(f"[mini_browser] file not found: {path}")
+        logger.info(f"[mini_browser] file not found: {path}")
         return []
 
     urls: list[str] = []
@@ -75,10 +64,41 @@ def load_urls_from_file(path: str) -> list[str]:
     return urls
 
 
+class PermissivePage(QWebEnginePage):
+    def __init__(self, profile: QWebEngineProfile, parent=None):
+        super().__init__(profile, parent)
+
+    # Qt6: featurePermissionRequested(securityOrigin, feature)
+    def _grant(self, origin, feature):
+        try:
+            self.setFeaturePermission(origin, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
+        except Exception as e:
+            logger.error(f"Error featurePermissionRequested: {e}")
+
+    def on_feature_permission_requested(self, origin, feature):
+        # Даем то, что нужно плеерам чаще всего
+        allowed = {
+            getattr(QWebEnginePage.Feature, "MediaAudioCapture", None),
+            getattr(QWebEnginePage.Feature, "MediaVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "MediaAudioVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "DesktopVideoCapture", None),
+            getattr(QWebEnginePage.Feature, "DesktopAudioVideoCapture", None),
+        }
+        if feature in allowed:
+            self._grant(origin, feature)
+        else:
+            # остальное можно оставлять по умолчанию/отклонять
+            pass
+
+    # Логи консоли — супер полезно: там будет NotAllowedError и т.п.
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        logger.info("JS[%s] %s (%s:%s)", level, message, sourceID, lineNumber)
+
+
 class BrowserWindow(QMainWindow):
     def __init__(self, urls: Iterable[str], *, show_list_tab: bool, initial_file: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle(f"Mini Qt Browser ({QT_VERSION})")
+        self.setWindowTitle(f"Mini Qt Browser")
         self.resize(1100, 800)
 
         self.tabs = QTabWidget(self)
@@ -111,6 +131,44 @@ class BrowserWindow(QMainWindow):
             return
 
         view = QWebEngineView(self)
+
+        # профиль лучше один на все вкладки (cookie/ls/разрешения/настройки)
+        if not hasattr(self, "_profile"):
+            self._profile = QWebEngineProfile("mini_browser_profile", self)
+            # По желанию: постоянные куки/кеш
+            # self._profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+
+        page = PermissivePage(self._profile, view)
+        view.setPage(page)
+
+        # Фокус
+        view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        view.setFocus()
+
+        # Разрешаем fullscreen (часто нужно для iframe player UI)
+        try:
+            page.fullScreenRequested.connect(
+                lambda req: (req.accept(), view.setWindowState(view.windowState())))
+        except Exception:
+            pass
+
+        # ВАЖНО: настройки, приближающие к “обычному браузеру”
+        s = page.settings()
+        # включаем то, что часто нужно именно UI плееров в iframe
+        try:
+            s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+        except Exception:
+            pass
+
+        # Подписка на permission requests
+        try:
+            page.featurePermissionRequested.connect(page.on_feature_permission_requested)
+        except Exception:
+            pass
+
         view.setUrl(QUrl(url))
 
         title = url if len(url) <= 70 else (url[:67] + "...")
@@ -331,16 +389,22 @@ def parse_args():
 
 
 def setup_proxy(proxy: Optional[str]):
-    if not proxy:
-        return
+    flags = []
 
-    p = proxy.strip()
-    if "://" not in p:
-        p = "socks5://" + p
+    if proxy:
+        p = proxy.strip()
+        if "://" not in p:
+            p = "socks5://" + p
+        flags.append(f"--proxy-server={p}")
 
-    proxy_flag = f"--proxy-server={p}"
-    existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
-    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (existing_flags + " " + proxy_flag).strip()
+    # ВАЖНО: автоплей/звук/жесты — помогает многим iframe-плеерам
+    flags += [
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-features=PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies",
+    ]
+
+    existing = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (existing + " " + " ".join(flags)).strip()
 
 
 def main():
@@ -372,11 +436,7 @@ def main():
     window.start()
     window.show()
 
-    # PyQt6: exec(), PyQt5: exec_()
-    if QT_VERSION == "PyQt6":
-        sys.exit(app.exec())
-    else:
-        sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

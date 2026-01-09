@@ -2,10 +2,10 @@
 import logging
 
 from jinja2 import Template
-from PyQt5.QtWidgets import QTextBrowser, QLabel, QWidget
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
-from static.layout_metadata import show_mode_metadata
+from PyQt6.QtWidgets import QTextBrowser, QLabel, QWidget
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt
+from app.qt.layout_metadata import show_mode_metadata
 
 
 class TitleDisplayFactory:
@@ -125,6 +125,7 @@ class TitleDataFactory:
             self.logger.error(f"Error in get_titles: {str(e)}")
             return []
 
+
 class TitleHtmlFactory:
     def __init__(self, app, template_name):
         self.logger = logging.getLogger(__name__)
@@ -157,8 +158,13 @@ class TitleHtmlFactory:
     def _generate_one_title_html(self, title):
         """Генерирует HTML для отображения одного тайтла."""
         try:
-            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
-            studio_html = self.app.ui_generator.generate_studio_html(title.title_id)
+            if title is None:
+                self.logger.warning("Title is None before render")
+            elif not getattr(title, "_pref_enriched", False):
+                self.logger.warning("Title is not enriched before render: title_id=%s", title.title_id)
+
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id, title=title)
+            studio_html = self.app.ui_generator.generate_studio_html(title.title_id, title=title)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -172,13 +178,20 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            _, one_title_html, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
+
+            if not html:
+                self.logger.error("Template cache is empty for template=%s", self.current_template)
+                return ""
+
+            template = Template(html)
+
             poster_html = self.app.ui_generator.generate_poster_html(title, need_placeholder=True)
             reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
-            template = Template(one_title_html)
+
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 poster_html=poster_html,
                 reload_poster_html=reload_poster_html,
                 provider_html=provider_html,
@@ -207,11 +220,17 @@ class TitleHtmlFactory:
         try:
             year_html = self.app.ui_generator.generate_year_html(title, show_text_list=True)
             status_html = self.app.ui_generator.generate_status_html(title, show_text_list=True)
-            _, _, show_text_list_html, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
-            template = Template(show_text_list_html)
+
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
+
+            if not html:
+                self.logger.error("Template cache is empty for template=%s", self.current_template)
+                return ""
+
+            template = Template(html)
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 year_html=year_html,
                 status_html=status_html,
             )
@@ -224,7 +243,7 @@ class TitleHtmlFactory:
         """Генерирует HTML по умолчанию."""
         try:
             self.logger.debug(f"Начинаем генерацию HTML по умолчанию для title_id: {title.title_id}")
-            provider_html = self.app.ui_generator.generate_provider_html(title.title_id)
+            provider_html = self.app.ui_generator.generate_provider_html(title.title_id, title=title)
             reload_html = self.app.ui_generator.generate_reload_button_html(title.title_id)
             rating_html = self.app.ui_generator.generate_rating_html(title)
             announce_html = self.app.ui_generator.generate_announce_html(title)
@@ -237,15 +256,21 @@ class TitleHtmlFactory:
             episodes_html = self.app.ui_generator.generate_episodes_html(title)
             torrents_html = self.app.ui_generator.generate_torrents_html(title)
 
-            titles_html, _, _, styles_css = self.app.ui_generator.db_manager.get_template(self.current_template)
+            html, css = getattr(self.app.ctx, "_template_cache", ("", ""))
+
+            if not html:
+                self.logger.error("Template cache is empty for template=%s", self.current_template)
+                return ""
+
+            template = Template(html)
+
             poster_html = self.app.ui_generator.generate_poster_html(title, need_background=True)
             reload_poster_html = self.app.ui_generator.generate_reload_poster_html(title)
             show_more_html = self.app.ui_generator.generate_show_more_html(title.title_id)
 
-            template = Template(titles_html)
             html_content = template.render(
                 title=title,
-                styles_css=styles_css,
+                styles_css=css,
                 poster_html=poster_html,
                 reload_poster_html=reload_poster_html,
                 provider_html=provider_html,
@@ -279,9 +304,15 @@ class TitleBrowserFactory:
         metadata = show_mode_metadata.get(show_mode, show_mode_metadata['default'])
         create_method_name = metadata.get("create_method", "create_default_widget")
         create_method = getattr(self, create_method_name, self.create_default_widget)
+
         return create_method(title, show_mode)
 
     def create_one_title_widget(self, title, show_mode):
+        if title is None:
+            self.logger.warning("Title is None before render")
+        elif not getattr(title, "_pref_enriched", False):
+            self.logger.warning("Title is not enriched before render: title_id=%s show_mode=%s", title.title_id, show_mode)
+
         title_browser = QTextBrowser(self.app)
         title_browser.setPlainText(f"Title: {title.name_en}")
         title_browser.setOpenExternalLinks(True)
@@ -290,6 +321,7 @@ class TitleBrowserFactory:
         title_browser.setFixedSize(455, 650)
         html_content = self.app.ui_generator.get_title_html(title, show_mode)
         title_browser.setHtml(html_content)
+
         return title_browser
 
     def create_list_widget(self, title, show_mode):
@@ -300,8 +332,8 @@ class TitleBrowserFactory:
         title_browser.setProperty('title_id', title.title_id)
         title_browser.anchorClicked.connect(self.app.on_link_click)
 
-        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        title_browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        title_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         title_browser.setStyleSheet("""
             text-align: right;
             border: 1px solid #444;
@@ -318,6 +350,11 @@ class TitleBrowserFactory:
 
     def create_default_widget(self, title, show_mode):
         """Создает виджет по умолчанию."""
+        if title is None:
+            self.logger.warning("Title is None before render")
+        elif not getattr(title, "_pref_enriched", False):
+            self.logger.warning("Title is not enriched before render: title_id=%s show_mode=%s", title.title_id, show_mode)
+
         title_browser = QTextBrowser(self.app)
         title_browser.setPlainText(f"Title: {title.name_en}")
         title_browser.setOpenExternalLinks(True)
@@ -337,10 +374,10 @@ class TitleBrowserFactory:
         if poster_data:
             pixmap = QPixmap()
             if pixmap.loadFromData(poster_data):
-                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(pixmap.scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
             else:
                 self.app.logger.error(f"Error: Failed to load pixmap from data for title_id: {title_id}")
-                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+                poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         else:
-            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.KeepAspectRatio))
+            poster_label.setPixmap(QPixmap("static/no_image.png").scaled(455, 650, Qt.AspectRatioMode.KeepAspectRatio))
         return poster_label

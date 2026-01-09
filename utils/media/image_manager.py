@@ -6,8 +6,8 @@ import hashlib
 from io import BytesIO
 from PIL import Image, ImageFilter
 
-from PyQt5.QtCore import QByteArray, QBuffer
-from PyQt5.QtGui import QPixmap
+from PyQt6.QtCore import QByteArray, QBuffer
+from PyQt6.QtGui import QPixmap
 
 MIN_ORIGINAL_W = 455
 

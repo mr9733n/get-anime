@@ -54,9 +54,9 @@ APP_DIR = "app"
 # === Имена приложений ===
 class AppNames:
     MAIN = 'AnimePlayer'
-    VLC = 'AnimePlayerVlc'
-    MPV = 'AnimePlayerMpv'
-    BROWSER = 'MiniBrowser'
+    VLC = 'vlc_player'
+    MPV = 'mpv_player'
+    BROWSER = 'mini_browser'
     LITE = 'AnimePlayerLite'
     SYNC = 'PlayerDBSync'
     SYNC_LAN = 'PlayerDBSyncLAN'

@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import configparser
 import platform
+from typing import Any
 
 
 @dataclass
@@ -18,6 +19,7 @@ class PathsConfig:
 
 class ConfigManager:
     def __init__(self, config_file):
+        self.config_file = config_file
         self.config = configparser.ConfigParser()
         self.config.read(config_file)
         self._platform_name = platform.system()
@@ -87,3 +89,25 @@ class ConfigManager:
             return self.get_setting('Settings', 'mac_torrent_client_path')
         else:
             return None
+
+    def set_setting(self, section: str, setting: str, value: Any) -> None:
+        """Устанавливает значение настройки."""
+        if section not in self.config:
+            self.config[section] = {}
+        self.config[section][setting] = str(value)
+
+    def save(self) -> None:
+        """Сохраняет конфигурацию в файл (использует сохранённый путь)."""
+        with open(self.config_file, 'w', encoding='utf-8') as f:
+            self.config.write(f)
+
+    def save_config(self, config_file: str) -> None:
+        """Сохраняет конфигурацию в указанный файл."""
+        with open(config_file, 'w', encoding='utf-8') as f:
+            self.config.write(f)
+
+    def reload(self) -> None:
+        """Перезагружает конфигурацию из файла."""
+        self.config.read(self.config_file)
+        self._network_config = None
+        self._paths_config = None

@@ -19,20 +19,25 @@ def get_main_app_datas(build_config_path: str) -> list[tuple[str, str]]:
     datas = [
         # Статические файлы
         (os.path.join(PROJECT_DIR, 'static', '*'), 'static'),
+        (os.path.join(PROJECT_DIR, 'qss', '*'), 'qss'),
         (os.path.join(PROJECT_DIR, 'templates'), 'templates'),
         (os.path.join(PROJECT_DIR, 'config', 'logging.conf'), 'config'),
         (os.path.join(PROJECT_DIR, 'db', '*'), 'db'),
         (os.path.join(PROJECT_DIR, 'libs'), 'libs'),
 
+        # Backend
+
         # Скомпилированные .pyc файлы - App
         (os.path.join(PROJECT_DIR, 'app', 'qt', '__pycache__'), 'app/qt/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'qt', 'controllers', '__pycache__'), 'app/qt/controllers/__pycache__'),
+        (os.path.join(PROJECT_DIR, 'app', 'qt', 'system_windows', '__pycache__'), 'app/qt/system_windows/__pycache__'),
+        (os.path.join(PROJECT_DIR, 'app', 'qt', 'workers', '__pycache__'), 'app/qt/workers/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'vlc', '__pycache__'), 'app/vlc/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'mpv', '__pycache__'), 'app/mpv/__pycache__'),
         (os.path.join(PROJECT_DIR, 'app', 'qt_browser', '__pycache__'), 'app/qt_browser/__pycache__'),
 
         # Core
-        (os.path.join(PROJECT_DIR, 'core', '__pycache__'), 'core/__pycache__'),
+        (os.path.join(PROJECT_DIR, 'storage', '__pycache__'), 'storage/__pycache__'),
 
         # Utils подмодули (исправленные пути!)
         (os.path.join(PROJECT_DIR, 'utils', 'config', '__pycache__'), 'utils/config/__pycache__'),
@@ -112,7 +117,8 @@ def get_hookspath() -> list[str]:
     Возвращает пути к директориям с хуками PyInstaller.
     """
     return [
-        PROJECT_DIR,  # Где лежат hook-main.py, hook-sqlalchemy.py
+        # PROJECT_DIR,  # Где лежат hook-main.py, hook-sqlalchemy.py
+        os.path.join(PROJECT_DIR, 'make_bin', 'hooks'),
     ]
 
 
@@ -149,8 +155,8 @@ def get_files_to_delete() -> dict[str, list[str]]:
         'AnimePlayer/_internal/PIL': [
             "_imagingtk.cp312-win_amd64.pyd",  # VirusTotal false positive
             "_webp.cp312-win_amd64.pyd",  # VirusTotal false positive
-            "_imagingtk.cp313-win_amd64.pyd",  # Python 3.13
-            "_webp.cp313-win_amd64.pyd",  # Python 3.13
+            # "_imagingtk.cp313-win_amd64.pyd",  # Python 3.13
+            # "_webp.cp313-win_amd64.pyd",  # Python 3.13
         ]
     }
 

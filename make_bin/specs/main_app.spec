@@ -42,7 +42,7 @@ source_db = os.path.join(DIST_DIR, "AnimePlayer", "db", "anime_player.db")
 backup_database(source_db, backup_folder)
 
 config_path = os.path.join(PROJECT_DIR, "config", "config.ini")
-build_config_path = create_temp_config(config_path, {"USE_GIT_VERSION": "0"})
+build_config_path = create_temp_config(config_path, {"use_git_version": "0"})
 
 compile_directories(['app', 'core', 'utils', 'templates', 'providers'])
 

@@ -87,7 +87,7 @@ def create_animedia_adapter(
         logger=log,
     )
 
-    log.info(f"AniMedia adapter created for {base_url}")
+    log.info(f"[***] AniMedia adapter created for '{base_url}'")
     return adapter
 
 

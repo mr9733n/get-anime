@@ -8,13 +8,13 @@ import traceback
 import faulthandler
 import logging.config
 
-from PyQt5 import QtCore
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication
+from PyQt6 import QtCore
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication
 
 from app.qt.app import AnimePlayerAppVer3
 from app.qt.app_services import AppStateService
-from core.database_manager import DatabaseManager
+from storage.database_manager import DatabaseManager
 from utils.security.library_loader import verify_library, load_library
 from utils.runtime.runtime_manager import test_exception
 from utils.config.config_manager import ConfigManager
@@ -147,9 +147,14 @@ def schedule_state_save():
     pending["timer"] = t
 
 def on_app_quit():
-    app_state = window_pyqt.get_current_state()
-    state_manager.save_state(app_state)
-    logger.info(f"AnimePlayerApp Version {version} is closed.")
+    try:
+        app_state = window_pyqt.get_current_state()
+        state_manager.save_state(app_state)
+        window_pyqt.poster_manager.stop()
+        logger.info(f"AnimePlayerApp Version {version} is closed.")
+    except Exception:
+        logger.exception("shutdown failed")
+
 
 if __name__ == "__main__":
     logger = logging.getLogger(__name__)
@@ -234,4 +239,4 @@ if __name__ == "__main__":
     if DEVELOPMENT_MODE:
         app_pyqt.aboutToQuit.connect(test_exception)
 
-    sys.exit(app_pyqt.exec_())
+    sys.exit(app_pyqt.exec())

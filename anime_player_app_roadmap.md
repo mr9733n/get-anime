@@ -637,6 +637,9 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [x] Freeze Qt app, only major bugs
 - [x] Create backend
 
+### 8.40 New backend
+- [ ] backend_roadmap.md
+
 ### 8.40 New provider api
 - [ ] Add provider OnWaveDub.org
 

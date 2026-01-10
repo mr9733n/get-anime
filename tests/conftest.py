@@ -1,9 +1,27 @@
 import sys
-from pathlib import Path
 import pytest
+from pathlib import Path
+from dataclasses import dataclass
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+@dataclass(slots=True)
+class FakeBackendContext:
+    user_id: int = 42
+
+    titles_enrich_default: bool = True
+    titles_search_limit_default: int = 50
+    titles_search_offset_default: int = 0
+
+    sync_max_results_default: int = 10
+    sync_limit_default: int = 3
+    sync_mode_default: str = "title"
+
+    update_mode_default: str = "title_full"
+    mode: str = "title"
 
 
 class FakeTitlesController:
@@ -57,6 +75,7 @@ class FakeBackend:
         self.streams = FakeStreamsController()
         self.playlists = FakePlaylistsController()
         self.titles_update = FakeTitlesUpdateController()
+        self.ctx = FakeBackendContext()
 
     # handlers.py вызывает backend.streams_get(...)
     def streams_get(self, *, title_id: int, episode_number: int, user_id: int = 42):

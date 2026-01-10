@@ -32,30 +32,35 @@
 * [x] Episodes с абсолютными stream URL
 * [x] Posters / previews / torrents через assets-host
 * [x] User prefs (history / need_to_see / watched)
-
+[0.3.8.39] branch: feature/0.3.8.39 | 1/8/26 | Merged to main
 ---
 
-## 🟡 NEXT — Write-path (process → save)
+## 🟡🟢 DONE — Write-path (process → save)
 
 **Цель:** любые данные от провайдера (включая расписание) попадают в БД **только** через единый `process`-канал,
 где выполняются проверки/нормализация/мерж (и только потом `save`).
 
-### Planned
-
-* [ ] Новый backend-op: `process.provider_payload` (или `sync.apply`)
+* [x] Новый backend-op: `process.provider_payload` (или `sync.apply`)
   * `params`: `{ provider_code, payload, mode }`
-* [ ] Core: `ProcessController` + use-case `ApplyProviderPayload`
+* [x] Core: `ProcessController` + use-case `ApplyProviderPayload`
   * Контроллер принимает нормализованный input
   * Дергает use-case
   * Use-case вызывает write-port
-* [ ] Infra: write-port (обёртка над существующим `db.process_*` / `storage.process`)
+* [x] Infra: write-port (обёртка над существующим `db.process_*` / `storage.process`)
   * Core **не видит** `db_manager` / storage напрямую
   * Один канал записи = база для schedule и новых провайдеров
+* [x] Unified provider pipeline (search_external_ids/fetch_payload/fetch_and_process/search_and_process)
+* [x] titles.update (by provider_links + fallback query)
+* [x] unit tests for json handlers + sync + providers (baseline)
 
 **Definition of Done:**
 
 * запись в БД из backend происходит через `process` (одна точка входа)
-* UI/Sync-код может вызывать только этот op для применения provider payload
+* Sync-код может вызывать только этот op для применения provider payload
+* Update обновляет тайтлы разных провайдеров
+* unit-test на ранее созданный функционал
+[0.3.8.40] branch: feature/0.3.8.40 | 1/9/26
+---
 
 ## 🟡 NEXT — Связанные сущности Title
 

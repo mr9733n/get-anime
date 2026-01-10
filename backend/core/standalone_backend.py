@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from backend.core.context import BackendContext
 from backend.core.controllers.titles_controller import TitlesController
 from backend.core.controllers.streams_controller import StreamsController
 from backend.core.controllers.playlists_controller import PlaylistsController
@@ -45,6 +46,7 @@ class StandaloneBackend:
         self._progress = progress_repo
 
         cfg = ConfigManager(str(config_file))
+        self.ctx = BackendContext.from_config(cfg)
         titles_port = SqlAlchemyTitlesPort(self._db)
         enricher = SqlAlchemyTitlesEnricherPort(self._db)
         self.titles = TitlesController(titles_port, enricher, config_manager=cfg)
@@ -68,7 +70,6 @@ class StandaloneBackend:
         self.provider_boot_errors: list[str] = []
         self._cache_dir = Path("temp")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        cfg = ConfigManager(str(config_file))
 
         if not providers:
             providers = ProvidersFactory(logger=self._logger).build(

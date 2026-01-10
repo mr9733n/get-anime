@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Callable, Any
 
 from backend.transport.json_tool.protocol import ok
+from backend.transport.json_tool.request_context import RequestContext
 from backend.transport.json_tool.serializers import to_jsonable
 from backend.transport.json_tool.async_runner import run
 
@@ -19,18 +20,20 @@ def h_titles_ids_search(backend, params):
 
 
 def h_titles_search(backend, params):
-    query = (params.get("query") or "").strip()
-    user_id = int(params.get("user_id", 42))
-    enrich = bool(params.get("enrich", True))
-    limit = int(params.get("limit", 50))
-    offset = int(params.get("offset", 0))
-    dtos = backend.titles.titles_search(query=query, user_id=user_id, enrich=enrich, limit=limit, offset=offset)
+    ctx = RequestContext(backend, params)
+
+    dtos = backend.titles.titles_search(
+        query=ctx.query or "",
+        user_id=ctx.user_id,
+        enrich=ctx.enrich,
+        limit=ctx.limit(backend.ctx.titles_search_limit_default),
+        offset=ctx.offset(backend.ctx.titles_search_offset_default),
+    )
     return ok({"titles": to_jsonable(dtos)})
 
-
 def h_titles_get(backend, params):
-    user_id = int(params.get("user_id", 42))
-    enrich = bool(params.get("enrich", True))
+    user_id = int(params.get("user_id", backend.ctx.user_id))
+    enrich = bool(params.get("enrich", backend.ctx.titles_enrich_default))
     if "title_ids" in params:
         title_ids = params["title_ids"]
         if not isinstance(title_ids, list):
@@ -102,31 +105,20 @@ def h_titles_list_episodes(backend, params):
 
 def h_sync_fetch_and_process(backend, params):
     """Дёргает провайдера (query/external_id), затем применяет write-path (process->save)."""
-    provider_code = (params.get("provider_code") or "").strip().lower()
-    mode = (params.get("mode") or "title_full").strip().lower()
-    max_results = int(params.get("max_results", 5))
-
-    external_id = params.get("external_id")
-    query = params.get("query")
-
-    if provider_code == "":
+    ctx = RequestContext(backend, params)
+    if not ctx.provider_code:
         raise ValueError("provider_code is required")
-
-    # JSON даёт number/bool/str. Нам ок хранить как str|int.
-    if isinstance(external_id, bool):
-        external_id = None
 
     res = run(
         backend.sync_fetch_and_process(
-            provider_code=provider_code,
-            external_id=external_id,
-            query=query,
-            mode=mode,
-            max_results=max_results,
+            provider_code=ctx.provider_code,
+            external_id=ctx.external_id,
+            query=ctx.query,
+            mode=ctx.mode(backend.ctx.sync_mode_default),
+            max_results=ctx.max_results(backend.ctx.sync_max_results_default),
         )
     )
     return ok({"result": to_jsonable(res)})
-
 
 def h_sync_search_external_ids(backend, params):
     provider_code = (params.get("provider_code") or "").strip().lower()
@@ -172,9 +164,9 @@ def h_sync_fetch_payload(backend, params):
 def h_sync_search_and_process(backend, params):
     provider_code = (params.get("provider_code") or "").strip().lower()
     query = (params.get("query") or "").strip()
-    mode = (params.get("mode") or "title").strip().lower()
-    max_results = int(params.get("max_results", 10))
-    limit = int(params.get("limit", 5))
+    max_results = int(params.get("max_results", backend.ctx.sync_max_results_default))
+    limit = int(params.get("limit", backend.ctx.sync_limit_default))
+    mode = (params.get("mode") or backend.ctx.sync_mode_default).strip().lower()
 
     res = run(
         backend.sync_search_and_process(
@@ -197,8 +189,8 @@ def h_titles_update(backend, params):
     provider_code = params.get("provider_code")
     provider_code = provider_code.strip().lower() if isinstance(provider_code, str) and provider_code.strip() else None
 
-    mode = (params.get("mode") or "title_full").strip().lower()
-    max_results = int(params.get("max_results", 5))
+    mode = (params.get("mode") or backend.ctx.update_mode_default).strip().lower()
+    max_results = int(params.get("max_results", backend.ctx.sync_max_results_default))
 
     res = run(
         backend.titles_update.update_titles(

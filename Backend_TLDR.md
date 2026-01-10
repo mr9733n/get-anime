@@ -183,7 +183,13 @@ DTO — только транспортный слой, ORM наружу не в
 * `streams.get`
 * `playlist.compose`
 * `playlist.compose_multi`
+* `sync.search_external_ids`
+* `sync.fetch_payload`
+* `sync.fetch_and_process`
+* `sync.search_and_process`
+* `titles.update`
 
+- titles.update берёт provider_links и обновляет через sync.fetch_and_process (external_id приоритет, иначе query fallback)
 ---
 
 ## JSON protocol

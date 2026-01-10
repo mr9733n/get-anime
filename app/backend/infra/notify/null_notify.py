@@ -1,5 +1,5 @@
 from __future__ import annotations
-from backend.core.ports.notify import NotifierPort
+from app.backend.core.ports.notify import NotifierPort
 
 
 class NullNotifier(NotifierPort):

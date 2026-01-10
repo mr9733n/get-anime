@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from app.core.use_cases.title_search_use_case import TitleSearchUseCase
+from app.backend.core.use_cases.title_search_use_case import TitleSearchUseCase
 
 
 class FakeDB:

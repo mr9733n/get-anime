@@ -7,7 +7,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from app.qt.app_constants import PROVIDER_ANILIBERTY
+# Важно: backend не должен тянуть Qt-слой.
+# provider_code фиксируем строкой (совпадает с тем, что использует UI).
+PROVIDER_ANILIBERTY = "aniliberty"
 
 if TYPE_CHECKING:
     pass

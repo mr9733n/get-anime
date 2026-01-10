@@ -5,7 +5,7 @@ import pytest
 
 def test_business_state_standalone():
     """BusinessState работает без Qt."""
-    from app.core.state import BusinessState
+    from app.backend.core.state import BusinessState
 
     state = BusinessState()
     state.current_title_id = 123
@@ -17,7 +17,7 @@ def test_business_state_standalone():
 
 def test_business_state_serialization():
     """BusinessState сериализуется в dict."""
-    from app.core.state import BusinessState
+    from app.backend.core.state import BusinessState
 
     state = BusinessState()
     state.current_title_id = 456

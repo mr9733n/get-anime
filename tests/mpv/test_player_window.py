@@ -3,8 +3,6 @@ import pytest
 import logging
 logging.getLogger(__name__).setLevel(logging.CRITICAL)
 
-from PyQt5.QtCore import QTimer
-
 from app.mpv.player_window import PlayerWindow
 from app.mpv.base_engine import PlaybackState
 

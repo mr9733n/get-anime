@@ -2,8 +2,8 @@ import sys, random
 import logging
 logging.getLogger(__name__).setLevel(logging.CRITICAL)
 
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QTimer
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QTimer
 
 from app.mpv.mpv_engine import MpvEngine
 from app.mpv.player_window import PlayerWindow

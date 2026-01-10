@@ -75,8 +75,7 @@ class TitlesController:
             return []
 
         titles = self._titles.get_titles(title_ids=title_ids, show_all=True)
-        if enrich:
-            titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich)
+        titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich)
 
         # provider links (batched)
         links_map = self._titles.get_provider_links_map(title_ids)
@@ -95,8 +94,7 @@ class TitlesController:
 
     def title_get(self, title_id: int, *, user_id: int = 41, enrich: bool = True) -> TitleDetailsDTO:
         title = self._titles.get_titles(title_id=title_id, show_all=True)
-        if enrich:
-            title = self._maybe_enrich(title, user_id=user_id, enrich=enrich)
+        title = self._maybe_enrich(title, user_id=user_id, enrich=enrich)
 
         if not title:
             raise ValueError(f"title_id not found: {title_id}")

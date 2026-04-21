@@ -24,7 +24,7 @@ pytest-mock~=3.15.1
 pytest-qt~=4.5.0
 
 # Not using now
-python-dotenv~=1.1.0
+python-dotenv~=1.2.2
 qrcode~=8.2
 
 # Not needed for last build

@@ -22,7 +22,15 @@ from backend.infra.db.process_write_port_storage import StorageProcessWritePort
 from backend.core.use_cases.sync_search_and_process import SyncSearchAndProcessUseCase
 from backend.core.controllers.sync_controller import SyncController
 from backend.core.controllers.titles_update_controller import TitlesUpdateController
+from backend.core.controllers.history_controller import HistoryController
+from backend.core.controllers.schedule_controller import ScheduleController
+from backend.infra.db.history_write_sqlalchemy import SqlAlchemyHistoryWritePort
+from backend.infra.db.schedule_sqlalchemy import (
+    SqlAlchemyScheduleReadPort,
+    SqlAlchemyScheduleWritePort,
+)
 from backend.bootstrap.providers_factory import ProvidersFactory
+from backend.core.ports.schedule_port import IProviderScheduleSource
 
 from utils.config.config_manager import ConfigManager
 from utils.net.net_client import NetClient
@@ -38,6 +46,7 @@ class StandaloneBackend:
             progress_repo=None,
             config_file: str | Path = "config/config.ini",
             providers: dict[str, IProviderPayloadSource] | None = None,
+            schedule_sources: dict[str, IProviderScheduleSource] | None = None,
             logger=None,
             cache_dir: str | Path | None = None,
     ) -> None:
@@ -72,11 +81,14 @@ class StandaloneBackend:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
         if not providers:
-            providers = ProvidersFactory(logger=self._logger).build(
+            built = ProvidersFactory(logger=self._logger).build_all(
                 cfg=cfg,
                 cache_dir=self._cache_dir,
-                boot_errors=self.provider_boot_errors,
             )
+            self.provider_boot_errors.extend(built.boot_errors)
+            providers = built.payload_sources
+            if schedule_sources is None:
+                schedule_sources = built.schedule_sources
 
         self.provider_resolver = DictProviderResolver(providers=providers)
         self.pipeline = ProviderPipeline(resolver=self.provider_resolver, process=self.process)
@@ -88,6 +100,37 @@ class StandaloneBackend:
             search_and_process_uc=self.sync_search_and_process_uc,
         )
         self.titles_update = TitlesUpdateController(titles=self.titles, sync=self.sync)
+
+        # history writes
+        self.history = HistoryController(
+            write_port=SqlAlchemyHistoryWritePort(self._db)
+        )
+
+        # schedule — fetch_title_fn bridges pipeline into schedule controller
+        from backend.transport.json_tool.async_runner import run as _run_async
+
+        def _fetch_title(provider_code: str, external_id: str) -> bool:
+            """Fetch a missing title from a provider and save it to DB."""
+            try:
+                result = _run_async(
+                    self.pipeline.fetch_and_process(
+                        provider_code=provider_code,
+                        external_id=external_id,
+                        mode="title",
+                    )
+                )
+                return result.ok
+            except Exception:
+                return False
+
+        schedule_read = SqlAlchemyScheduleReadPort(self._db)
+        schedule_write = SqlAlchemyScheduleWritePort(self._db)
+        self.schedule = ScheduleController(
+            read_port=schedule_read,
+            write_port=schedule_write,
+            sources=schedule_sources or {},
+            fetch_title_fn=_fetch_title,
+        )
 
     # --- titles ---
     def titles_ids_search(self, query: str, provider: str | None = None):

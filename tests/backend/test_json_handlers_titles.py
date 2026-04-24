@@ -37,3 +37,35 @@ def test_titles_update_ok(backend, handlers):
     assert r["ok"] is True
     assert "applied" in r
 
+
+def test_titles_search_card_view(backend, handlers):
+    res = handlers["titles.search"](backend, {"query": "sakamoto", "view": "card"})
+    assert res["ok"] is True
+    assert res["result"]["view"] == "card"
+    dtos = res["result"]["titles"]
+    assert dtos[0]["view"] == "card"
+
+
+def test_titles_get_card_view(backend, handlers):
+    res = handlers["titles.get"](backend, {"title_id": 2128, "view": "card"})
+    assert res["ok"] is True
+    assert res["result"]["view"] == "card"
+    dtos = res["result"]["titles"]
+    assert dtos[0]["view"] == "card"
+
+
+def test_titles_get_view_defaults_to_full(backend, handlers):
+    """view defaults to 'full' when not specified."""
+    res = handlers["titles.get"](backend, {"title_id": 2128})
+    assert res["ok"] is True
+    assert res["result"]["view"] == "full"
+    dtos = res["result"]["titles"]
+    assert dtos[0]["view"] == "full"
+
+
+def test_titles_get_unknown_view_falls_back_to_full(backend, handlers):
+    """Unknown view value falls back to FULL gracefully."""
+    res = handlers["titles.get"](backend, {"title_id": 2128, "view": "nonexistent"})
+    assert res["ok"] is True
+    assert res["result"]["view"] == "full"
+

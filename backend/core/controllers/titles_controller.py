@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from backend.core.dto.titles import (
-    TitleDetailsDTO, EpisodeDTO, GenreDTO, FranchiseDTO, TeamMemberDTO,
+    TitleViewMode, TitleDetailsDTO, TitleCardDTO,
+    EpisodeDTO, GenreDTO, FranchiseDTO, TeamMemberDTO,
     TorrentDTO, ProviderLinkDTO, ProductionStudioDTO, RatingDTO, HistoryDTO, ScheduleDTO,
 )
 from backend.core.dto.search import TitlesSearchResult
@@ -46,36 +47,40 @@ class TitlesController:
 
         return TitlesSearchResult(title_ids=[int(x) for x in title_ids], providers=providers)
 
-    def titles_search(self, query: str, *, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0):
+    def titles_search(self, query: str, *, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0, view_mode: TitleViewMode = TitleViewMode.FULL):
         title_ids = self._titles.search_title_ids(query=query, limit=limit, offset=offset)
         if not title_ids:
             return []
 
         titles = self._titles.get_titles(title_ids=title_ids, show_all=True)
-        titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich)
+        titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich, view_mode=view_mode)
 
         # provider links
         links_map = self._titles.get_provider_links_map(title_ids)
         for t in titles:
             setattr(t, "_pref_provider_links", links_map.get(int(getattr(t, "title_id")), []))
 
-        out = self._titles_return(titles)
+        out = self._titles_return_card(titles) if view_mode == TitleViewMode.CARD else self._titles_return(titles)
 
         # сохранить порядок поиска
         order = {tid: i for i, tid in enumerate(title_ids)}
         out.sort(key=lambda dto: order.get(int(dto.title_id), 10 ** 9))
         return out
 
+    def count_titles(self, query: str) -> int:
+        """Total number of DB titles matching *query* (for pagination metadata)."""
+        return self._titles.count_search_titles(query=(query or "").strip())
+
     # -----------------------
     # titles.get (DB-only)
     # -----------------------
-    def titles_get(self, title_ids: list[int], *, user_id: int = 42, enrich: bool = True) -> list[TitleDetailsDTO]:
+    def titles_get(self, title_ids: list[int], *, user_id: int = 42, enrich: bool = True, view_mode: TitleViewMode = TitleViewMode.FULL):
         title_ids = [int(x) for x in (title_ids or [])]
         if not title_ids:
             return []
 
         titles = self._titles.get_titles(title_ids=title_ids, show_all=True)
-        titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich)
+        titles = self._maybe_enrich(titles, user_id=user_id, enrich=enrich, view_mode=view_mode)
 
         # provider links (batched)
         links_map = self._titles.get_provider_links_map(title_ids)
@@ -85,22 +90,21 @@ class TitlesController:
         if not titles:
             return []
 
-        out = self._titles_return(titles)
+        out = self._titles_return_card(titles) if view_mode == TitleViewMode.CARD else self._titles_return(titles)
 
         # фикс порядка входных id
         index = {tid: i for i, tid in enumerate(title_ids)}
-        out.sort(key=lambda dto: index.get(int(dto.title_id), 10**9))  # <-- фикс твоего бага
+        out.sort(key=lambda dto: index.get(int(dto.title_id), 10**9))
         return out
 
-    def title_get(self, title_id: int, *, user_id: int = 41, enrich: bool = True) -> TitleDetailsDTO:
+    def title_get(self, title_id: int, *, user_id: int = 41, enrich: bool = True, view_mode: TitleViewMode = TitleViewMode.FULL):
         title = self._titles.get_titles(title_id=title_id, show_all=True)
-        title = self._maybe_enrich(title, user_id=user_id, enrich=enrich)
+        title = self._maybe_enrich(title, user_id=user_id, enrich=enrich, view_mode=view_mode)
 
         if not title:
             raise ValueError(f"title_id not found: {title_id}")
 
-        out = self._titles_return(title)
-
+        out = self._titles_return_card(title) if view_mode == TitleViewMode.CARD else self._titles_return(title)
         return out[0]
 
     # -----------------------
@@ -137,11 +141,11 @@ class TitlesController:
     # -----------------------
     # internal mapping helpers
     # -----------------------
-    def _maybe_enrich(self, titles: list, user_id: int = 42, enrich: bool = True) -> list:
+    def _maybe_enrich(self, titles: list, user_id: int = 42, enrich: bool = True, view_mode: TitleViewMode = TitleViewMode.FULL) -> list:
         if not enrich or not titles:
             return titles
         try:
-            return self._enricher.enrich_titles(titles, user_id=user_id)
+            return self._enricher.enrich_titles(titles, user_id=user_id, view_mode=view_mode)
         except Exception as e:
             if self.log:
                 self.log.warning(f"titles enrich failed: {e}", exc_info=True)
@@ -288,6 +292,89 @@ class TitlesController:
             skips_ending=norm_str(getattr(e, "skips_ending", None)),
         )
 
+    def _titles_return_card(self, titles) -> list[TitleCardDTO]:
+        """Title → TitleCardDTO (lightweight, для list/search view)."""
+        out: list[TitleCardDTO] = []
+        for t in (titles or []):
+            host = norm_str(getattr(t, "host_for_player", None))
+            stream_base = make_base_url(host)
+            provider_raw = getattr(t, "_pref_provider", None)
+            provider_code = normalize_provider_code(provider_raw)
+
+            genre_rels = getattr(t, "genres", []) or []
+            genres = [self._genre_rel_to_dto(rel) for rel in genre_rels]
+
+            provider_links = [
+                ProviderLinkDTO(
+                    id=int(d["id"]),
+                    provider_id=int(d["provider_id"]),
+                    provider_code=d.get("provider_code"),
+                    provider_name=d.get("provider_name"),
+                    external_title_id=str(d.get("external_title_id")),
+                )
+                for d in (getattr(t, "_pref_provider_links", []) or [])
+            ]
+
+            pref_rt = getattr(t, "_pref_ratings", []) or []
+            ratings = [self._rating_to_dto(r) for r in pref_rt]
+
+            pref_ps = getattr(t, "_pref_production_studio_obj", None)
+            production_studio: ProductionStudioDTO | None = (
+                ProductionStudioDTO(id=int(pref_ps["id"]), name=str(pref_ps["name"]))
+                if pref_ps else None
+            )
+
+            out.append(TitleCardDTO(
+                title_id=int(getattr(t, "title_id")),
+                code=getattr(t, "code", None),
+                name_ru=getattr(t, "name_ru", None),
+                name_en=getattr(t, "name_en", None),
+                alternative_name=getattr(t, "alternative_name", None),
+
+                status_string=getattr(t, "status_string", None),
+                status_code=getattr(t, "status_code", None),
+
+                type_string=getattr(t, "type_string", None),
+                type_code=getattr(t, "type_code", None),
+                type_episodes=getattr(t, "type_episodes", None),
+                type_length=getattr(t, "type_length", None),
+
+                season_year=getattr(t, "season_year", None),
+                season_string=getattr(t, "season_string", None),
+                season_code=getattr(t, "season_code", None),
+
+                day_of_week=getattr(t, "day_of_week", None),
+                day_name=getattr(t, "day_name", None),
+
+                host_for_player=host,
+
+                poster_path_small=abs_asset_url(
+                    provider_code, self.cfg, norm_str(getattr(t, "poster_path_small", None)), fallback_base=stream_base
+                ),
+                poster_path_medium=abs_asset_url(
+                    provider_code, self.cfg, norm_str(getattr(t, "poster_path_medium", None)), fallback_base=stream_base
+                ),
+
+                genres=genres,
+                provider_links=provider_links,
+                production_studio=production_studio,
+                ratings=ratings,
+
+                provider=getattr(t, "_pref_provider", None),
+                studio=getattr(t, "_pref_studio", None),
+                team=getattr(t, "_pref_team", None),
+                rating_name=getattr(t, "_pref_rating_name", None),
+                rating_value=getattr(t, "_pref_rating_value", None),
+
+                need_to_see=bool(getattr(t, "_pref_need_to_see", False)),
+                title_watched=bool(getattr(t, "_pref_title_watched", False)),
+                all_episodes_watched=bool(getattr(t, "_pref_all_episodes_watched", False)),
+
+                enriched=bool(getattr(t, "_pref_enriched", False)),
+                missing=list(getattr(t, "_pref_missing", []) or []),
+            ))
+        return out
+
     def _titles_return(self, titles) -> list[TitleDetailsDTO]:
         """
         Title -> TitleDetailsDTO.
@@ -350,10 +437,13 @@ class TitlesController:
             franchises = [self._franchise_to_dto(fr) for fr in pref_fr]
             torrents = [self._torrent_to_dto(tr, provider_code=provider_code, stream_base=stream_base) for tr in pref_tor]
 
-            # -----------------------
-            # NOT SAFE NOW (lazy): return empty
-            # -----------------------
-            team_members: list[TeamMemberDTO] = []
+            # team_members (via enricher)
+            pref_tm = getattr(t, "_pref_team_members", []) or []
+            team_members = [
+                TeamMemberDTO(id=int(m["id"]), name=str(m["name"]), role=str(m["role"]))
+                for m in pref_tm
+            ]
+
             provider_links = []
             for d in (getattr(t, "_pref_provider_links", []) or []):
                 provider_links.append(
@@ -366,9 +456,20 @@ class TitlesController:
                     )
                 )
 
-            ratings: list[RatingDTO] = []
-            history: list[HistoryDTO] = []
-            production_studio: ProductionStudioDTO | None = None
+            # ratings (via enricher)
+            pref_rt = getattr(t, "_pref_ratings", []) or []
+            ratings = [self._rating_to_dto(r) for r in pref_rt]
+
+            # history records (via enricher)
+            pref_hr = getattr(t, "_pref_history_records", []) or []
+            history = [self._history_to_dto(h) for h in pref_hr]
+
+            # production_studio (via enricher)
+            pref_ps = getattr(t, "_pref_production_studio_obj", None)
+            production_studio: ProductionStudioDTO | None = (
+                ProductionStudioDTO(id=int(pref_ps["id"]), name=str(pref_ps["name"]))
+                if pref_ps else None
+            )
 
             out.append(
                 TitleDetailsDTO(

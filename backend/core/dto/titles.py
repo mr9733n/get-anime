@@ -2,7 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any
+
+
+class TitleViewMode(str, Enum):
+    """Controls which DTO type is produced and how deeply the enricher fetches.
+
+    FULL — TitleDetailsDTO with all related entities (episodes, torrents,
+           team_members, franchises, history). Every per-episode / per-torrent
+           history query runs.  Use for detail / player view.
+
+    CARD — TitleCardDTO without heavy sub-lists. Per-episode N+1 loops are
+           skipped.  Use for search results and list views.
+    """
+    FULL = "full"
+    CARD = "card"
 
 
 # --- leaf DTOs ---
@@ -126,6 +141,57 @@ class EpisodeDTO:
 
     skips_opening: str | None
     skips_ending: str | None
+
+
+# --- card DTO (list-view, lightweight) ---
+
+@dataclass(frozen=True)
+class TitleCardDTO:
+    """Lightweight DTO for list / search views. No episodes, torrents, team, history."""
+    title_id: int
+    code: str | None
+    name_ru: str | None
+    name_en: str | None
+    alternative_name: str | None
+
+    status_string: str | None
+    status_code: int | None
+
+    type_string: str | None
+    type_code: int | None
+    type_episodes: str | None
+    type_length: str | None
+
+    season_year: int | None
+    season_string: str | None
+    season_code: int | None
+
+    day_of_week: int | None
+    day_name: str | None
+
+    host_for_player: str | None
+
+    poster_path_small: str | None
+    poster_path_medium: str | None
+
+    genres: list[GenreDTO]
+    provider_links: list[ProviderLinkDTO]
+    production_studio: ProductionStudioDTO | None
+    ratings: list[RatingDTO]
+
+    # Enrichment (scalar)
+    provider: str | None
+    studio: str | None
+    team: str | None
+    rating_name: str | None
+    rating_value: int | None
+
+    need_to_see: bool
+    title_watched: bool
+    all_episodes_watched: bool
+
+    enriched: bool
+    missing: list[str]
 
 
 # --- main DTO ---

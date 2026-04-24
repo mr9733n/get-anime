@@ -929,3 +929,66 @@ class GetManager:
                 return None
 
             return title.host_for_player
+
+    def get_team_members_from_db(self, title_id: int) -> list[dict]:
+        """Возвращает список {id, name, role} для team_members тайтла."""
+        with self.Session as session:
+            try:
+                relations = (
+                    session.query(TitleTeamRelation)
+                    .options(joinedload(TitleTeamRelation.team_member))
+                    .filter(TitleTeamRelation.title_id == title_id)
+                    .all()
+                )
+                result = []
+                for rel in relations:
+                    m = rel.team_member
+                    if m is None:
+                        continue
+                    result.append({
+                        "id": int(m.id),
+                        "name": str(m.name or ""),
+                        "role": str(m.role or ""),
+                    })
+                return result
+            except Exception as e:
+                self.logger.error(f"Error fetching team_members for title_id {title_id}: {e}")
+                return []
+
+    def get_ratings_list_from_db(self, title_id: int) -> list:
+        """Возвращает список Rating ORM-объектов для тайтла."""
+        with self.Session as session:
+            try:
+                return session.query(Rating).filter_by(title_id=title_id).all()
+            except Exception as e:
+                self.logger.error(f"Error fetching ratings for title_id {title_id}: {e}")
+                return []
+
+    def get_history_records_from_db(self, user_id: int, title_id: int) -> list:
+        """Возвращает список History ORM-объектов для пользователя и тайтла."""
+        with self.Session as session:
+            try:
+                return (
+                    session.query(History)
+                    .filter_by(user_id=user_id, title_id=title_id)
+                    .all()
+                )
+            except Exception as e:
+                self.logger.error(f"Error fetching history for user_id {user_id}, title_id {title_id}: {e}")
+                return []
+
+    def get_production_studio_obj_from_db(self, title_id: int) -> dict | None:
+        """Возвращает {id, name} для production_studio тайтла или None."""
+        with self.Session as session:
+            try:
+                studio = (
+                    session.query(ProductionStudio)
+                    .filter(ProductionStudio.title_id == title_id)
+                    .one_or_none()
+                )
+                if studio is None:
+                    return None
+                return {"id": int(studio.title_id), "name": str(studio.name or "")}
+            except Exception as e:
+                self.logger.error(f"Error fetching production_studio for title_id {title_id}: {e}")
+                return None

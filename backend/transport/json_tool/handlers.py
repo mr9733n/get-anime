@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Any
 
+from backend.core.dto.titles import TitleViewMode
 from backend.transport.json_tool.protocol import ok
 from backend.transport.json_tool.request_context import RequestContext
 from backend.transport.json_tool.serializers import to_jsonable
@@ -19,34 +20,58 @@ def h_titles_ids_search(backend, params):
     return ok({"title_ids": res.title_ids, "providers": res.providers})
 
 
+def _parse_view_mode(params: dict) -> TitleViewMode:
+    raw = (params.get("view") or "").strip().lower()
+    try:
+        return TitleViewMode(raw)
+    except ValueError:
+        return TitleViewMode.FULL
+
+
 def h_titles_search(backend, params):
     ctx = RequestContext(backend, params)
+    view_mode = _parse_view_mode(params)
+    query = ctx.query or ""
+    limit = ctx.limit(backend.ctx.titles_search_limit_default)
+    offset = ctx.offset(backend.ctx.titles_search_offset_default)
 
     dtos = backend.titles.titles_search(
-        query=ctx.query or "",
+        query=query,
         user_id=ctx.user_id,
         enrich=ctx.enrich,
-        limit=ctx.limit(backend.ctx.titles_search_limit_default),
-        offset=ctx.offset(backend.ctx.titles_search_offset_default),
+        limit=limit,
+        offset=offset,
+        view_mode=view_mode,
     )
-    return ok({"titles": to_jsonable(dtos)})
+    total_count = backend.titles.count_titles(query)
+    has_more = (offset + len(dtos)) < total_count
+
+    return ok({
+        "titles": to_jsonable(dtos),
+        "view": view_mode.value,
+        "total_count": total_count,
+        "offset": offset,
+        "limit": limit,
+        "has_more": has_more,
+    })
 
 def h_titles_get(backend, params):
     user_id = int(params.get("user_id", backend.ctx.user_id))
     enrich = bool(params.get("enrich", backend.ctx.titles_enrich_default))
+    view_mode = _parse_view_mode(params)
     if "title_ids" in params:
         title_ids = params["title_ids"]
         if not isinstance(title_ids, list):
             raise ValueError("title_ids must be a list[int]")
         title_ids = [int(x) for x in title_ids]
-        dtos = backend.titles.titles_get(title_ids=title_ids, user_id=user_id, enrich=enrich)
+        dtos = backend.titles.titles_get(title_ids=title_ids, user_id=user_id, enrich=enrich, view_mode=view_mode)
     elif "title_id" in params:
         title_id = int(params["title_id"])
-        dtos = backend.titles.titles_get(title_ids=[title_id], user_id=user_id, enrich=enrich)
+        dtos = backend.titles.titles_get(title_ids=[title_id], user_id=user_id, enrich=enrich, view_mode=view_mode)
     else:
         raise ValueError("titles.get expects title_id or title_ids")
 
-    return ok({"titles": to_jsonable(dtos)})
+    return ok({"titles": to_jsonable(dtos), "view": view_mode.value})
 
 
 def h_streams_get(backend, params):
@@ -203,6 +228,86 @@ def h_titles_update(backend, params):
     return ok({"result": to_jsonable(res)})
 
 
+def h_history_mark_watched(backend, params):
+    user_id = int(params.get("user_id", backend.ctx.user_id))
+    title_id = params.get("title_id")
+    if title_id is None:
+        raise ValueError("history.mark_watched requires 'title_id'")
+    title_id = int(title_id)
+    episode_id = params.get("episode_id")
+    if episode_id is not None:
+        episode_id = int(episode_id)
+    is_watched = bool(params.get("is_watched", True))
+    res = backend.history.mark_watched(
+        user_id=user_id,
+        title_id=title_id,
+        episode_id=episode_id,
+        is_watched=is_watched,
+    )
+    return ok({"result": to_jsonable(res)})
+
+
+def h_history_mark_all_watched(backend, params):
+    user_id = int(params.get("user_id", backend.ctx.user_id))
+    title_id = params.get("title_id")
+    if title_id is None:
+        raise ValueError("history.mark_all_watched requires 'title_id'")
+    title_id = int(title_id)
+    is_watched = bool(params.get("is_watched", True))
+    episode_ids = params.get("episode_ids")
+    if episode_ids is not None:
+        if not isinstance(episode_ids, list):
+            raise ValueError("episode_ids must be a list[int]")
+        episode_ids = [int(x) for x in episode_ids]
+    res = backend.history.mark_all_watched(
+        user_id=user_id,
+        title_id=title_id,
+        is_watched=is_watched,
+        episode_ids=episode_ids,
+    )
+    return ok({"result": to_jsonable(res)})
+
+
+def h_history_set_need_to_see(backend, params):
+    user_id = int(params.get("user_id", backend.ctx.user_id))
+    title_id = params.get("title_id")
+    if title_id is None:
+        raise ValueError("history.set_need_to_see requires 'title_id'")
+    title_id = int(title_id)
+    need_to_see = bool(params.get("need_to_see", True))
+    res = backend.history.set_need_to_see(
+        user_id=user_id,
+        title_id=title_id,
+        need_to_see=need_to_see,
+    )
+    return ok({"result": to_jsonable(res)})
+
+
+def h_schedule_get(backend, params):
+    day = params.get("day")
+    if day is None:
+        raise ValueError("schedule.get requires 'day' (1-7)")
+    day = int(day)
+    entries = backend.schedule.schedule_get(day=day)
+    return ok({"day": day, "entries": to_jsonable(entries)})
+
+
+def h_schedule_sync(backend, params):
+    provider_code = (params.get("provider_code") or "").strip().lower()
+    if not provider_code:
+        raise ValueError("schedule.sync requires 'provider_code'")
+    day = params.get("day")
+    if day is not None:
+        day = int(day)
+    fetch_unresolved = bool(params.get("fetch_unresolved", False))
+    res = backend.schedule.schedule_sync(
+        provider_code=provider_code,
+        day=day,
+        fetch_unresolved=fetch_unresolved,
+    )
+    return ok({"result": to_jsonable(res)})
+
+
 HANDLERS: dict[str, Handler] = {
     "titles_ids.search": h_titles_ids_search,
     "titles.search": h_titles_search,
@@ -216,5 +321,9 @@ HANDLERS: dict[str, Handler] = {
     "sync.fetch_payload": h_sync_fetch_payload,
     "sync.search_and_process": h_sync_search_and_process,
     "titles.update": h_titles_update,
-
+    "schedule.get": h_schedule_get,
+    "schedule.sync": h_schedule_sync,
+    "history.mark_watched": h_history_mark_watched,
+    "history.mark_all_watched": h_history_mark_all_watched,
+    "history.set_need_to_see": h_history_set_need_to_see,
 }

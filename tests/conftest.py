@@ -2,6 +2,7 @@ import sys
 import pytest
 from pathlib import Path
 from dataclasses import dataclass
+from backend.core.dto.titles import TitleViewMode
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,12 +26,14 @@ class FakeBackendContext:
 
 
 class FakeTitlesController:
-    def titles_search(self, *, query: str, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0):
-        # handlers ожидают список DTO-шек (любой jsonable)
-        return [{"title_id": 1, "query": query, "user_id": user_id, "enrich": enrich, "limit": limit, "offset": offset}]
+    def titles_search(self, *, query: str, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0, view_mode: TitleViewMode = TitleViewMode.FULL):
+        return [{"title_id": 1, "query": query, "user_id": user_id, "enrich": enrich, "limit": limit, "offset": offset, "view": view_mode.value}]
 
-    def titles_get(self, *, title_ids: list[int], user_id: int = 42, enrich: bool = True):
-        return [{"title_id": tid, "user_id": user_id, "enrich": enrich} for tid in title_ids]
+    def titles_get(self, *, title_ids: list[int], user_id: int = 42, enrich: bool = True, view_mode: TitleViewMode = TitleViewMode.FULL):
+        return [{"title_id": tid, "user_id": user_id, "enrich": enrich, "view": view_mode.value} for tid in title_ids]
+
+    def count_titles(self, query: str) -> int:
+        return 42
 
 
 class FakeStreamsController:
@@ -69,12 +72,41 @@ class FakeTitlesUpdateController:
         return {"ok": True, "applied": [{"title_ids": title_ids}], "skipped": 0, "error": None}
 
 
+class FakeScheduleController:
+    def schedule_get(self, *, day: int):
+        return [{"title_id": 1, "day_of_week": day, "last_updated": None}]
+
+    def schedule_sync(self, *, provider_code: str, day=None, fetch_unresolved: bool = False):
+        return {
+            "ok": True,
+            "provider_code": provider_code,
+            "fetched": 3,
+            "upserted": 2,
+            "unresolved": 1,
+            "fetched_missing": 1 if fetch_unresolved else 0,
+            "error": None,
+        }
+
+
+class FakeHistoryController:
+    def mark_watched(self, *, user_id, title_id, episode_id, is_watched):
+        return {"ok": True, "title_id": title_id, "episode_id": episode_id, "is_watched": is_watched, "error": None}
+
+    def mark_all_watched(self, *, user_id, title_id, is_watched, episode_ids=None):
+        return {"ok": True, "title_id": title_id, "is_watched": is_watched, "episodes_affected": len(episode_ids or []), "error": None}
+
+    def set_need_to_see(self, *, user_id, title_id, need_to_see):
+        return {"ok": True, "title_id": title_id, "need_to_see": need_to_see, "error": None}
+
+
 class FakeBackend:
     def __init__(self):
         self.titles = FakeTitlesController()
         self.streams = FakeStreamsController()
         self.playlists = FakePlaylistsController()
         self.titles_update = FakeTitlesUpdateController()
+        self.schedule = FakeScheduleController()
+        self.history = FakeHistoryController()
         self.ctx = FakeBackendContext()
 
     # handlers.py вызывает backend.streams_get(...)

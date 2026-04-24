@@ -28,6 +28,10 @@ class ITitlesPort(Protocol):
         """
         ...
 
+    def count_search_titles(self, query: str) -> int:
+        """Total number of titles matching *query* (for pagination metadata)."""
+        ...
+
     # --- provider links ---
     def get_provider_links_map(self, title_ids: list[int]) -> dict[int, list[dict]]:
         """

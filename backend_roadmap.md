@@ -62,68 +62,172 @@
 [0.3.8.40] branch: feature/0.3.8.40 | 1/9/26
 ---
 
-## 🟡 NEXT — Связанные сущности Title
+## 🟢 DONE — Связанные сущности Title
 
 **Цель:** сделать `TitleDetailsDTO` действительно полным.
 
-### Planned
+* [x] Ratings (`_pref_ratings` → `list[RatingDTO]`)
+* [x] Watch history / history records (`_pref_history_records` → `list[HistoryDTO]`)
+* [x] Production studio (`_pref_production_studio_obj` → `ProductionStudioDTO | None`)
+* [x] Team members (`_pref_team_members` → `list[TeamMemberDTO]`)
+* [x] Franchises (уже было)
 
-* [ ] Ratings
-* [ ] Watch history (read-only)
-* [ ] Production studio
-* [ ] Team members
-* [ ] Franchises
+**Как сделано:**
+- `storage/get.py`: `get_team_members_from_db`, `get_ratings_list_from_db`, `get_history_records_from_db`, `get_production_studio_obj_from_db`
+- `storage/database_manager.py`: делегаты
+- `storage/queries/title_enricher.py`: устанавливает `_pref_team_members`, `_pref_ratings`, `_pref_history_records`, `_pref_production_studio_obj`
+- `backend/core/controllers/titles_controller.py`: читает из `_pref_*`, конвертирует в DTO
 
 📌 Правило:
 
 > никаких heavy-join
 > только batched read-порты
 
+[0.3.8.41] branch: feature/0.3.8.41 | 4/24/26
 ---
 
-## 🟡 DTO-оптимизация под UI
+## 🟢 DONE — DTO-оптимизация под UI
 
-* [ ] `TitleCardDTO` (облегчённый)
-* [ ] Разделение:
+* [x] `TitleCardDTO` (облегчённый) — без episodes, torrents, team_members, history, franchises
+* [x] Разделение:
+  * list-view / search → `TitleCardDTO` (param `"view": "card"`)
+  * detail-view → `TitleDetailsDTO` (default, `"view": "full"`)
+* [x] `TitleViewMode` enum (политика вместо boolean flag `compact`)
+* [x] `_parse_view_mode()`: graceful fallback на `FULL` для неизвестных значений
+* [x] Enricher CARD mode: пропускает per-episode N+1 запросы (watched loop, torrent download loop, team_members, history_records, franchises)
 
-  * list-view → `TitleCardDTO`
-  * detail-view → `TitleDetailsDTO`
-* [ ] Опциональный `compact=true`
+[0.3.8.41] branch: feature/0.3.8.41 | 4/24/26
 
 ---
 
-## 🟡 Schedule / Providers (Unified pipeline)
+## 🟢 DONE — Schedule / Providers (Unified pipeline)
 
 **Цель:** не “умный контроллер под одного провайдера”, а общий pipeline через нормализованный `ScheduleItem`.
 
-### Planned
-
-* [ ] DTO/модель `ScheduleItemNormalized`
+* [x] DTO/модель `ScheduleItemNormalized`
   * `provider_code`, `external_title_id`
-  * `air_dt` (datetime в TZ проекта)
-  * `episode_number` / `episode_label`
-  * `poster_url`, `title_url`
+  * `air_dt` (datetime tz-naive)
+  * `episode_label`, `poster_url`, `title_url`
   * `raw` (fallback)
-* [ ] Парсер AniMedia → `ScheduleItemNormalized`
+* [x] Парсер AniMedia → `ScheduleItemNormalized`
   * “Сегодня/Вчера/7-01-2026, 16:00” → datetime
-* [ ] Маппинг AniLiberty schedule → тот же формат
-* [ ] `process.schedule.upsert(items)` (через write-path!)
-  * resolve `external_title_id -> title_id` через `TitleProviderMap`
-  * сохранить schedule
-  * если title ещё нет: create partial title или отметить unresolved
+* [x] Маппинг AniLiberty schedule → тот же формат
+* [x] `schedule.sync` (через write-path!)
+  * resolve `external_title_id → title_id` через `TitleProviderMap`
+  * upsert schedule (resolved → upserted, missing → unresolved)
+* [x] `schedule.get` = DB-only
+* [x] Schedule порты: `IScheduleReadPort`, `IScheduleWritePort`, `IProviderScheduleSource`
+* [x] `ScheduleController` (schedule_get / schedule_sync)
+* [x] `SqlAlchemyScheduleReadPort` / `SqlAlchemyScheduleWritePort`
+* [x] `AniMediaScheduleSource` (async → sync adapter, meta date parser)
+* [x] `AniLibertyScheduleSource` (sync, day-by-day or all-week)
+* [x] unit tests: handlers (7) + date parser (7) = 14 tests
+* [x] `AniMediaProviderAdapter` — sync facade + async proxies (симметрично `AniLibertyProviderAdapter`)
+* [x] Lazy enrich при открытии тайтла
+  * `schedule.sync` param `fetch_unresolved: true`
+  * для unresolved: `pipeline.fetch_and_process(provider_code, external_id)` → title в БД
+  * retry upsert — новые тайтлы попадают в schedule
+  * `ScheduleSyncResult.fetched_missing` — счётчик подтянутых
 
-**Итог:**
+**Как сделано:**
+- `backend/core/dto/schedule.py`: `ScheduleItemNormalized`, `ScheduleEntryDTO`, `ScheduleUpsertResult` (+ `unresolved_items`), `ScheduleSyncResult` (+ `fetched_missing`)
+- `backend/core/ports/schedule_port.py`: 3 Protocol interfaces
+- `backend/core/controllers/schedule_controller.py`: `ScheduleController` (+ `fetch_title_fn`, `fetch_unresolved`)
+- `backend/infra/db/schedule_sqlalchemy.py`: DB read/write ports
+- `backend/infra/providers/animedia_schedule_source.py`: wraps `AniMediaAdapter.get_new_titles()`
+- `backend/infra/providers/aniliberty_schedule_source.py`: wraps `APIAdapter.get_schedule(day)`
+- `backend/adapters/animedia_provider.py`: `AniMediaProviderAdapter` (sync + async proxy)
+- `backend/bootstrap/providers_factory.py`: `ProvidersBuildResult`, `build_all()`
+- Wired into `StandaloneBackend.schedule` с `fetch_title_fn`
+- JSON ops: `schedule.get`, `schedule.sync` (+ `fetch_unresolved`)
 
-* `schedule.get` = DB-only
-* `schedule.sync` = provider → normalize → process → save
+[0.3.8.41] branch: feature/0.3.8.41 | 4/24/26
 
+---
 
+## 🟢 DONE — UI Prerequisites (History Write + Pagination)
 
-* [ ] `schedule.get` (DB-only)
-* [ ] Schedule порт
-* [ ] AniLiberty (через provider)
-* [ ] AniMedia (через cache)
-* [ ] Lazy enrich при открытии тайтла
+**Цель:** закрыть все недостающие write-операции и метаданные пагинации перед разработкой UI.
+
+* [x] `history.mark_watched` — отметить эпизод просмотренным / снять отметку
+  * `title_id`, `episode_id?`, `is_watched`, `user_id`
+  * ответ: `MarkWatchedResult(ok, title_id, episode_id, is_watched, error)`
+* [x] `history.mark_all_watched` — отметить все эпизоды тайтла
+  * `title_id`, `is_watched`, `episode_ids?` (subset), `user_id`
+  * ответ: `MarkAllWatchedResult(ok, title_id, is_watched, episodes_affected, error)`
+* [x] `history.set_need_to_see` — добавить/убрать из “хочу посмотреть”
+  * `title_id`, `need_to_see`, `user_id`
+  * ответ: `NeedToSeeResult(ok, title_id, need_to_see, error)`
+* [x] Pagination metadata в `titles.search`:
+  * `total_count` — общее число результатов
+  * `has_more` — есть ли следующая страница
+  * `offset`, `limit` — текущее окно
+* [x] Port `IHistoryWritePort` (Protocol)
+* [x] `HistoryController` (wraps port, typed Results)
+* [x] `SqlAlchemyHistoryWritePort` (delegates to `db.save_watch_status` / `save_watch_all_episodes` / `save_need_to_see`)
+* [x] `ITitlesPort.count_search_titles(query)` + реализация в infra + `TitlesController.count_titles()`
+* [x] unit tests: history handlers (16) — все 3 операции, граничные случаи
+
+**Как сделано:**
+- `backend/core/dto/history.py`: `MarkWatchedResult`, `MarkAllWatchedResult`, `NeedToSeeResult`
+- `backend/core/ports/history_write.py`: `IHistoryWritePort` Protocol
+- `backend/core/controllers/history_controller.py`: `HistoryController`
+- `backend/infra/db/history_write_sqlalchemy.py`: `SqlAlchemyHistoryWritePort`
+- `backend/transport/json_tool/handlers.py`: handlers + HANDLERS dict (17 ops total)
+- `tests/backend/test_json_handlers_history.py`: 16 tests
+
+**Итого тестов:** 50 (было 41 → +16 history, +7 schedule были ранее)
+
+[0.3.8.42] branch: feature/0.3.8.42 | 4/24/26
+
+---
+
+## 🟡 UI Targets — Desktop + Android TV
+
+**Статус:** backend готов. UI разрабатывается отдельно.
+
+### Целевые платформы
+
+| Платформа | Язык / Фреймворк | Интеграция |
+|-----------|-----------------|-----------|
+| Desktop (Windows / Linux) | любой (не Python) | JSON-tool IPC → `stdin/stdout` |
+| Android TV | любой (Kotlin / Compose TV) | JSON-tool через embedded binary или HTTP shim |
+
+### Контракт UI ↔ Backend
+
+```
+UI process
+  ↓ {“op”: “titles.search”, “params”: {“query”: “...”, “view”: “card”}}
+backend_tool (stdin → stdout)
+  ↑ {“ok”: true, “result”: {“titles”: [...], “total_count”: 42, “has_more”: true}}
+```
+
+### Доступные JSON-операции (17)
+
+| Группа | Операции |
+|--------|---------|
+| titles | `titles.search`, `titles.get`, `titles.list_episodes`, `titles_ids.search` |
+| streams | `streams.get` |
+| playlists | `playlist.compose`, `playlist.compose_multi` |
+| sync | `sync.fetch_and_process`, `sync.search_and_process`, `sync.search_external_ids`, `sync.fetch_payload` |
+| update | `titles.update` |
+| schedule | `schedule.get`, `schedule.sync` |
+| history | `history.mark_watched`, `history.mark_all_watched`, `history.set_need_to_see` |
+
+### Ключевые view-режимы
+
+| `”view”` | DTO | Когда использовать |
+|----------|-----|-------------------|
+| `”card”` | `TitleCardDTO` | Списки, поиск, расписание |
+| `”full”` | `TitleDetailsDTO` | Карточка тайтла, detail screen |
+
+### Сборка backend как binary
+
+```bash
+pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
+```
+
+Бинарник принимает `--db <path>`, читает JSON из stdin, пишет JSON в stdout. Никакого сервера — UI сам запускает процесс.
 
 ---
 
@@ -137,7 +241,7 @@
 * [ ] `titles.combine.preview`
   * вход: `title_id` или `code`
   * выход:
-    * кандидаты `title_ids`
+    * кандидаты `title_ids  `
     * `match_reason` (code_norm / name_year_type / etc)
     * “как бы выглядел комбинированный DTO” (минимально)
 * [ ] Нормализация code

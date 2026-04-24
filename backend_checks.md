@@ -380,4 +380,194 @@ python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
 }' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
 ```
 
+---
+
+## 7️⃣ Schedule
+
+### schedule.get — получить расписание из БД по дню
+
+```powershell
+'{
+  "op":"schedule.get",
+  "params":{"day":1}
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `ok: true`, `result.day == 1`, `result.entries` — список тайтлов.
+
+---
+
+### schedule.sync — синхронизировать от провайдера (AniLiberty)
+
+```powershell
+'{
+  "op":"schedule.sync",
+  "params":{
+    "provider_code":"aniliberty",
+    "day":1
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `ok: true`, `result.fetched > 0`, `result.upserted >= 0`, `result.fetched_missing == 0`.
+
+---
+
+### schedule.sync — с lazy enrich (fetch_unresolved)
+
+Для тайтлов, которые ещё не в БД, подтягивает их от провайдера:
+
+```powershell
+'{
+  "op":"schedule.sync",
+  "params":{
+    "provider_code":"aniliberty",
+    "fetch_unresolved":true
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `result.fetched_missing` ≥ 0 (может быть 0, если все тайтлы уже в БД).
+
+---
+
+### schedule.sync — AniMedia (из кэша)
+
+```powershell
+'{
+  "op":"schedule.sync",
+  "params":{
+    "provider_code":"animedia"
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `ok: true`. AniMedia кэширует расписание локально — сначала нужен доступ к сети.
+
+---
+
+## 8️⃣ History
+
+### history.mark_watched — отметить эпизод просмотренным
+
+```powershell
+'{
+  "op":"history.mark_watched",
+  "params":{
+    "title_id":2128,
+    "episode_id":1,
+    "is_watched":true
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `ok: true`, `result.ok == true`, `result.episode_id == 1`.
+
+---
+
+### history.mark_watched — снять отметку
+
+```powershell
+'{
+  "op":"history.mark_watched",
+  "params":{
+    "title_id":2128,
+    "episode_id":1,
+    "is_watched":false
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+---
+
+### history.mark_all_watched — отметить весь тайтл
+
+```powershell
+'{
+  "op":"history.mark_all_watched",
+  "params":{
+    "title_id":2128,
+    "is_watched":true
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `result.episodes_affected >= 0`.
+
+---
+
+### history.mark_all_watched — конкретные эпизоды
+
+```powershell
+'{
+  "op":"history.mark_all_watched",
+  "params":{
+    "title_id":2128,
+    "is_watched":true,
+    "episode_ids":[1,2,3]
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+---
+
+### history.set_need_to_see — добавить в вотч-лист
+
+```powershell
+'{
+  "op":"history.set_need_to_see",
+  "params":{
+    "title_id":2128,
+    "need_to_see":true
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `result.need_to_see == true`.
+
+---
+
+### history.set_need_to_see — убрать из вотч-листа
+
+```powershell
+'{
+  "op":"history.set_need_to_see",
+  "params":{
+    "title_id":2128,
+    "need_to_see":false
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+---
+
+## 9️⃣ Pagination — titles.search с метаданными
+
+```powershell
+'{
+  "op":"titles.search",
+  "params":{
+    "query":"One Punch Man",
+    "limit":10,
+    "offset":0,
+    "view":"card"
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
+
+Ожидание: `result.total_count >= 0`, `result.has_more` (bool), `result.offset == 0`, `result.limit == 10`.
+
+### Следующая страница
+
+```powershell
+'{
+  "op":"titles.search",
+  "params":{
+    "query":"One Punch Man",
+    "limit":10,
+    "offset":10,
+    "view":"card"
+  }
+}' | python -m backend.transport.json_tool.backend_tool --db .\db\anime_player.db
+```
 

@@ -64,6 +64,10 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         providers = list(providers or [])
         return title_ids, providers
     
+    def count_search_titles(self, query: str) -> int:
+        rows = self._db.get_titles_search_query(query=query)
+        return len(rows) if rows else 0
+
     # --- provider links ---
     def get_provider_links_map(self, title_ids: list[int]) -> dict[int, list[dict]]:
         """

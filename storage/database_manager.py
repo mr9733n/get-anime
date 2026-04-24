@@ -275,6 +275,18 @@ class DatabaseManager:
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_studio_by_title_id(title_id)
 
+    def get_team_members_from_db(self, title_id: int) -> list[dict]:
+        return self.get_manager.get_team_members_from_db(title_id)
+
+    def get_ratings_list_from_db(self, title_id: int) -> list:
+        return self.get_manager.get_ratings_list_from_db(title_id)
+
+    def get_history_records_from_db(self, user_id: int, title_id: int) -> list:
+        return self.get_manager.get_history_records_from_db(user_id, title_id)
+
+    def get_production_studio_obj_from_db(self, title_id: int) -> dict | None:
+        return self.get_manager.get_production_studio_obj_from_db(title_id)
+
     def get_player_host_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_player_host_by_title_id(title_id)
 

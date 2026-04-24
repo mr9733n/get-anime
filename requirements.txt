@@ -8,11 +8,11 @@ python-vlc~=3.0.21203
 PyQt6
 # PyQtWebEngine==5.15.7
 PyQt6-WebEngine
-Pillow>=12.1.0
+Pillow>=12.1.1
 pyinstaller~=6.17.0
 pydantic~=2.12.5
 requests>=2.32.3
-aiohttp>=3.13.2
+aiohttp>=3.13.3
 httpx~=0.28.1
 beautifulsoup4~=4.14.3
 python-vlc~=3.0.21203

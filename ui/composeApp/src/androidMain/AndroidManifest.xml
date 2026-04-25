@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Declare as an Android TV app -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Anime Player"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.AppCompat.NoActionBar">
+
+        <!-- TV launcher banner (replace with actual drawable) -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:exported="true"
+            android:banner="@drawable/tv_banner">
+
+            <!-- Android TV leanback launcher -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Settings activity for backend URL -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

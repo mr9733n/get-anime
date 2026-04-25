@@ -51,19 +51,58 @@ def _genres(raw: list) -> list[str]:
     return [g["name"] for g in (raw or []) if g.get("name")]
 
 
-def _poster(d: dict) -> str | None:
+def _poster_cdn(d: dict) -> str | None:
+    """Return CDN URL from title dict if present (AniLiberty etc.)."""
     return d.get("poster_path_medium") or d.get("poster_path_small")
 
 
-def _normalize_episode(ep: dict, title_id: int, watched_ids: set) -> dict:
+def _poster_url(d: dict) -> str | None:
+    """
+    Return a poster URL for the title.
+    - If titles table has a CDN URL → return it directly.
+    - Otherwise → return a relative path to the /poster/<id> endpoint
+      (the Kotlin client prepends backendUrl for relative paths).
+    """
+    cdn = _poster_cdn(d)
+    if cdn:
+        return cdn
+    title_id = d.get("title_id")
+    if title_id is not None:
+        return f"/poster/{title_id}"
+    return None
+
+
+def _make_abs_stream(url: str | None, host_for_player: str | None) -> str | None:
+    """
+    #1 fix: AniMedia stores host_for_player in the titles table but hls_*_abs
+    can still be None if the enricher ran without a stream_base.  Fall back to
+    assembling the URL from host_for_player + relative path ourselves.
+    """
+    if not url:
+        return None
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    if host_for_player and url.startswith("/"):
+        h = host_for_player.strip()
+        if not h.startswith("http"):
+            h = f"https://{h}"
+        return h.rstrip("/") + url
+    return url   # return as-is (relative); client may handle it
+
+
+def _normalize_episode(ep: dict, title_id: int, watched_ids: set,
+                        host_for_player: str | None = None) -> dict:
+    def _s(key_abs: str, key_rel: str) -> str | None:
+        return _make_abs_stream(ep.get(key_abs) or ep.get(key_rel), host_for_player)
+
     return {
         "episode_id":     ep.get("episode_id"),
         "episode_number": ep.get("episode_number"),
         "title":          ep.get("name"),          # Python uses "name", Kotlin "title"
         "title_id":       title_id,                # not in EpisodeDTO — injected from parent
-        "hls_sd":         ep.get("hls_sd_abs") or ep.get("hls_sd"),
-        "hls_hd":         ep.get("hls_hd_abs") or ep.get("hls_hd"),
-        "hls_fhd":        ep.get("hls_fhd_abs") or ep.get("hls_fhd"),
+        "hls_sd":         _s("hls_sd_abs",  "hls_sd"),
+        "hls_hd":         _s("hls_hd_abs",  "hls_hd"),
+        "hls_fhd":        _s("hls_fhd_abs", "hls_fhd"),
         "preview_abs":    ep.get("preview_abs"),
         "is_watched":     ep.get("episode_id") in watched_ids,
     }
@@ -74,7 +113,7 @@ def _normalize_title_card(d: dict) -> dict:
         "title_id":   d.get("title_id"),
         "name_ru":    d.get("name_ru"),
         "name_en":    d.get("name_en"),
-        "poster_url": _poster(d),
+        "poster_url": _poster_url(d),
         "year":       d.get("season_year"),
         "type":       d.get("type_string"),
         "status":     d.get("status_string"),
@@ -86,6 +125,7 @@ def _normalize_title_card(d: dict) -> dict:
 
 def _normalize_title_details(d: dict) -> dict:
     title_id = d.get("title_id")
+    host_for_player = d.get("host_for_player")   # #1 fix: pass to episode normalizer
     # Build watched-episode set from embedded history
     watched_ids = {
         h["episode_id"]
@@ -97,13 +137,13 @@ def _normalize_title_details(d: dict) -> dict:
         "name_ru":     d.get("name_ru"),
         "name_en":     d.get("name_en"),
         "description": d.get("description"),
-        "poster_url":  _poster(d),
+        "poster_url":  _poster_url(d),
         "year":        d.get("season_year"),
         "type":        d.get("type_string"),
         "status":      d.get("status_string"),
         "genres":      _genres(d.get("genres", [])),
         "episodes": [
-            _normalize_episode(ep, title_id, watched_ids)
+            _normalize_episode(ep, title_id, watched_ids, host_for_player=host_for_player)
             for ep in d.get("episodes", [])
         ],
         "provider_links": [
@@ -185,6 +225,27 @@ def build_app(backend):
             "ops": len(HANDLERS),
             "ops_list": list(HANDLERS.keys()),
         }
+
+    @app.get("/poster/{title_id}")
+    def poster(title_id: int):
+        """
+        #2 fix: Serve poster blob for titles whose poster is stored in the
+        `posters` table rather than as a CDN URL.
+        Returns JPEG/PNG bytes directly so the Kotlin client can load them
+        as a standard image URL: <backendUrl>/poster/<title_id>
+        """
+        from fastapi.responses import Response as FastResponse
+        try:
+            blob, _is_placeholder = backend._db.get_poster_blob(title_id, "medium")
+            if blob:
+                return FastResponse(content=blob, media_type="image/jpeg")
+            # Try small as fallback
+            blob, _ = backend._db.get_poster_blob(title_id, "small")
+            if blob:
+                return FastResponse(content=blob, media_type="image/jpeg")
+        except Exception as exc:
+            log.debug("poster fetch failed for title_id=%s: %s", title_id, exc)
+        raise HTTPException(status_code=404, detail="Poster not found")
 
     @app.post("/api")
     def api(req: ApiRequest):

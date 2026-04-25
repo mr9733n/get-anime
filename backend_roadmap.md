@@ -231,6 +231,68 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 
 ---
 
+## 🟢 FIXED — Bugs Found During Testing (UI + HTTP Server)
+
+Обнаружены при тестировании нового Kotlin Multiplatform UI против HTTP-бэкенда.
+Все 9 багов исправлены.
+
+### Backend — Stream URLs
+
+* [x] **#1 AniMedia: хост в stream URL отсутствует**
+  * `_make_abs_stream(url, host_for_player)` в `transport/http/server.py`
+  * `_normalize_episode()` принимает `host_for_player`, строит абсолютные HLS URL
+  * `_normalize_title_details()` извлекает `host_for_player` из raw dict и передаёт в каждый эпизод
+
+### Backend — Posters
+
+* [x] **#2 Постеры не отображаются**
+  * Добавлен endpoint `GET /poster/{title_id}` — отдаёт JPEG/PNG blob из таблицы `poster`
+  * `_poster_url(d)` возвращает CDN URL если есть, иначе `/poster/{title_id}`
+  * `AnimeRepository.resolveUrl()` в UI: относительный `/poster/…` → `baseUrl + path`
+  * Coil3 (`coil-compose` + `coil-network-ktor3`) — async image loading на Desktop и Android
+
+### Backend / UI — Sync
+
+* [x] **#3 Нет возможности загрузить / синхронизировать тайтлы из провайдеров через UI**
+  * `AnimeRepository.updateTitle(titleId)` вызывает backend op `titles.update`
+  * `TitleViewModel.updateFromProvider()` + `UpdateState` sealed interface (Idle/Loading/Done/Error)
+  * Кнопка Refresh на `TitleDetailScreen` с индикатором загрузки + Snackbar с результатом
+
+### Docs / Build
+
+* [x] **#4 Нет документации и скриптов для сборки и деплоя нового UI**
+  * Создан `ui/README.md`: prerequisites, `./gradlew desktopRun`, MSI/DEB/DMG, Android APK, ADB install, keystore setup
+
+* [x] **#5 Нет документации для сборки и деплоя нового backend**
+  * Создан `backend/README_HTTP_BACKEND.md`: CLI args, systemd/Task Scheduler deploy, PyInstaller binary, API overview
+  * ⚠️ Папка `make_bin/` не затронута
+
+### UI — Player Settings
+
+* [x] **#6 Кнопка Save настроек плеера не показывает результат**
+  * `PlayerSettingsSectionDesktop.kt`: `var saved` state → CheckCircle + «Сохранено» с auto-dismiss через 2 сек
+
+### UI — Missing Screens
+
+* [x] **#7 Нет экрана списка тайтлов (titles list / browse)**
+  * `SearchViewModel(repo, autoLoad = true)` — при старте автоматически загружает все тайтлы
+  * `DesktopApp`: маршрут SEARCH использует `autoLoad = true` → полноценный Browse/Catalog
+
+* [x] **#8 Нет экрана расписания (schedule list)**
+  * `ScheduleViewModel` + `ScheduleScreen` (Desktop) + `TvScheduleScreen` (Android TV)
+  * Расписание на 7 дней, группировка по дням недели с русскими названиями
+  * Маршруты добавлены в `DesktopApp` и `TvApp`; кнопка «Расписание» на TV главном экране
+
+### UI — Filters
+
+* [x] **#9 Нет фильтрации / расширенного поиска**
+  * `SearchFilters(year, genre, status, type)` + `isActive` computed property
+  * Бэкенд: фильтры пробрасываются через весь стек (port → controller → handler)
+  * `FilterPanel` на `SearchScreen`: год, жанр, статус, тип + кнопка «Сбросить»
+  * `AnimatedVisibility` — панель сворачивается; иконка FilterList подсвечивается при активных фильтрах
+
+---
+
 ## 🟡 Combined Titles (Preview → Job)
 
 **Цель:** подготовить “один тайтл — много источников” без спешки с миграциями: сначала отладка правил через preview,

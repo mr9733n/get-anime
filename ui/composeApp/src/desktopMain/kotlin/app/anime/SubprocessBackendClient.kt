@@ -25,6 +25,9 @@ class SubprocessBackendClient(
     private val extraArgs: List<String> = emptyList(),
 ) : BackendClient {
 
+    /** No HTTP server — poster URL resolution is N/A for subprocess mode. */
+    override val baseUrl: String = ""
+
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun call(op: String, params: Map<String, Any?>): JsonObject =

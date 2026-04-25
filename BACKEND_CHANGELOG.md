@@ -1,3 +1,13 @@
+## v0.3.8.43 — Bugs Found During Testing (UI + HTTP Server)
+
+**Дата:** 2026-04-24
+**Статус:** stable
+
+Обнаружены при тестировании нового Kotlin Multiplatform UI против HTTP-бэкенда.
+Все 9 багов исправлены.
+
+---
+
 ## v0.3.8.42 — History Write Operations + Pagination Metadata
 
 **Дата:** 2026-04-24

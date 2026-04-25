@@ -18,8 +18,9 @@ import app.anime.ui.theme.AnimePlayerTheme
 import kotlin.reflect.KClass
 
 private object Route {
-    const val SEARCH   = "search"
+    const val SEARCH   = "search"   // catalog (auto-loads all titles)
     const val SETTINGS = "settings"
+    const val SCHEDULE = "schedule" // #8
     fun title(id: Int) = "title/$id"
     const val TITLE    = "title/{titleId}"
 }
@@ -36,14 +37,19 @@ fun DesktopApp(
 
             NavHost(navController = navController, startDestination = Route.SEARCH) {
 
+                // ─── #7: Catalog / Browse (SearchScreen auto-loads all titles) ───
                 composable(Route.SEARCH) {
                     val vm: SearchViewModel = viewModel(
-                        factory = remember(repo) { vmFactory { SearchViewModel(repo) } }
+                        factory = remember(repo) {
+                            vmFactory { SearchViewModel(repo, autoLoad = true) }
+                        }
                     )
                     val state by vm.state.collectAsState()
                     SearchScreen(
                         state = state,
                         onQueryChange = vm::onQueryChange,
+                        onFilterChange = vm::onFilterChange,   // #9
+                        onToggleFilters = vm::toggleFiltersPanel,
                         onTitleClick = { navController.navigate(Route.title(it.titleId)) },
                         onLoadMore = vm::loadMore,
                         columns = 6,
@@ -51,6 +57,21 @@ fun DesktopApp(
                     )
                 }
 
+                // ─── #8: Schedule ────────────────────────────────────────────────
+                composable(Route.SCHEDULE) {
+                    val vm: ScheduleViewModel = viewModel(
+                        factory = remember(repo) { vmFactory { ScheduleViewModel(repo) } }
+                    )
+                    val state by vm.state.collectAsState()
+                    ScheduleScreen(
+                        state = state,
+                        onTitleClick = { navController.navigate(Route.title(it.titleId)) },
+                        onRefresh = vm::refresh,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                // ─── Settings ────────────────────────────────────────────────────
                 composable(Route.SETTINGS) {
                     SettingsScreen(
                         settings = settings,
@@ -66,6 +87,7 @@ fun DesktopApp(
                     )
                 }
 
+                // ─── Title detail ─────────────────────────────────────────────────
                 composable(
                     route = Route.TITLE,
                     arguments = listOf(navArgument("titleId") { type = NavType.IntType })
@@ -85,8 +107,10 @@ fun DesktopApp(
                         }
                     }
 
+                    val updateState by vm.updateState.collectAsState()
                     TitleDetailScreen(
                         state = state,
+                        updateState = updateState,
                         onBack = { navController.popBackStack() },
                         onEpisodePlay = vm::onEpisodeClick,
                         onEpisodeToggleWatched = { ep ->
@@ -94,6 +118,8 @@ fun DesktopApp(
                         },
                         onToggleNeedToSee = vm::toggleNeedToSee,
                         onMarkAllWatched = { vm.markAllWatched(true) },
+                        onUpdateFromProvider = vm::updateFromProvider,
+                        onDismissUpdateResult = vm::dismissUpdateResult,
                     )
                 }
             }

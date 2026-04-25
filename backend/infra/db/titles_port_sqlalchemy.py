@@ -4,9 +4,7 @@ from sqlalchemy.orm import joinedload
 
 from backend.core.ports.titles_port import ITitlesPort
 
-# Импорты моделей — подстрой под реальный путь
-# Судя по твоему коду в get.py: TitleProviderMap и Provider точно есть.
-from storage.tables import TitleProviderMap  # <-- подставь реальный импорт
+from storage.tables import TitleProviderMap, Title, TitleGenreRelation, Genre
 
 
 class SqlAlchemyTitlesPort(ITitlesPort):
@@ -34,11 +32,73 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         )
 
     # --- search ---
-    def search_title_ids(self, query: str, *, limit: int = 50, offset: int = 0) -> list[int]:
+    def _has_filters(
+        self,
+        year: int | None,
+        genre: str | None,
+        status_filter: str | None,
+        type_filter: str | None,
+    ) -> bool:
+        return any(x is not None for x in (year, genre, status_filter, type_filter))
+
+    def _filtered_query(self, session, query: str,
+                        year: int | None, genre: str | None,
+                        status_filter: str | None, type_filter: str | None):
         """
-        Используем существующий get_titles_search_query, который возвращает list[dict],
-        и нормализуем до списка title_ids.
+        #9: SQLAlchemy query that applies optional filters.
+        Falls back to legacy get_titles_search_query when no filters given.
         """
+        q = session.query(Title.title_id)
+
+        # Text search (name_ru / name_en / alternative_name)
+        if query:
+            like = f"%{query}%"
+            q = q.filter(
+                Title.name_ru.ilike(like)
+                | Title.name_en.ilike(like)
+                | Title.alternative_name.ilike(like)
+            )
+
+        if year is not None:
+            q = q.filter(Title.season_year == year)
+
+        if status_filter:
+            q = q.filter(Title.status_string.ilike(f"%{status_filter}%"))
+
+        if type_filter:
+            q = q.filter(Title.type_string.ilike(f"%{type_filter}%"))
+
+        if genre:
+            q = (
+                q.join(TitleGenreRelation, TitleGenreRelation.title_id == Title.title_id)
+                 .join(Genre, Genre.genre_id == TitleGenreRelation.genre_id)
+                 .filter(Genre.name.ilike(f"%{genre}%"))
+            )
+
+        return q
+
+    def search_title_ids(
+        self,
+        query: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ) -> list[int]:
+        """
+        When any filter is set, use a direct SQLAlchemy query.
+        Without filters, delegate to the legacy get_titles_search_query.
+        """
+        if self._has_filters(year, genre, status_filter, type_filter):
+            with self._db.Session as session:
+                q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
+                rows = q.order_by(Title.title_id.desc()).offset(int(offset)).limit(int(limit)).all()
+                return [int(r[0]) for r in rows]
+
+        # Legacy path (no filters)
         rows = self._db.get_titles_search_query(query=query)  # list[dict]
         ids: list[int] = []
         for r in rows or []:
@@ -47,8 +107,6 @@ class SqlAlchemyTitlesPort(ITitlesPort):
                     ids.append(int(r["title_id"]))
                 except Exception:
                     continue
-
-        # применяем offset/limit на уровне python (т.к. исходный метод уже отдал list)
         if offset:
             ids = ids[int(offset):]
         if limit is not None:
@@ -63,8 +121,20 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         title_ids = [int(x) for x in (title_ids or [])]
         providers = list(providers or [])
         return title_ids, providers
-    
-    def count_search_titles(self, query: str) -> int:
+
+    def count_search_titles(
+        self,
+        query: str,
+        *,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ) -> int:
+        if self._has_filters(year, genre, status_filter, type_filter):
+            with self._db.Session as session:
+                q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
+                return q.count()
         rows = self._db.get_titles_search_query(query=query)
         return len(rows) if rows else 0
 

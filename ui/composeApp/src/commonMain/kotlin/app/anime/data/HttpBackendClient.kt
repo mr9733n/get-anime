@@ -19,7 +19,7 @@ import kotlinx.serialization.json.*
  *   Android  → OkHttp (androidMain actual)
  */
 class HttpBackendClient(
-    private val baseUrl: String,
+    override val baseUrl: String,
 ) : BackendClient {
 
     private val jsonInstance = Json { ignoreUnknownKeys = true }

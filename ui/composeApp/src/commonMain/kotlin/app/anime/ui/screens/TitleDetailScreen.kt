@@ -15,17 +15,21 @@ import androidx.compose.ui.unit.dp
 import app.anime.data.dto.EpisodeDto
 import app.anime.data.dto.TitleDetailsDto
 import app.anime.presentation.TitleDetailUiState
+import app.anime.presentation.UpdateState
 import app.anime.ui.components.EpisodeRow
 import app.anime.ui.components.PosterImage
 
 @Composable
 fun TitleDetailScreen(
     state: TitleDetailUiState,
+    updateState: UpdateState = UpdateState.Idle,
     onBack: () -> Unit,
     onEpisodePlay: (EpisodeDto) -> Unit,
     onEpisodeToggleWatched: (EpisodeDto) -> Unit,
     onToggleNeedToSee: () -> Unit,
     onMarkAllWatched: () -> Unit,
+    onUpdateFromProvider: () -> Unit = {},
+    onDismissUpdateResult: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -48,11 +52,14 @@ fun TitleDetailScreen(
         is TitleDetailUiState.Success -> {
             TitleDetailContent(
                 title = state.title,
+                updateState = updateState,
                 onBack = onBack,
                 onEpisodePlay = onEpisodePlay,
                 onEpisodeToggleWatched = onEpisodeToggleWatched,
                 onToggleNeedToSee = onToggleNeedToSee,
                 onMarkAllWatched = onMarkAllWatched,
+                onUpdateFromProvider = onUpdateFromProvider,
+                onDismissUpdateResult = onDismissUpdateResult,
                 modifier = modifier,
             )
         }
@@ -63,13 +70,24 @@ fun TitleDetailScreen(
 @Composable
 private fun TitleDetailContent(
     title: TitleDetailsDto,
+    updateState: UpdateState,
     onBack: () -> Unit,
     onEpisodePlay: (EpisodeDto) -> Unit,
     onEpisodeToggleWatched: (EpisodeDto) -> Unit,
     onToggleNeedToSee: () -> Unit,
     onMarkAllWatched: () -> Unit,
+    onUpdateFromProvider: () -> Unit,
+    onDismissUpdateResult: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Auto-dismiss "Done" state after 2 seconds
+    LaunchedEffect(updateState) {
+        if (updateState is UpdateState.Done) {
+            kotlinx.coroutines.delay(2_000)
+            onDismissUpdateResult()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,6 +98,20 @@ private fun TitleDetailContent(
                     }
                 },
                 actions = {
+                    // #3: Update from provider button
+                    IconButton(
+                        onClick = onUpdateFromProvider,
+                        enabled = updateState !is UpdateState.Loading,
+                    ) {
+                        if (updateState is UpdateState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "Обновить из провайдера")
+                        }
+                    }
                     // Watchlist toggle
                     IconButton(onClick = onToggleNeedToSee) {
                         Icon(
@@ -98,6 +130,18 @@ private fun TitleDetailContent(
                     }
                 },
             )
+        },
+        // #3: Update result snackbar
+        snackbarHost = {
+            when (updateState) {
+                is UpdateState.Done ->
+                    Snackbar { Text("✓ Данные обновлены из провайдера") }
+                is UpdateState.Error ->
+                    Snackbar(
+                        action = { TextButton(onClick = onDismissUpdateResult) { Text("OK") } }
+                    ) { Text("Ошибка обновления: ${updateState.message}") }
+                else -> {}
+            }
         },
         modifier = modifier,
     ) { padding ->

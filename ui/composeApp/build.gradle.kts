@@ -43,6 +43,7 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
+            implementation(compose.materialIconsExtended)
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
@@ -63,6 +64,10 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.neg)
             implementation(libs.ktor.serialization.json)
+
+            // Image loading — Coil3 KMP (uses the Ktor engine already on classpath)
+            implementation(libs.coil3.compose)
+            implementation(libs.coil3.network.ktor)
         }
 
         desktopMain.dependencies {

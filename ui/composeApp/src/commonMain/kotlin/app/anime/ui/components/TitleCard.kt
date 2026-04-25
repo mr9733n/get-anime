@@ -15,6 +15,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.anime.data.dto.TitleCardDto
 import app.anime.ui.theme.OnDarkSecondary
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 
 /** Poster card used in grids, schedule rows, search results. */
 @Composable
@@ -117,23 +121,30 @@ private fun WatchlistBadge(modifier: Modifier = Modifier) {
     }
 }
 
-/** Placeholder until Coil / Kamel is wired in. */
+/** Async poster image using Coil3 KMP. Falls back to a 🎬 placeholder. */
 @Composable
 fun PosterImage(
     url: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
 ) {
-    // TODO: replace with real async image loading (Kamel or Coil)
     Box(
         modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        if (url == null) {
+        if (url != null) {
+            val context = LocalPlatformContext.current
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(url)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
             Text("🎬", style = MaterialTheme.typography.headlineLarge)
         }
-        // When you add Kamel:
-        // KamelImage(resource = asyncPainterResource(url!!), contentDescription = contentDescription,
-        //     modifier = modifier, contentScale = ContentScale.Crop)
     }
 }

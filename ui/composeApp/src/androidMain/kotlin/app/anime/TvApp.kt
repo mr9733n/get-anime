@@ -19,6 +19,7 @@ import app.anime.presentation.*
 import app.anime.ui.screens.SettingsScreen
 import app.anime.ui.screens.TitleDetailScreen
 import app.anime.ui.tv.TvHomeScreen
+import app.anime.ui.tv.TvScheduleScreen
 import app.anime.ui.tv.TvSearchScreen
 import kotlin.reflect.KClass
 
@@ -26,6 +27,7 @@ private object TvRoute {
     const val HOME     = "home"
     const val SEARCH   = "search"
     const val SETTINGS = "settings"
+    const val SCHEDULE = "schedule"   // #8
     fun title(id: Int) = "title/$id"
     const val TITLE    = "title/{titleId}"
 }
@@ -59,6 +61,7 @@ fun TvApp(
                     onTitleClick = { navController.navigate(TvRoute.title(it.titleId)) },
                     onSearchClick = { navController.navigate(TvRoute.SEARCH) },
                     onSettingsClick = { navController.navigate(TvRoute.SETTINGS) },
+                    onScheduleClick = { navController.navigate(TvRoute.SCHEDULE) },   // #8
                     onRefresh = vm::refresh,
                 )
             }
@@ -73,6 +76,20 @@ fun TvApp(
                     onQueryChange = vm::onQueryChange,
                     onTitleClick = { navController.navigate(TvRoute.title(it.titleId)) },
                     onLoadMore = vm::loadMore,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // #8: Schedule screen
+            composable(TvRoute.SCHEDULE) {
+                val vm: ScheduleViewModel = viewModel(
+                    factory = remember(repo) { vmFactory { ScheduleViewModel(repo) } }
+                )
+                val state by vm.state.collectAsState()
+                TvScheduleScreen(
+                    state = state,
+                    onTitleClick = { navController.navigate(TvRoute.title(it.titleId)) },
+                    onRefresh = vm::refresh,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -109,8 +126,10 @@ fun TvApp(
                     }
                 }
 
+                val updateState by vm.updateState.collectAsState()
                 TitleDetailScreen(
                     state = state,
+                    updateState = updateState,
                     onBack = { navController.popBackStack() },
                     onEpisodePlay = vm::onEpisodeClick,
                     onEpisodeToggleWatched = { ep ->
@@ -118,6 +137,8 @@ fun TvApp(
                     },
                     onToggleNeedToSee = vm::toggleNeedToSee,
                     onMarkAllWatched = { vm.markAllWatched(true) },
+                    onUpdateFromProvider = vm::updateFromProvider,
+                    onDismissUpdateResult = vm::dismissUpdateResult,
                 )
             }
         }

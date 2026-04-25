@@ -19,6 +19,14 @@ sealed interface PlayerLaunchEvent {
     data class Error(val message: String) : PlayerLaunchEvent
 }
 
+/** UI state for the "update from provider" action. */
+sealed interface UpdateState {
+    data object Idle    : UpdateState
+    data object Loading : UpdateState
+    data object Done    : UpdateState
+    data class Error(val message: String) : UpdateState
+}
+
 class TitleViewModel(
     private val repo: AnimeRepository,
     private val titleId: Int,
@@ -29,6 +37,9 @@ class TitleViewModel(
 
     private val _playerEvent = MutableSharedFlow<PlayerLaunchEvent>()
     val playerEvent: SharedFlow<PlayerLaunchEvent> = _playerEvent.asSharedFlow()
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     init {
         loadTitle()
@@ -102,5 +113,25 @@ class TitleViewModel(
                 current.title.copy(episodes = updatedEpisodes)
             )
         }
+    }
+
+    /** #3: Re-fetch title data from its upstream provider(s) and reload. */
+    fun updateFromProvider() {
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Loading
+            runCatching { repo.updateTitle(titleId) }
+                .onSuccess {
+                    _updateState.value = UpdateState.Done
+                    // Reload to show updated data
+                    loadTitle()
+                }
+                .onFailure { e ->
+                    _updateState.value = UpdateState.Error(e.message ?: "Update failed")
+                }
+        }
+    }
+
+    fun dismissUpdateResult() {
+        _updateState.value = UpdateState.Idle
     }
 }

@@ -9,6 +9,9 @@ import app.anime.data.AndroidAppSettings
 import app.anime.data.AnimeRepository
 import app.anime.data.HttpBackendClient
 import app.anime.data.createAppSettings
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.network.ktor3.KtorNetworkFetcherFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -17,6 +20,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Initialize Coil3 with Ktor network fetcher (uses OkHttp engine already in deps)
+        SingletonImageLoader.setSafe { context ->
+            ImageLoader.Builder(context)
+                .components { add(KtorNetworkFetcherFactory()) }
+                .build()
+        }
 
         // Must init before createAppSettings() is called anywhere
         AndroidAppSettings.init(this)

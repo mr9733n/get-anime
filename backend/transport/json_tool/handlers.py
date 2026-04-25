@@ -35,6 +35,13 @@ def h_titles_search(backend, params):
     limit = ctx.limit(backend.ctx.titles_search_limit_default)
     offset = ctx.offset(backend.ctx.titles_search_offset_default)
 
+    # #9: optional filters
+    raw_year = params.get("year")
+    year: int | None = int(raw_year) if raw_year not in (None, "", False) else None
+    genre: str | None = (params.get("genre") or "").strip() or None
+    status_filter: str | None = (params.get("status_filter") or "").strip() or None
+    type_filter: str | None = (params.get("type_filter") or "").strip() or None
+
     dtos = backend.titles.titles_search(
         query=query,
         user_id=ctx.user_id,
@@ -42,8 +49,16 @@ def h_titles_search(backend, params):
         limit=limit,
         offset=offset,
         view_mode=view_mode,
+        year=year,
+        genre=genre,
+        status_filter=status_filter,
+        type_filter=type_filter,
     )
-    total_count = backend.titles.count_titles(query)
+    total_count = backend.titles.count_titles(
+        query,
+        year=year, genre=genre,
+        status_filter=status_filter, type_filter=type_filter,
+    )
     has_more = (offset + len(dtos)) < total_count
 
     return ok({

@@ -1,16 +1,23 @@
 package app.anime.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.anime.data.dto.TitleCardDto
+import app.anime.presentation.SearchFilters
 import app.anime.presentation.SearchUiState
 import app.anime.ui.components.TitleCard
 
@@ -18,6 +25,8 @@ import app.anime.ui.components.TitleCard
 fun SearchScreen(
     state: SearchUiState,
     onQueryChange: (String) -> Unit,
+    onFilterChange: (SearchFilters) -> Unit,
+    onToggleFilters: () -> Unit,
     onTitleClick: (TitleCardDto) -> Unit,
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
@@ -25,7 +34,7 @@ fun SearchScreen(
     onSettingsClick: (() -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // Search bar + optional settings icon
+        // ─── Search bar row ──────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -40,14 +49,33 @@ fun SearchScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
+            Spacer(Modifier.width(8.dp))
+            // Filter toggle button — highlighted when any filter is active
+            IconButton(onClick = onToggleFilters) {
+                Icon(
+                    imageVector = Icons.Default.FilterList,
+                    contentDescription = "Фильтры",
+                    tint = if (state.filters.isActive) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (onSettingsClick != null) {
-                Spacer(Modifier.width(8.dp))
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Default.Settings, "Настройки")
                 }
             }
         }
 
+        // ─── #9 Filter panel (animated) ─────────────────────────────────
+        AnimatedVisibility(visible = state.showFilters) {
+            FilterPanel(
+                filters = state.filters,
+                onFilterChange = onFilterChange,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+            )
+        }
+
+        // ─── Content ────────────────────────────────────────────────────
         when {
             state.isLoading && state.results.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -67,7 +95,6 @@ fun SearchScreen(
             else -> {
                 val gridState = rememberLazyGridState()
 
-                // Infinite scroll — load more when near the end
                 LaunchedEffect(gridState) {
                     snapshotFlow { gridState.layoutInfo }
                         .collect { info ->
@@ -106,14 +133,102 @@ fun SearchScreen(
                     }
                 }
 
-                // Status bar
                 if (state.results.isNotEmpty()) {
                     Text(
-                        text = "Показано ${state.results.size} из ${state.totalCount}",
+                        text = buildString {
+                            append("Показано ${state.results.size} из ${state.totalCount}")
+                            if (state.filters.isActive) append(" (с фильтрами)")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
+                }
+            }
+        }
+    }
+}
+
+/** Compact filter row — year, genre, status, type. */
+@Composable
+private fun FilterPanel(
+    filters: SearchFilters,
+    onFilterChange: (SearchFilters) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Local draft state so we don't fire search on every keystroke in year field
+    var yearText by remember(filters.year) { mutableStateOf(filters.year?.toString() ?: "") }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Фильтры", style = MaterialTheme.typography.labelLarge)
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                // Year
+                OutlinedTextField(
+                    value = yearText,
+                    onValueChange = { v ->
+                        yearText = v.filter { it.isDigit() }.take(4)
+                        val y = yearText.toIntOrNull()
+                        onFilterChange(filters.copy(year = y))
+                    },
+                    label = { Text("Год") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    modifier = Modifier.width(100.dp),
+                )
+
+                // Genre
+                OutlinedTextField(
+                    value = filters.genre,
+                    onValueChange = { onFilterChange(filters.copy(genre = it)) },
+                    label = { Text("Жанр") },
+                    placeholder = { Text("Комедия...") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+
+                // Status
+                OutlinedTextField(
+                    value = filters.status,
+                    onValueChange = { onFilterChange(filters.copy(status = it)) },
+                    label = { Text("Статус") },
+                    placeholder = { Text("Ongoing...") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+
+                // Type
+                OutlinedTextField(
+                    value = filters.type,
+                    onValueChange = { onFilterChange(filters.copy(type = it)) },
+                    label = { Text("Тип") },
+                    placeholder = { Text("TV...") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+
+                // Clear filters button
+                if (filters.isActive) {
+                    OutlinedButton(
+                        onClick = { onFilterChange(SearchFilters()) },
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    ) {
+                        Text("Сбросить")
+                    }
                 }
             }
         }

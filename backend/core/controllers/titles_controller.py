@@ -47,8 +47,26 @@ class TitlesController:
 
         return TitlesSearchResult(title_ids=[int(x) for x in title_ids], providers=providers)
 
-    def titles_search(self, query: str, *, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0, view_mode: TitleViewMode = TitleViewMode.FULL):
-        title_ids = self._titles.search_title_ids(query=query, limit=limit, offset=offset)
+    def titles_search(
+        self,
+        query: str,
+        *,
+        user_id: int = 42,
+        enrich: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+        view_mode: TitleViewMode = TitleViewMode.FULL,
+        # #9 filters
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ):
+        title_ids = self._titles.search_title_ids(
+            query=query, limit=limit, offset=offset,
+            year=year, genre=genre,
+            status_filter=status_filter, type_filter=type_filter,
+        )
         if not title_ids:
             return []
 
@@ -67,9 +85,21 @@ class TitlesController:
         out.sort(key=lambda dto: order.get(int(dto.title_id), 10 ** 9))
         return out
 
-    def count_titles(self, query: str) -> int:
-        """Total number of DB titles matching *query* (for pagination metadata)."""
-        return self._titles.count_search_titles(query=(query or "").strip())
+    def count_titles(
+        self,
+        query: str,
+        *,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ) -> int:
+        """Total number of DB titles matching query + optional filters (for pagination)."""
+        return self._titles.count_search_titles(
+            query=(query or "").strip(),
+            year=year, genre=genre,
+            status_filter=status_filter, type_filter=type_filter,
+        )
 
     # -----------------------
     # titles.get (DB-only)

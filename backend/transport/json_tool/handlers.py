@@ -220,6 +220,107 @@ def h_sync_search_and_process(backend, params):
     return ok({"result": to_jsonable(res)})
 
 
+def h_titles_update_start(backend, params):
+    """
+    Non-blocking counterpart of titles.update.
+
+    Validates params, creates a job in the JobStore, fires a daemon thread
+    that runs the update coroutine via asyncio.run(), and returns immediately
+    with the job_id.  The caller polls jobs.get to track progress.
+
+    Works in both HTTP-server mode (long-running process, background thread
+    persists) and JSON-tool mode (single-shot; thread runs but may not
+    complete before the process exits — use titles.update for single-shot).
+    """
+    import asyncio
+    import threading
+    from datetime import datetime, timezone
+
+    title_ids = params.get("title_ids")
+    if not isinstance(title_ids, list) or not title_ids:
+        raise ValueError("title_ids must be a non-empty list[int]")
+    title_ids = [int(x) for x in title_ids]
+
+    provider_code = params.get("provider_code")
+    provider_code = (
+        provider_code.strip().lower()
+        if isinstance(provider_code, str) and provider_code.strip()
+        else None
+    )
+    mode = (params.get("mode") or backend.ctx.update_mode_default).strip().lower()
+    max_results = int(params.get("max_results", backend.ctx.sync_max_results_default))
+
+    job = backend.jobs.create("titles.update", {
+        "title_ids": title_ids,
+        "provider_code": provider_code,
+        "mode": mode,
+        "max_results": max_results,
+    })
+    job_id = job.job_id
+
+    async def _run_update():
+        backend.jobs.update(
+            job_id,
+            status="running",
+            started_at=datetime.now(timezone.utc),
+        )
+        try:
+            res = await backend.titles_update.update_titles(
+                title_ids=title_ids,
+                provider_code=provider_code,
+                mode=mode,
+                max_results=max_results,
+            )
+            backend.jobs.update(
+                job_id,
+                status="done",
+                result=res,
+                finished_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            backend.jobs.update(
+                job_id,
+                status="error",
+                error=str(exc),
+                finished_at=datetime.now(timezone.utc),
+            )
+
+    def _thread_target():
+        asyncio.run(_run_update())
+
+    t = threading.Thread(target=_thread_target, daemon=True, name=f"job-{job_id[:8]}")
+    t.start()
+
+    return ok({"job_id": job_id, "status": "queued"})
+
+
+def h_jobs_get(backend, params):
+    """
+    Return the current status of a background job.
+
+    Response fields:
+      job_id, op, status, error, started_at, finished_at, progress, result
+    """
+    job_id = params.get("job_id")
+    if not job_id:
+        raise ValueError("jobs.get requires 'job_id'")
+    job = backend.jobs.get(str(job_id))
+    if job is None:
+        return {"ok": False, "error": "job_not_found", "result": None}
+    return ok({
+        "job": {
+            "job_id": job.job_id,
+            "op": job.op,
+            "status": job.status,
+            "error": job.error,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+            "progress": job.progress,
+            "result": to_jsonable(job.result),
+        }
+    })
+
+
 def h_titles_update(backend, params):
     title_ids = params.get("title_ids")
     if not isinstance(title_ids, list) or not title_ids:
@@ -336,6 +437,8 @@ HANDLERS: dict[str, Handler] = {
     "sync.fetch_payload": h_sync_fetch_payload,
     "sync.search_and_process": h_sync_search_and_process,
     "titles.update": h_titles_update,
+    "titles.update.start": h_titles_update_start,
+    "jobs.get": h_jobs_get,
     "schedule.get": h_schedule_get,
     "schedule.sync": h_schedule_sync,
     "history.mark_watched": h_history_mark_watched,

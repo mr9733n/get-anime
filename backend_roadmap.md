@@ -337,14 +337,43 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
   * `AniLibertyScheduleSource._fetch_day()` теперь предпочитает `get_schedule_light` если он доступен, с fallback на `get_schedule` для старых адаптеров.
   * Результат: schedule.sync с 50 тайтлами: 1 сетевой запрос вместо 50.
 * [ ] Проверить, что `schedule.get` возвращает обновлённое расписание AniLiberty после sync (live-тест).
-* [ ] Добавить тесты на day/week API mapping, unresolved titles и retry после lazy fetch.
+* [x] Добавить тесты на day/week API mapping, unresolved titles и retry после lazy fetch.
+  * `tests/backend/test_schedule_controller.py` (22 tests): day/week forwarding, empty source, partial resolve, unresolved counters, ok flag, unknown provider, source exception, fetch_unresolved retry flow, partial fetch, flaky fn, no double-upsert when all fail.
 
 ### Provider title fetch/update
 
-* [ ] Реализовать/починить загрузку тайтла из AniLiberty по provider id / external id.
-* [ ] Реализовать/починить загрузку тайтла из AniMedia по provider id / external id.
-* [ ] Проверить общий контракт `sync.fetch_and_process` и `titles.update` для обоих providers: title metadata, episodes, provider_links, posters.
-* [ ] Добавить integration smoke tests с фикстурами provider payloads.
+* [x] Исправлен критический баг в `StorageProcessWritePort.apply_provider_payload`:
+  * `process_titles()` возвращает `(ok: bool, title_id: int)` tuple, не dict.
+    До фикса `title_id` никогда не извлекался → `result.title_id = None` всегда.
+  * Добавлен `_unpack_process_titles()` — обрабатывает tuple / dict / scalar.
+  * `title_id` инжектируется в shallow-copy payload перед вызовом
+    `process_episodes` / `process_torrents` — иначе FK в БД был NULL.
+  * При падении `process_titles` — `process_episodes` не вызывается.
+  * Payload вызывающего не мутируется.
+* [x] Добавлены smoke tests `tests/backend/test_provider_integration.py` (24 total):
+  * 7 unit — `_unpack_process_titles` helper.
+  * 14 behavioural — `StubStorage` без реальной БД (AniLiberty + AniMedia payloads).
+  * 3 real-DB — пропускаются если SQLAlchemy не импортируется; запускаются на корректном окружении.
+* [x] Исправлен `FakeTitlesController` в `tests/conftest.py`:
+  * Добавлены `year/genre/status_filter/type_filter` kwargs в `titles_search` и `count_titles`.
+  * Устранены 2 pre-existing test failures.
+* [ ] Проверить контракт `sync.fetch_and_process` / `titles.update` end-to-end на живом AniLiberty (live test).
+* [ ] Добавить regression test: повторный `titles.update` AniLiberty идемпотентен (поверх real-DB smoke).
+
+### Provider update jobs / completion events
+
+**Проблема:** AniLiberty обновляется быстро через API, а AniMedia медленно через `httpx + BeautifulSoup`. Увеличение timeout — временная мера, а не нормальный UX/архитектура.
+
+* [x] Заменить долгий синхронный `titles.update` request на job-flow:
+  * `titles.update.start` → возвращает `job_id` сразу (daemon thread + asyncio.run).
+  * `jobs.get` → возвращает `queued/running/done/error`, started_at, finished_at, progress, result.
+  * `JobStore` — thread-safe in-memory registry (`backend/core/jobs/job_store.py`).
+  * `titles.update` старый sync-handler сохранён — используется для JSON-tool single-shot.
+  * `backend.jobs = JobStore()` добавлен в `StandaloneBackend` и `FakeBackend`.
+  * 25 tests: `TestJobStore` (9), `TestTitlesUpdateStart` (8), `TestJobsGet` (6), `TestJobError` (1) + failure path.
+* [ ] UI detail screen должен запускать update job, показывать progress/spinner и polling status до `done/error`, не удерживая один HTTP request.
+* [ ] Для AniMedia показывать понятные стадии: search page fetched, title page parsed, vlnk resolved, payload saved, posters queued.
+* [ ] Добавить cancel/ignore-stale behavior: если пользователь ушёл с detail screen, update может завершиться в фоне, но UI не должен падать или зависать.
 
 ### Title update bug — episode uuid conflict
 
@@ -353,7 +382,8 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
   * `data.get("uuid")` вместо `data["uuid"]` — корректная обработка эпизодов без uuid.
   * UUID fallback lookup теперь пропускается когда `episode_uuid is None` (иначе `filter_by(uuid=None)` матчил все NULL-uuid строки).
   * При вставке нового эпизода: если провайдерский uuid уже занят другой строкой — генерируется свежий `uuid4()` с warning в лог.
-* [ ] Проверить стратегию identity/upsert для эпизодов: сопоставлять по стабильному provider key (provider code + external title id + episode number), а не только по `episode_id`.
+* [x] Проверить стратегию identity/upsert для эпизодов: сопоставлять по стабильному provider key (provider code + external title id + episode number), а не только по `episode_id`.
+  * `tests/backend/test_episode_upsert.py` (22 tests): verifies (title_id, episode_number) natural key, both list/dict player.list formats, HLS mapping, skips-to-JSON, uuid forward, created_timestamp conversion, idempotency.
 * [ ] Добавить regression test на повторный `titles.update` AniLiberty для уже сохраненного тайтла: повторный update должен быть идемпотентным.
 
 ### AniMedia search/update bug — wrong query
@@ -362,12 +392,13 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
   * `TitlesUpdateController._pick_external_id_from_links()`: если `provider_code == "animedia"` и `"@@"` не в строке — автоматически строится токен `"<id>@@<name>"` из имени тайтла через `_fallback_query(t)`.
   * `AniMediaPayloadSource.fetch_payload_by_external_id()` уже умеет оба формата: `"id@@name"` и чистое имя; теперь компаунд-токен всегда доходит корректным.
 * [x] Источник query в `titles.update` разделён: если есть `external_id` → передаётся в `fetch_payload_by_external_id`, иначе `_fallback_query(t)` (имя из БД) идёт в `query` fallback. Голый `title_id` (число) никогда не используется как search query.
-* [ ] Добавить нормальный порядок fallback для AniMedia:
-  * provider link / external id, если уже есть
-  * точное название из БД
-  * альтернативные названия/aliases
-  * год/type как уточнение, если provider search поддерживает
-* [ ] Добавить regression test: для тайтла без AniMedia provider link backend не должен дергать `amd.online` с `story=<local_title_id>`.
+* [x] Добавить нормальный порядок fallback для AniMedia:
+  * provider link / external id, если уже есть → `_pick_external_id_from_links`
+  * точное название из БД → `name_en` → `name_ru` → `code`
+  * альтернативные названия → `alternative_name` (добавлено в `_fallback_query`)
+  * год/type как уточнение — не реализовано (AniMedia search не поддерживает structured filters)
+* [x] Добавить regression test: для тайтла без AniMedia provider link backend не должен дергать `amd.online` с `story=<local_title_id>`.
+  * `tests/backend/test_titles_update_controller.py` (25 tests): unit tests for `_pick_external_id_from_links`, `_fallback_query`, and end-to-end `update_titles` routing — covers no-link name-query, legacy bare-id compound rebuild, explicit vs resolved provider_code.
 
 ### AniMedia catalog/cache
 
@@ -468,6 +499,13 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
   * `Тайтл не просмотрен`
   * `Тайтл просмотрен частично (просмотрено N серий)`
   * `Тайтл просмотрен`
+
+### Ratings
+
+* [ ] Отображать дополнительный внешний рейтинг из таблицы `ratings`: `name_external: score_external`.
+  * Detail screen: показывать внешний рейтинг отдельной строкой рядом с основным `rating_name: rating_value`.
+  * Title card: решить, нужен ли внешний рейтинг на плитке или только основной CMERS.
+  * Проверить mapping: `RatingDto.nameExternal` / `RatingDto.scoreExternal` уже должны приходить из HTTP normalizer, UI не должен терять эти поля.
 
 ### Torrents
 

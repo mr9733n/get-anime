@@ -1,3 +1,152 @@
+## v0.3.8.45 — Write-Path Correctness + Job-Flow + Test Coverage
+
+**Дата:** 2026-04-26
+**Статус:** stable
+
+Пять независимых изменений: критический фикс write-path, верификация episode upsert стратегии, регрессионные тесты для AniMedia query routing, тесты для ScheduleController, и новая job-flow система для неблокирующего `titles.update`.
+
+---
+
+### 1. Критический фикс: `StorageProcessWritePort` — title_id из tuple
+
+**Симптом:** после успешного `process_titles()` episodes и torrents сохранялись с `title_id = NULL`, постер никогда не ставился в очередь.
+
+**Корень:** `ProcessManager.process_titles()` возвращает `(ok: bool, title_id: int)` — tuple, не dict. `StorageProcessWritePort` не извлекал `title_id` из него.
+
+**Фикс (`backend/infra/db/process_write_port_storage.py`):**
+
+- Добавлен `_unpack_process_titles(res)` — обрабатывает tuple / dict / scalar fallback.
+- `title_id` инжектируется в shallow-copy payload перед вызовом `process_episodes` / `process_torrents` — иначе FK в БД был NULL.
+- При падении `process_titles` → `process_episodes` не вызывается.
+- `ok_flag` из tuple корректно проставляется в `ApplyProviderPayloadResult.ok`.
+- Payload вызывающего не мутируется.
+
+---
+
+### 2. Episode upsert — верификация стратегии identity
+
+Зафиксирована и протестирована стратегия upsert эпизодов:
+
+- **Natural key:** `(title_id, episode_number)` — стабильный provider key, не зависит от `uuid`.
+- Верифицированы оба формата `player.list`: AniLiberty (Python list) и AniMedia (dict `{"1": {...}, "2": {...}}`).
+- Эпизоды без ключа `hls` (pending/unreleased) пропускаются.
+- `skips` сериализуется в JSON-строки.
+- `created_timestamp` (unix float) → `datetime(tz=utc)`, `0` → epoch.
+- `process_episodes` идемпотентен: повторный вызов с тем же payload всегда даёт тот же count `save_episode` вызовов.
+
+---
+
+### 3. AniMedia: query routing и fallback order
+
+**Регрессия (`TitlesUpdateController`):**
+
+- Тайтл без AniMedia provider link не должен уходить в adapter с `query=<local_title_id>` (баг: `story=2002` в URL).
+- Фикс уже был в коде; добавлены тесты-регрессоры, которые это гарантируют навсегда.
+
+**Дополнение — `_fallback_query` теперь проверяет `alternative_name`:**
+
+Порядок: `name_en` → `name_ru` → `code` → `alternative_name` → dict `names` → `name`. Numeric `title_id` никогда не возвращается.
+
+**Legacy bare-id rebuild:**
+
+`"2002"` (без `@@`) → автоматически `"2002@@One Punch Man"` через `_fallback_query`. Дальше `AniMediaPayloadSource` принимает compound token как обычно.
+
+---
+
+### 4. ScheduleController — тесты
+
+Новый тест-файл покрывает три области:
+
+| Область | Тестов | Что проверяет |
+|---------|--------|--------------|
+| Day / week mapping | 7 | `day=N` forwarded verbatim; `day=None` / omitted → full-week fetch |
+| Unresolved titles | 8 | Partial resolve, ok flag остаётся True при unresolved, unknown provider → `ok=False`, source exception → `ok=False`, `fetched_missing=0` без флага |
+| Retry after lazy fetch | 6 | Все unresolved fetched+retried, partial fetch, без двойного upsert когда ничего не fetched, flaky fn не ломает остальные, graceful no-op без `fetch_title_fn` |
+| `schedule_get` pass-through | 1 | Результат из read port возвращается как есть |
+
+---
+
+### 5. Job-flow: `titles.update.start` / `jobs.get`
+
+Новая система фоновых задач для неблокирующего provider update.
+
+#### Новые JSON-операции
+
+| Op | Параметры | Описание |
+|----|-----------|---------|
+| `titles.update.start` | `title_ids, provider_code?, mode?, max_results?` | Запустить update в фоне, вернуть `job_id` сразу |
+| `jobs.get` | `job_id` | Получить текущий статус задачи |
+
+#### `titles.update.start` ответ (немедленный)
+
+```json
+{"ok": true, "result": {"job_id": "a1b2c3d4-...", "status": "queued"}}
+```
+
+#### `jobs.get` ответ
+
+```json
+{
+  "ok": true,
+  "result": {
+    "job": {
+      "job_id": "a1b2c3d4-...",
+      "op": "titles.update",
+      "status": "done",
+      "error": null,
+      "started_at": "2026-04-26T12:00:00+00:00",
+      "finished_at": "2026-04-26T12:00:03+00:00",
+      "progress": null,
+      "result": {"ok": true, "applied": [...], "skipped": 0, "error": null}
+    }
+  }
+}
+```
+
+#### Жизненный цикл задачи
+
+```
+queued → running → done
+                 → error   (при исключении в update_titles)
+```
+
+#### Реализация
+
+- `backend/core/jobs/job_store.py` — `JobStatus` dataclass + `JobStore` (thread-safe dict + lock, deepcopy params).
+- `h_titles_update_start` — создаёт job, запускает daemon `threading.Thread(asyncio.run(...))`, возвращает немедленно.
+- `h_jobs_get` — lookup по `job_id`, сериализует поля вручную (ISO timestamps).
+- `StandaloneBackend.jobs = JobStore()` + `FakeBackend.jobs = JobStore()` в conftest.
+- `titles.update` (старый sync-handler) сохранён — используется для JSON-tool single-shot режима.
+
+---
+
+### Тесты
+
+| Файл | Тестов | Что проверяет |
+|------|--------|--------------|
+| `test_provider_integration.py` | 24 | `_unpack_process_titles` (7 unit), StubStorage behavioural (14), real-DB smoke (3, auto-skip) |
+| `test_episode_upsert.py` | 22 | ProcessManager.process_episodes с MockSaveManager — natural key, HLS mapping, skips JSON, idempotency |
+| `test_titles_update_controller.py` | 28 | `_pick_external_id_from_links`, `_fallback_query`, `update_titles` routing (AniMedia/AniLiberty, no-link, legacy bare-id, alternative_name) |
+| `test_schedule_controller.py` | 22 | Day/week forwarding, unresolved, lazy fetch retry, error paths |
+| `test_json_handlers_jobs.py` | 25 | `JobStore` unit (9), `titles.update.start` (8), `jobs.get` (6), error path (1) |
+| `conftest.py` | — | Исправлен `FakeTitlesController`: добавлены `year/genre/status_filter/type_filter` kwargs |
+
+**Итого тестов:** 194 passed, 3 skipped (real-DB, auto-skip при broken SQLAlchemy).
+
+---
+
+### Definition of Done
+
+- [x] Write-path корректно извлекает `title_id` из `process_titles()` tuple
+- [x] `process_episodes` / `process_torrents` получают правильный FK (больше не NULL)
+- [x] Episode identity strategy `(title_id, episode_number)` зафиксирована тестами
+- [x] AniMedia query routing покрыт regression-тестами (не `story=<local_id>`)
+- [x] `alternative_name` используется как fallback query
+- [x] ScheduleController: day/week mapping, unresolved, retry — всё покрыто тестами
+- [x] Неблокирующий `titles.update.start` + `jobs.get` добавлены в HANDLERS
+
+---
+
 ## v0.3.8.44 — Provider Runtime Fixes + UI State Contracts
 
 **Дата:** 2026-04-25
@@ -29,6 +178,7 @@
 ### 3. Provider Fixes
 
 - AniLiberty schedule sync получил lightweight path: один API-запрос расписания без N дополнительных fetch/enrich запросов по каждому тайтлу.
+- AniMedia HTTP timeout вынесен в `Settings.animedia_http_timeout_s` и увеличен до 90 секунд по умолчанию. Это нужно для медленного HTML/BeautifulSoup flow, где provider update работает заметно дольше API-провайдеров.
 - AniMedia update/search больше не использует локальный numeric `title_id` как search query; для legacy provider links строится token `<external_id>@@<title_name>`.
 - Исправлен повторный title update с AniLiberty: `episodes.uuid` больше не перезаписывается провайдерским UUID при update существующих episode rows.
 
@@ -51,10 +201,27 @@
 
 ---
 
+### 6. Storage Session Concurrency
+
+- `DatabaseManager`, `GetManager`, `SaveManager`, `DeleteManager`, `TemplateManager`, `PlaceholderManager`, `StateManager` переведены с общего SQLAlchemy `Session` на sessionmaker factory.
+- Каждый storage method теперь открывает отдельный `with self.Session() as session`, что убирает гонку `identity map is no longer valid` при параллельных HTTP/UI запросах.
+- Исправлены прямые infra consumers новой session factory: `SqlAlchemyTitlesPort` и `SqlAlchemyProgressRepo` теперь также используют `Session()`. Это чинит `titles.search`/filtered search после перехода на factory.
+- Добавлен regression test на параллельные `get_titles_from_db` через один `DatabaseManager`.
+
+---
+
+### 7. Slow Provider Update Timeout
+
+- KMP HTTP client теперь ждёт backend request до 5 минут (`request/socket timeout = 300s`) для долгих операций provider update.
+- `titles.update` остаётся синхронным completion-событием: UI получает `Done` только после завершения provider fetch + save. Отдельная async job/event-система оставлена как follow-up, если понадобится запускать update в фоне без удержания HTTP request.
+- В roadmap добавлен follow-up на нормальный job-flow (`titles.update.start` → `job_id`, polling status/result, progress стадии для AniMedia). Timeout признан временной мерой.
+
+---
+
 ### Проверки
 
-- `py_compile backend\transport\http\server.py storage\get.py`
-- `pytest tests\backend\test_history_storage.py tests\backend\test_json_handlers_history.py -q` → 18 passed
+- `py_compile backend\transport\http\server.py storage\database_manager.py storage\delete.py storage\get.py storage\save.py storage\utils.py`
+- `pytest tests\backend\test_history_storage.py tests\backend\test_json_handlers_history.py tests\backend\test_storage_session_scope.py -q` → 20 passed
 - `:composeApp:compileKotlinDesktop` → BUILD SUCCESSFUL
 
 ---

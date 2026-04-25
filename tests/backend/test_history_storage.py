@@ -44,7 +44,6 @@ def test_save_watch_all_episodes_resolves_none_to_title_episodes():
             assert [row.episode_id for row in rows] == [23197, 23198]
             assert [row.is_watched for row in rows] == [True, True]
     finally:
-        manager.Session.close()
         engine.dispose()
 
 
@@ -64,5 +63,4 @@ def test_save_watch_all_episodes_rejects_explicit_empty_list():
                 episode_ids=[],
             )
     finally:
-        manager.Session.close()
         engine.dispose()

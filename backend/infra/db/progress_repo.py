@@ -14,7 +14,7 @@ class SqlAlchemyProgressRepo:
         if not title_ids:
             return {}
 
-        with self._Session as session:
+        with self._Session() as session:
             rows = (
                 session.query(
                     History.title_id.label("title_id"),

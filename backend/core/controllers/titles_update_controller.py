@@ -65,13 +65,18 @@ class TitlesUpdateController:
 
     @staticmethod
     def _fallback_query(t) -> str | None:
-        # твой текущий titles.get отдаёт name_ru/name_en/code
+        # Primary names: prefer en, then ru, then url-code
         for attr in ("name_en", "name_ru", "code"):
             v = getattr(t, attr, None)
             if isinstance(v, str) and v.strip():
                 return v.strip()
 
-        # если вдруг новый DTO будет с names/name
+        # Alternative/romanized name stored in TitleDetailsDTO / TitleCardDTO
+        v = getattr(t, "alternative_name", None)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+        # Fallback for DTOs that use a dict names / single name attr
         names = getattr(t, "names", None)
         if isinstance(names, dict):
             v = names.get("en") or names.get("ru")

@@ -87,6 +87,10 @@ class ProvidersFactory:
         # ── AniMedia ─────────────────────────────────────────────────────────
         try:
             base_am_url = cfg.get_setting("Settings", "base_am_url")
+            try:
+                animedia_timeout = float(cfg.get_setting("Settings", "animedia_http_timeout_s", "90"))
+            except (TypeError, ValueError):
+                animedia_timeout = 90.0
 
             from providers.animedia.v0 import create_adapter
             from backend.infra.providers.animedia_payload_source import AniMediaPayloadSource
@@ -96,6 +100,7 @@ class ProvidersFactory:
                 base_url=base_am_url,
                 net_client=net_client,
                 cache_dir=cache_dir,
+                timeout=animedia_timeout,
                 logger=self._logger,
             )
 

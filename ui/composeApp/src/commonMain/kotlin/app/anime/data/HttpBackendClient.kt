@@ -2,6 +2,7 @@ package app.anime.data
 
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -25,6 +26,11 @@ class HttpBackendClient(
     private val jsonInstance = Json { ignoreUnknownKeys = true }
 
     private val httpClient = HttpClient(createHttpClientEngine()) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 300_000L
+            socketTimeoutMillis = 300_000L
+            connectTimeoutMillis = 30_000L
+        }
         install(ContentNegotiation) {
             json(jsonInstance)
         }

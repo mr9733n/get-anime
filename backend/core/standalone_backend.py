@@ -31,6 +31,7 @@ from backend.infra.db.schedule_sqlalchemy import (
 )
 from backend.bootstrap.providers_factory import ProvidersFactory
 from backend.core.ports.schedule_port import IProviderScheduleSource
+from backend.core.jobs.job_store import JobStore
 
 from utils.config.config_manager import ConfigManager
 from utils.net.net_client import NetClient
@@ -112,6 +113,9 @@ class StandaloneBackend:
             search_and_process_uc=self.sync_search_and_process_uc,
         )
         self.titles_update = TitlesUpdateController(titles=self.titles, sync=self.sync)
+
+        # background job registry (used by titles.update.start / jobs.get)
+        self.jobs = JobStore()
 
         # history writes
         self.history = HistoryController(

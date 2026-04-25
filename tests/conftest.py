@@ -3,6 +3,7 @@ import pytest
 from pathlib import Path
 from dataclasses import dataclass
 from backend.core.dto.titles import TitleViewMode
+from backend.core.jobs.job_store import JobStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,13 +27,35 @@ class FakeBackendContext:
 
 
 class FakeTitlesController:
-    def titles_search(self, *, query: str, user_id: int = 42, enrich: bool = True, limit: int = 50, offset: int = 0, view_mode: TitleViewMode = TitleViewMode.FULL):
+    def titles_search(
+        self,
+        *,
+        query: str,
+        user_id: int = 42,
+        enrich: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+        view_mode: TitleViewMode = TitleViewMode.FULL,
+        # #9 filters — accepted but ignored by the fake
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ):
         return [{"title_id": 1, "query": query, "user_id": user_id, "enrich": enrich, "limit": limit, "offset": offset, "view": view_mode.value}]
 
     def titles_get(self, *, title_ids: list[int], user_id: int = 42, enrich: bool = True, view_mode: TitleViewMode = TitleViewMode.FULL):
         return [{"title_id": tid, "user_id": user_id, "enrich": enrich, "view": view_mode.value} for tid in title_ids]
 
-    def count_titles(self, query: str) -> int:
+    def count_titles(
+        self,
+        query: str,
+        *,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+    ) -> int:
         return 42
 
 
@@ -108,6 +131,7 @@ class FakeBackend:
         self.schedule = FakeScheduleController()
         self.history = FakeHistoryController()
         self.ctx = FakeBackendContext()
+        self.jobs = JobStore()
 
     # handlers.py вызывает backend.streams_get(...)
     def streams_get(self, *, title_id: int, episode_number: int, user_id: int = 42):

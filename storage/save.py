@@ -19,7 +19,7 @@ from utils.media.image_manager import normalize_poster_blob_if_needed, sha256, m
 class SaveManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     def save_poster(
             self,
@@ -32,7 +32,7 @@ class SaveManager:
         Save poster blob/hash/updated for the given size_key into posters table.
         Creates Poster row if missing.
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 now = datetime.now(timezone.utc)
                 fields = POSTER_FIELDS[size_key]
@@ -96,7 +96,7 @@ class SaveManager:
                 raise
 
     def save_need_to_see(self, user_id, title_id, need_to_see=True):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 existing_statuses = session.query(History).filter(
                     History.user_id == user_id,
@@ -122,7 +122,7 @@ class SaveManager:
                 raise
 
     def save_watch_all_episodes(self, user_id, title_id, is_watched=False, episode_ids=None):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 if episode_ids is None:
                     episode_ids = [
@@ -179,7 +179,7 @@ class SaveManager:
 
     def save_watch_status(self, user_id, title_id, episode_id=None, is_watched=False, torrent_id=None,
                           is_download=False):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 filters = {'user_id': user_id, 'title_id': title_id}
                 if episode_id is not None:
@@ -267,7 +267,7 @@ class SaveManager:
         * Если `rating_name == "CMERS"` → сохраняем внутренний рейтинг.
         * Иначе → сохраняем внешний рейтинг (`rating_name` – источник, `external_name` – подпись).
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Rating).filter_by(title_id=title_id)
                 if rating_name and rating_name != "CMERS":
@@ -361,7 +361,7 @@ class SaveManager:
         Сохраняет тайтл и связь (provider, external_id -> title_id).
         Возвращает внутренний title_id.
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 was_restored = False
                 if 'updated' in title_fields:
@@ -434,7 +434,7 @@ class SaveManager:
                 raise
 
     def save_franchise(self, franchise_data):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 external_id = franchise_data['external_id']
                 title_id = franchise_data['title_id']
@@ -496,7 +496,7 @@ class SaveManager:
                 return False
 
     def save_genre(self, title_id, genres, replace):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 if replace:
                     session.query(TitleGenreRelation) \
@@ -525,7 +525,7 @@ class SaveManager:
                 raise
 
     def save_team_members(self, title_id, team_data):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 existing_relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
                 existing_relations_dict = {relation.team_member_id: relation for relation in existing_relations}
@@ -580,7 +580,7 @@ class SaveManager:
         title_id = data["title_id"]
         episode_no = data["episode_number"]
         episode_uuid = data.get("uuid")  # may be None for some providers
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 ep = (
                     session.query(Episode)
@@ -648,7 +648,7 @@ class SaveManager:
                 self.logger.error(f"Error saving episode: {exc}")
 
     def save_schedule(self, day_of_week, title_id, last_updated=None):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 existing_schedule = session.query(Schedule).filter_by(day_of_week=day_of_week,
                                                                       title_id=title_id).first()
@@ -858,7 +858,7 @@ class SaveManager:
             title_id = prepared[0]['title_id']
             if any(t['title_id'] != title_id for t in prepared):
                 raise ValueError("В батче обнаружены разные title_id — replace невозможен")
-            with self.Session as session, session.begin():
+            with self.Session() as session, session.begin():
                 session.query(T).filter(T.title_id == title_id).delete(synchronize_session=False)
                 session.bulk_save_objects([T(**t) for t in prepared])
                 _prune_triplet(session, title_id)
@@ -872,10 +872,10 @@ class SaveManager:
             if p.get('torrent_id') is None:
                 raise ValueError("torrent_id обязателен для одиночного save")
 
-            with self.Session as session, session.begin():
+            with self.Session() as session, session.begin():
                 session.merge(T(**p))
 
-            with self.Session as session, session.begin():
+            with self.Session() as session, session.begin():
                 _prune_covered_ranges(session, p['title_id'])
                 if not p.get('is_in_production'):
                     _prune_triplet(session, p['title_id'])
@@ -890,7 +890,7 @@ class SaveManager:
         raise TypeError("save_torrent ожидает dict или list[dict]")
 
     def remove_schedule_day(self, title_ids, day_of_week):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 if isinstance(title_ids, set):
                     title_ids = list(title_ids)
@@ -926,7 +926,7 @@ class SaveManager:
 
     def save_studio_to_db(self, title_ids, studio_name):
         """Функция для добавления новой студии в базу данных для нескольких тайтлов."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 if not title_ids:
                     self.logger.error("Ошибка: Массив title_ids пуст.")

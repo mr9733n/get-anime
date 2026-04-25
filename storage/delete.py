@@ -11,7 +11,7 @@ from storage.tables import Title, DeletedTitleLog
 class DeleteManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     @staticmethod
     def _safe_dt(v):
@@ -171,7 +171,7 @@ class DeleteManager:
         deleted = []
         not_found = []
 
-        with self.Session as session:
+        with self.Session() as session:
             titles = session.query(Title).filter(Title.title_id.in_(title_ids)).all()
             found_ids = {t.title_id for t in titles}
             not_found = [tid for tid in title_ids if tid not in found_ids]
@@ -219,7 +219,7 @@ class DeleteManager:
         deleted = []
         not_found = []
 
-        with self.Session as session:
+        with self.Session() as session:
             titles = (
                 session.query(Title)
                 .filter(Title.title_id.in_(title_ids))

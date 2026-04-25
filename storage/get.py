@@ -15,11 +15,11 @@ from storage.types import PosterSize, POSTER_FIELDS
 class GetManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     def get_titles_for_day(self, day_of_week):
         """Загружает тайтлы для указанного дня недели из базы данных."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 return (
                     session.query(Title)
@@ -35,7 +35,7 @@ class GetManager:
                 return None
 
     def get_history_status(self, user_id, title_id, episode_id=None, torrent_id=None):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 history_status = session.query(History).filter_by(user_id=user_id, title_id=title_id, episode_id=episode_id, torrent_id=torrent_id).one_or_none()
                 if history_status:
@@ -53,7 +53,7 @@ class GetManager:
                 raise
 
     def get_need_to_see(self, user_id, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 # Получение записей для данного title_id, где need_to_see=True
                 need_to_see_statuses = session.query(History).filter(
@@ -71,7 +71,7 @@ class GetManager:
                 raise
 
     def get_all_episodes_watched_status(self, user_id, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 total_episodes = session.query(Episode.episode_id).filter(
                     Episode.title_id == title_id
@@ -98,7 +98,7 @@ class GetManager:
                 raise
 
     def get_rating_from_db(self, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 ratings = session.query(Rating).filter_by(title_id=title_id).one_or_none()
                 if ratings:
@@ -112,7 +112,7 @@ class GetManager:
 
     def get_statistics_from_db(self):
         """Получает статистику из базы данных."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 queries = {
                     'titles_count': "SELECT COUNT(DISTINCT title_id) FROM titles",
@@ -172,7 +172,7 @@ class GetManager:
                 return {}
 
     def get_poster_link(self, title_id, size_key: PosterSize = "original"):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 self.logger.debug(f"Processing poster link for title_id: {title_id}, size_key: {size_key}")
 
@@ -200,7 +200,7 @@ class GetManager:
         Retrieves the poster blob for a given title_id and size_key.
         Returns: (blob, is_placeholder)
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 fields = POSTER_FIELDS[size_key]
 
@@ -234,7 +234,7 @@ class GetManager:
         Args: title_id: ID тайтла
         Returns: datetime: Дата последнего обновления или None, если постер не найден
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 fields = POSTER_FIELDS[size_key]
                 poster = session.query(Poster).filter_by(title_id=title_id).first()
@@ -246,7 +246,7 @@ class GetManager:
                 return None
 
     def get_torrents_from_db(self, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 torrents = session.query(Torrent).filter_by(title_id=title_id).all()
                 if torrents:
@@ -260,7 +260,7 @@ class GetManager:
                 return None
 
     def get_genres_from_db(self, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 relations = session.query(TitleGenreRelation).filter_by(title_id=title_id).all()
                 genres = [relation.genre.name for relation in relations]
@@ -274,7 +274,7 @@ class GetManager:
                 return None
 
     def get_team_from_db(self, title_id):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 relations = session.query(TitleTeamRelation).filter_by(title_id=title_id).all()
                 team_data = {
@@ -317,7 +317,7 @@ class GetManager:
         if not name:
             name = "default"
 
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 tmpl = session.query(Template).filter_by(name=name).first()
                 if not tmpl:
@@ -344,7 +344,7 @@ class GetManager:
         """
         Возвращает список доступных шаблонов из базы данных.
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 templates = session.query(Template.name).all()
                 return [t[0] for t in templates]
@@ -354,7 +354,7 @@ class GetManager:
                 return []
 
     def get_franchises_from_db(self, title_id=None, batch_size=None, offset=0):
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 total_count = 0
                 if not title_id:
@@ -426,7 +426,7 @@ class GetManager:
 
     def get_need_to_see_from_db(self, batch_size=None, offset=0, title_id=None):
         """Need to see Titles without episodes"""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).join(History, Title.title_id == History.title_id)
 
@@ -451,7 +451,7 @@ class GetManager:
 
     def get_titles_list_from_db(self, title_ids=None, batch_size=None, offset=0):
         """Titles without episodes"""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).filter(Title.is_deleted == False)
                 if title_ids:
@@ -478,7 +478,7 @@ class GetManager:
             'ongoing_list': lambda session: session.query(Title).filter(Title.status_code.in_([1, 3])),
         }
 
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query_strategy = query_strategies.get(show_mode)
 
@@ -496,14 +496,14 @@ class GetManager:
                 return 0
 
     def get_deleted_titles(self, batch_size=None, offset=0):
-        with self.Session as session:
+        with self.Session() as session:
             q = session.query(Title).filter(Title.is_deleted == True)
             if batch_size:
                 q = q.offset(offset).limit(batch_size)
             return q.all()
 
     def get_deleted_titles_log(self, limit: int = 300, offset: int = 0):
-        with self.Session as session:
+        with self.Session() as session:
             return (
                 session.query(DeletedTitleLog)
                 .order_by(DeletedTitleLog.deleted_at.desc())
@@ -513,7 +513,7 @@ class GetManager:
             )
 
     def get_deleted_titles_log_item(self, log_id: int):
-        with self.Session as session:
+        with self.Session() as session:
             return session.query(DeletedTitleLog).filter(DeletedTitleLog.id == log_id).one_or_none()
 
     def get_titles_from_db(self, show_all=False, day_of_week=None, batch_size=None, title_id=None, title_ids=None, offset=0):
@@ -525,7 +525,7 @@ class GetManager:
         :param title_id: If specified, returns a title with the given title_id.
         :return: SQLAlchemy Query object
         """
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).options(
                     joinedload(Title.genres).joinedload(TitleGenreRelation.genre),
@@ -578,7 +578,7 @@ class GetManager:
 
     def get_titles_by_year(self, year):
         """Получает список title_id по году выпуска."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).filter(Title.season_year == year)
                 titles = query.all()
@@ -591,7 +591,7 @@ class GetManager:
 
     def get_titles_by_status(self, status_code):
         """Получает список title_id по status_code."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).filter(Title.status_code == status_code)
                 titles = query.all()
@@ -604,7 +604,7 @@ class GetManager:
 
     def get_ongoing_titles(self, batch_size=None, offset=0):
         """Получает список ongoing titles."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 query = session.query(Title).filter(Title.status_code.in_([1, 3]))
                 if batch_size:
@@ -619,7 +619,7 @@ class GetManager:
 
     def get_titles_by_genre(self, genre_id):
         """Получает список title_id, связанных с указанным жанром по его ID."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 title_relations = session.query(TitleGenreRelation).filter_by(genre_id=genre_id).all()
                 title_ids = [relation.title_id for relation in title_relations]
@@ -632,7 +632,7 @@ class GetManager:
 
     def get_titles_by_team_member(self, team_member):
         """Получает список title_id, связанных с указанным team_member по его имени."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 team_member_obj = session.query(TeamMember).filter_by(name=team_member).first()
                 if not team_member_obj:
@@ -657,7 +657,7 @@ class GetManager:
 
         self.logger.debug(f"keyword for processing: {keywords}")
 
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 # базовый query с нужными joinedload
                 base_query = session.query(Title).options(
@@ -753,7 +753,7 @@ class GetManager:
         else:
             raise ValueError(f"Unsupported query type: {type(query)}")
 
-        with self.Session as session:
+        with self.Session() as session:
             # --- 2А. Поиск по title_id, если есть ---
             if title_ids:
                 titles = (
@@ -817,7 +817,7 @@ class GetManager:
             return result
 
     def get_title_by_external_id(self, provider_code: str, external_id: int | str):
-        with self.Session as session:
+        with self.Session() as session:
             external_id_str = str(external_id)
             title = (
                 session.query(Title)
@@ -836,7 +836,7 @@ class GetManager:
         if not external_ids:
             return {}
 
-        with self.Session as session:
+        with self.Session() as session:
             rows = (
                 session.query(TitleProviderMap.external_title_id, TitleProviderMap.title_id)
                 .join(Provider, Provider.provider_id == TitleProviderMap.provider_id)
@@ -849,7 +849,7 @@ class GetManager:
             return {str(ext): int(tid) for ext, tid in rows if ext is not None and tid is not None}
 
     def get_title_ids_by_provider(self, provider_code: str) -> list[int]:
-        with self.Session as session:
+        with self.Session() as session:
             rows = (
                 session.query(TitleProviderMap.title_id)
                 .join(Provider)
@@ -862,7 +862,7 @@ class GetManager:
         """Возвращает имя провайдера (code) для данного title_id.
            Если провайдеров несколько — возвращает первый.
         """
-        with self.Session as session:
+        with self.Session() as session:
             link = (
                 session.query(TitleProviderMap)
                 .options(joinedload(TitleProviderMap.provider))
@@ -885,7 +885,7 @@ class GetManager:
 
         title_ids = [int(x) for x in title_ids]
 
-        with self.Session as session:
+        with self.Session() as session:
             links = (
                 session.query(TitleProviderMap)
                 .options(joinedload(TitleProviderMap.provider))
@@ -909,7 +909,7 @@ class GetManager:
 
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         """Возвращает название студии по title_id, либо None, если студии нет."""
-        with self.Session as session:
+        with self.Session() as session:
             studio = (
                 session.query(ProductionStudio)
                 .filter(ProductionStudio.title_id == title_id)
@@ -923,7 +923,7 @@ class GetManager:
 
     def get_player_host_by_title_id(self, title_id: int) -> str | None:
         """Возвращает host_for_player по title_id."""
-        with self.Session as session:
+        with self.Session() as session:
             title = (
                 session.query(Title)
                 .filter(Title.title_id == title_id)
@@ -937,7 +937,7 @@ class GetManager:
 
     def get_team_members_from_db(self, title_id: int) -> list[dict]:
         """Возвращает список {id, name, role} для team_members тайтла."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 relations = (
                     session.query(TitleTeamRelation)
@@ -962,7 +962,7 @@ class GetManager:
 
     def get_ratings_list_from_db(self, title_id: int) -> list:
         """Возвращает список Rating ORM-объектов для тайтла."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 return session.query(Rating).filter_by(title_id=title_id).all()
             except Exception as e:
@@ -971,7 +971,7 @@ class GetManager:
 
     def get_history_records_from_db(self, user_id: int, title_id: int) -> list:
         """Возвращает список History ORM-объектов для пользователя и тайтла."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 return (
                     session.query(History)
@@ -984,7 +984,7 @@ class GetManager:
 
     def get_production_studio_obj_from_db(self, title_id: int) -> dict | None:
         """Возвращает {id, name} для production_studio тайтла или None."""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 studio = (
                     session.query(ProductionStudio)

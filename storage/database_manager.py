@@ -19,7 +19,7 @@ class DatabaseManager:
         self.current_poster_index = None
         self.logger = logging.getLogger(__name__)
         self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
-        self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
+        self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # TODO: fix this backward compat
         # self.app_state_manager = AppStateService(self)
@@ -44,7 +44,7 @@ class DatabaseManager:
             {"day_of_week": 6, "day_name": "Saturday"},
             {"day_of_week": 7, "day_name": "Sunday"},
         ]
-        with self.Session as session:
+        with self.Session() as session:
                 try:
                     if session.query(DaysOfWeek).count() == 0:
                         for day in days:
@@ -336,7 +336,7 @@ class DatabaseManager:
         return result
 
     def restore_titles(self, title_ids):
-        with self.Session as session:
+        with self.Session() as session:
             titles = session.query(Title).filter(Title.title_id.in_(title_ids)).all()
             for t in titles:
                 t.is_deleted = False

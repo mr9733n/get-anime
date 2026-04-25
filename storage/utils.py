@@ -14,7 +14,7 @@ from storage.tables import Poster, Template
 class PlaceholderManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     @staticmethod
     def calc_hash(data: bytes) -> str:
@@ -28,7 +28,7 @@ class PlaceholderManager:
             {"title_id": 2, "file_name": "no_image_small.png", "size_key": "small"},
         ]
 
-        with self.Session as session:
+        with self.Session() as session:
             for ph in placeholders:
                 try:
                     title_id = ph["title_id"]
@@ -60,7 +60,7 @@ class PlaceholderManager:
 class TemplateManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     def save_template(self, template_name):
         """
@@ -75,7 +75,7 @@ class TemplateManager:
             'styles_css': 'styles.css'
         }
 
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 # Проверяем, существует ли шаблон
                 existing_template = session.query(Template).filter_by(name=template_name).first()
@@ -138,11 +138,11 @@ class TemplateManager:
 class StateManager:
     def __init__(self, engine):
         self.logger = logging.getLogger(__name__)
-        self.Session = sessionmaker(bind=engine)()
+        self.Session = sessionmaker(bind=engine)
 
     def save_app_state(self, state_items):
         """Сохраняет состояние приложения в БД"""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 session.execute(text("DELETE FROM app_state"))  # Очищаем перед записью
                 for key, value in state_items:
@@ -166,7 +166,7 @@ class StateManager:
 
     def load_app_state(self):
         """Загружает состояние из базы данных"""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 result = session.execute(text("SELECT key, value, created_at FROM app_state")).fetchall()
                 state = {}
@@ -198,7 +198,7 @@ class StateManager:
 
     def clear_app_state(self):
         """Очищает сохраненное состояние в БД"""
-        with self.Session as session:
+        with self.Session() as session:
             try:
                 session.execute(text("DELETE FROM app_state"))
                 session.commit()

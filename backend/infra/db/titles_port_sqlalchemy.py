@@ -93,7 +93,7 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         Without filters, delegate to the legacy get_titles_search_query.
         """
         if self._has_filters(year, genre, status_filter, type_filter):
-            with self._db.Session as session:
+            with self._db.Session() as session:
                 q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
                 rows = q.order_by(Title.title_id.desc()).offset(int(offset)).limit(int(limit)).all()
                 return [int(r[0]) for r in rows]
@@ -132,7 +132,7 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         type_filter: str | None = None,
     ) -> int:
         if self._has_filters(year, genre, status_filter, type_filter):
-            with self._db.Session as session:
+            with self._db.Session() as session:
                 q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
                 return q.count()
         rows = self._db.get_titles_search_query(query=query)
@@ -150,10 +150,7 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         title_ids = [int(x) for x in title_ids]
         out: dict[int, list[dict]] = {tid: [] for tid in title_ids}
 
-        # используем Session фабрику, которая уже есть внутри db_manager
-        # у тебя в DbManager методы делают: `with self.Session as session:`
-        # Значит self._db.Session — это контекст-менеджер.
-        with self._db.Session as session:
+        with self._db.Session() as session:
             links = (
                 session.query(TitleProviderMap)
                 .options(joinedload(TitleProviderMap.provider))

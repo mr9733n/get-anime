@@ -61,3 +61,4 @@ obsolete/title_cut.html
 /ui/composeApp/build/
 /ui/.gradle/
 
+/ui/build

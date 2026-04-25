@@ -22,6 +22,7 @@ fun SettingsScreen(
 ) {
     var urlDraft by remember { mutableStateOf(settings.backendUrl) }
     var playerDraft by remember { mutableStateOf(settings.playerCommand) }
+    var browserDraft by remember { mutableStateOf(settings.browserCommand) }
     var testResult by remember { mutableStateOf<TestResult?>(null) }
     var isTesting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -132,6 +133,9 @@ fun SettingsScreen(
                 playerDraft = playerDraft,
                 onPlayerChange = { playerDraft = it },
                 onSave = { settings.playerCommand = playerDraft.trim() },
+                browserDraft = browserDraft,
+                onBrowserChange = { browserDraft = it },
+                onBrowserSave = { settings.browserCommand = browserDraft.trim() },
             )
         }
     }
@@ -142,6 +146,9 @@ expect fun PlayerSettingsSection(
     playerDraft: String,
     onPlayerChange: (String) -> Unit,
     onSave: () -> Unit,
+    browserDraft: String,
+    onBrowserChange: (String) -> Unit,
+    onBrowserSave: () -> Unit,
 )
 
 private enum class TestResult { Ok, Fail, Saved }

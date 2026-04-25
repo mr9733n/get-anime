@@ -124,9 +124,22 @@ class SaveManager:
     def save_watch_all_episodes(self, user_id, title_id, is_watched=False, episode_ids=None):
         with self.Session as session:
             try:
-                if episode_ids is None or not isinstance(episode_ids, list) or len(episode_ids) == 0:
+                if episode_ids is None:
+                    episode_ids = [
+                        row[0]
+                        for row in session.query(Episode.episode_id)
+                        .filter(Episode.title_id == title_id)
+                        .order_by(Episode.episode_number, Episode.episode_id)
+                        .all()
+                    ]
+                elif not isinstance(episode_ids, list) or len(episode_ids) == 0:
                     self.logger.error("Invalid episode_ids provided for bulk update.")
                     raise ValueError("Episode IDs must be a non-empty list.")
+
+                episode_ids = list(dict.fromkeys(int(episode_id) for episode_id in episode_ids))
+                if len(episode_ids) == 0:
+                    self.logger.info(f"No episodes found for bulk watch update. user_id={user_id}, title_id={title_id}")
+                    return 0
 
                 existing_statuses = session.query(History).filter(
                     History.user_id == user_id,
@@ -158,6 +171,7 @@ class SaveManager:
                     self.logger.debug(f"BULK Added new watch status for user_id: {user_id}, title_id: {title_id}, episode_id: {episode_id}, STATUS: {is_watched}")
                 session.bulk_save_objects(new_adds)
                 session.commit()
+                return len(episode_ids)
             except Exception as e:
                 session.rollback()
                 self.logger.error(f"BULK Error saving watch status for user_id {user_id}, title_id {title_id}, episode_ids {episode_ids}: {e}")
@@ -565,7 +579,7 @@ class SaveManager:
         data = episode_data.copy()
         title_id = data["title_id"]
         episode_no = data["episode_number"]
-        episode_uuid = data["uuid"]
+        episode_uuid = data.get("uuid")  # may be None for some providers
         with self.Session as session:
             try:
                 ep = (
@@ -573,11 +587,16 @@ class SaveManager:
                     .filter_by(title_id=title_id, episode_number=episode_no)
                     .first()
                 )
-                if not ep:
+                # Only fall back to uuid lookup when the uuid is not None —
+                # filter_by(uuid=None) would match all rows with NULL uuid (wrong).
+                if not ep and episode_uuid:
                     ep = session.query(Episode).filter_by(uuid=episode_uuid).first()
                 if ep:
                     updated = False
-                    protected = {"episode_id", "title_id", "episode"}  # не меняем
+                    # uuid added to protected: never overwrite an existing episode's uuid
+                    # with the provider's value — that causes UNIQUE constraint errors when
+                    # the provider assigns the same uuid to a different episode on update.
+                    protected = {"episode_id", "title_id", "episode", "episode_number", "uuid"}
                     if (
                             ep.created_timestamp == datetime.fromtimestamp(0, tz=timezone.utc)
                             and data.get("created_timestamp")
@@ -607,6 +626,16 @@ class SaveManager:
                 else:
                     if not data.get("created_timestamp"):
                         data["created_timestamp"] = datetime.now(timezone.utc)
+                    # If the provider uuid already belongs to a *different* episode row,
+                    # generate a fresh one instead of hitting UNIQUE constraint.
+                    if episode_uuid:
+                        conflict = session.query(Episode).filter_by(uuid=episode_uuid).first()
+                        if conflict:
+                            self.logger.warning(
+                                f"UUID conflict for episode {episode_no} title_id={title_id}: "
+                                f"uuid={episode_uuid} already used — generating new uuid"
+                            )
+                            data["uuid"] = str(uuid.uuid4())
                     data.setdefault("uuid", str(uuid.uuid4()))
                     new_ep = Episode(**data)
                     session.add(new_ep)

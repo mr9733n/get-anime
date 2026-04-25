@@ -32,14 +32,13 @@ class SqlAlchemyHistoryWritePort(IHistoryWritePort):
         is_watched: bool,
         episode_ids: list[int] | None = None,
     ) -> int:
-        self._db.save_watch_all_episodes(
+        affected = self._db.save_watch_all_episodes(
             user_id=user_id,
             title_id=title_id,
             is_watched=is_watched,
             episode_ids=episode_ids,
         )
-        # save_watch_all_episodes doesn't return a count; estimate from episode_ids
-        return len(episode_ids) if episode_ids else 0
+        return int(affected or 0)
 
     def set_need_to_see(
         self,

@@ -1,3 +1,64 @@
+## v0.3.8.44 — Provider Runtime Fixes + UI State Contracts
+
+**Дата:** 2026-04-25
+**Статус:** stable candidate
+
+Срез фиксов после проверки Kotlin Multiplatform UI против HTTP-backend и live-provider сценариев.
+
+---
+
+### 1. Runtime / Packaging
+
+- Обновлена backend runtime-документация: для standalone/HTTP запуска обязательны `storage/`, `utils/`, `providers/`.
+- Добавлена fail-fast диагностика в `build_backend()`: путь к DB должен указывать на существующую директорию; отсутствие runtime imports логируется warning.
+- Добавлены PyInstaller specs:
+  - `make_bin/specs/backend_http.spec`
+  - `make_bin/specs/backend_tool.spec`
+
+---
+
+### 2. Posters
+
+- Подключён `PosterJobAdapter` поверх существующего `PosterManager`.
+- Provider sync/update теперь может ставить постеры в background queue после успешного сохранения payload.
+- HTTP `/poster/{title_id}` переведён на request-local SQLAlchemy session, чтобы массовые параллельные запросы постеров не ломали shared identity map.
+- `server.py` теперь учитывает `poster_path_original`, что исправляет AniMedia-тitles, где medium/small пустые.
+
+---
+
+### 3. Provider Fixes
+
+- AniLiberty schedule sync получил lightweight path: один API-запрос расписания без N дополнительных fetch/enrich запросов по каждому тайтлу.
+- AniMedia update/search больше не использует локальный numeric `title_id` как search query; для legacy provider links строится token `<external_id>@@<title_name>`.
+- Исправлен повторный title update с AniLiberty: `episodes.uuid` больше не перезаписывается провайдерским UUID при update существующих episode rows.
+
+---
+
+### 4. Watch History / UI State Contract
+
+- `history.mark_all_watched` теперь корректно работает при `episode_ids=None`: backend резолвит все серии тайтла и возвращает реальный affected count.
+- `get_all_episodes_watched_status()` теперь сравнивает количество watched episodes с реальным числом episodes у тайтла. Раньше `true` мог возвращаться по неполному набору history rows.
+- HTTP normalizer для `titles.get` отдаёт `ratings`, `franchises`, `all_episodes_watched`, `watched_episode_count`.
+- HTTP normalizer для card-view отдаёт `rating_name`, `rating_value`, `is_watched`, `all_episodes_watched`, `need_to_see` для UI badges.
+- Добавлен regression test `tests/backend/test_history_storage.py`.
+
+---
+
+### 5. Playlist Path
+
+- Backend playlist storage возвращает абсолютный путь к `.m3u8`.
+- Playlist directory создаётся при старте storage adapter, что убирает зависимость от текущего CWD UI-процесса.
+
+---
+
+### Проверки
+
+- `py_compile backend\transport\http\server.py storage\get.py`
+- `pytest tests\backend\test_history_storage.py tests\backend\test_json_handlers_history.py -q` → 18 passed
+- `:composeApp:compileKotlinDesktop` → BUILD SUCCESSFUL
+
+---
+
 ## v0.3.8.43 — Bugs Found During Testing (UI + HTTP Server)
 
 **Дата:** 2026-04-24

@@ -7,6 +7,9 @@ actual fun PlayerSettingsSection(
     playerDraft: String,
     onPlayerChange: (String) -> Unit,
     onSave: () -> Unit,
+    browserDraft: String,
+    onBrowserChange: (String) -> Unit,
+    onBrowserSave: () -> Unit,
 ) {
-    // Android uses system video player intents — no player command setting needed
+    // Android uses system video/browser intents — no command settings needed
 }

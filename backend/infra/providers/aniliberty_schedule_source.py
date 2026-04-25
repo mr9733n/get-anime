@@ -69,7 +69,12 @@ class AniLibertyScheduleSource(IProviderScheduleSource):
 
     def _fetch_day(self, day: int) -> list[ScheduleItemNormalized]:
         try:
-            raw = self.api.get_schedule(day)
+            # Prefer the lightweight variant — it makes only 1 network call per day
+            # instead of 1 per release (no episodes/torrents fetched for schedule).
+            if hasattr(self.api, "get_schedule_light"):
+                raw = self.api.get_schedule_light(day)
+            else:
+                raw = self.api.get_schedule(day)
         except Exception as exc:
             self._log(f"AniLiberty get_schedule({day}) failed: {exc!r}")
             return []

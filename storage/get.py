@@ -6,7 +6,7 @@ import sqlalchemy
 from sqlalchemy import or_, and_
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import sessionmaker, joinedload
-from storage.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, \
+from storage.tables import Title, Schedule, History, Rating, FranchiseRelease, Franchise, Poster, Torrent, Episode, \
     TitleGenreRelation, \
     Template, Genre, TitleTeamRelation, TeamMember, TitleProviderMap, Provider, ProductionStudio, DeletedTitleLog
 from storage.types import PosterSize, POSTER_FIELDS
@@ -73,20 +73,25 @@ class GetManager:
     def get_all_episodes_watched_status(self, user_id, title_id):
         with self.Session as session:
             try:
-                query = session.query(History).filter(
-                    History.user_id == user_id,
-                    History.title_id == title_id
-                )
-
-                query = query.filter(History.episode_id != None)
-                history_statuses = query.all()
-
-                if not history_statuses:
+                total_episodes = session.query(Episode.episode_id).filter(
+                    Episode.title_id == title_id
+                ).count()
+                if total_episodes <= 0:
                     return False
 
-                all_watched = all(status.is_watched for status in history_statuses)
+                watched_episodes = session.query(
+                    sqlalchemy.func.count(sqlalchemy.distinct(History.episode_id))
+                ).join(
+                    Episode,
+                    Episode.episode_id == History.episode_id,
+                ).filter(
+                    History.user_id == user_id,
+                    History.title_id == title_id,
+                    History.is_watched == True,
+                    Episode.title_id == title_id,
+                ).scalar() or 0
 
-                return all_watched
+                return watched_episodes >= total_episodes
 
             except Exception as e:
                 self.logger.error(f"Error fetching watch status for user_id {user_id}, title_id {title_id}: {e}")

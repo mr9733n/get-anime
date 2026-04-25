@@ -384,6 +384,9 @@ class TitlesController:
                 poster_path_medium=abs_asset_url(
                     provider_code, self.cfg, norm_str(getattr(t, "poster_path_medium", None)), fallback_base=stream_base
                 ),
+                poster_path_original=abs_asset_url(
+                    provider_code, self.cfg, norm_str(getattr(t, "poster_path_original", None)), fallback_base=stream_base
+                ),
 
                 genres=genres,
                 provider_links=provider_links,

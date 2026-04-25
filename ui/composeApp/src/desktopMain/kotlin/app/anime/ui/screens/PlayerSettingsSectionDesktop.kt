@@ -15,9 +15,12 @@ actual fun PlayerSettingsSection(
     playerDraft: String,
     onPlayerChange: (String) -> Unit,
     onSave: () -> Unit,
+    browserDraft: String,
+    onBrowserChange: (String) -> Unit,
+    onBrowserSave: () -> Unit,
 ) {
-    // #6 fix: show a brief "Сохранено" confirmation after clicking Save
-    var saved by remember { mutableStateOf(false) }
+    // ── Video player ──────────────────────────────────────────────────────────
+    var playerSaved by remember { mutableStateOf(false) }
 
     Text("Плеер", style = MaterialTheme.typography.headlineMedium)
 
@@ -39,16 +42,69 @@ actual fun PlayerSettingsSection(
     ) {
         Button(onClick = {
             onSave()
-            saved = true
+            playerSaved = true
         }) {
             Text("Сохранить")
         }
 
-        // Auto-hide the confirmation after 2 seconds
-        if (saved) {
+        // #6 fix: auto-hide confirmation after 2 seconds
+        if (playerSaved) {
             LaunchedEffect(Unit) {
                 delay(2_000)
-                saved = false
+                playerSaved = false
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "Сохранено",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // ── Browser (for web-player page URLs) ───────────────────────────────────
+    var browserSaved by remember { mutableStateOf(false) }
+
+    Text("Браузер", style = MaterialTheme.typography.headlineMedium)
+
+    OutlinedTextField(
+        value = browserDraft,
+        onValueChange = onBrowserChange,
+        label = { Text("Команда браузера") },
+        placeholder = { Text("(системный браузер)") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        supportingText = {
+            Text("Открывает ссылки вебплеера. Оставьте пустым для браузера по умолчанию")
+        },
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Button(onClick = {
+            onBrowserSave()
+            browserSaved = true
+        }) {
+            Text("Сохранить")
+        }
+
+        if (browserSaved) {
+            LaunchedEffect(Unit) {
+                delay(2_000)
+                browserSaved = false
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,

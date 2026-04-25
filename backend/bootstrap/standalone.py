@@ -28,10 +28,43 @@ except Exception:  # pragma: no cover
     AniMediaScheduleSource = None    # type: ignore
 
 
+def _validate_runtime(db_path: str, logger: logging.Logger) -> None:
+    """
+    Fail-fast checks before the backend is fully initialized.
+
+    Raises RuntimeError for hard failures (missing DB directory).
+    Logs warnings for soft issues (missing config, missing runtime package dirs).
+    """
+    cwd = Path.cwd()
+
+    # ── Hard check: DB parent directory must exist ───────────────────────────
+    db_parent = Path(db_path).parent
+    if not db_parent.exists():
+        raise RuntimeError(
+            f"DB directory does not exist: {db_parent}  "
+            f"(working directory: {cwd})"
+        )
+
+    # ── Soft checks: runtime package directories ─────────────────────────────
+    # When running as a frozen binary or from the wrong CWD the packages are
+    # still importable (bundled by PyInstaller), but when running from source
+    # the CWD must be the project root.  We detect both cases and warn once.
+    for pkg in ("storage", "utils", "providers"):
+        try:
+            __import__(pkg)
+        except ImportError:
+            logger.warning(
+                "Runtime package '%s' is not importable from CWD=%s. "
+                "Make sure WorkingDirectory points to the project root "
+                "(not the backend/ subdirectory).",
+                pkg, cwd,
+            )
+
+
 def build_backend(
         *,
         db_path: str,
-        playlists_dir: str | Path = "...ts",
+        playlists_dir: str | Path = "playlists",
         logger: logging.Logger | None = None,
         providers: dict[str, Any] | None = None,
         schedule_sources: dict[str, Any] | None = None,
@@ -49,6 +82,9 @@ def build_backend(
     StandaloneBackend falls back to ProvidersFactory (config-driven).
     """
     logger = logger or logging.getLogger("standalone-backend")
+
+    # Fail-fast: check runtime prerequisites before touching the DB
+    _validate_runtime(db_path, logger)
 
     db = DatabaseManager(db_path)
     try:

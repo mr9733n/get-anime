@@ -34,6 +34,7 @@ fun DesktopApp(
     AnimePlayerTheme {
         Surface {
             val navController = rememberNavController()
+            var catalogRefreshToken by remember { mutableStateOf(0) }
 
             NavHost(navController = navController, startDestination = Route.SEARCH) {
 
@@ -45,6 +46,11 @@ fun DesktopApp(
                         }
                     )
                     val state by vm.state.collectAsState()
+                    LaunchedEffect(catalogRefreshToken) {
+                        if (catalogRefreshToken > 0) {
+                            vm.retry()
+                        }
+                    }
                     SearchScreen(
                         state = state,
                         onQueryChange = vm::onQueryChange,
@@ -101,8 +107,12 @@ fun DesktopApp(
 
                     LaunchedEffect(vm) {
                         vm.playerEvent.collect { event ->
-                            if (event is PlayerLaunchEvent.Launch) {
-                                launchPlayer(settings.playerCommand, event.streamUrl)
+                            when (event) {
+                                is PlayerLaunchEvent.Launch ->
+                                    launchPlayer(settings.playerCommand, event.streamUrl)
+                                is PlayerLaunchEvent.OpenInBrowser ->
+                                    launchBrowser(settings.browserCommand, event.url)
+                                else -> {}
                             }
                         }
                     }
@@ -111,7 +121,10 @@ fun DesktopApp(
                     TitleDetailScreen(
                         state = state,
                         updateState = updateState,
-                        onBack = { navController.popBackStack() },
+                        onBack = {
+                            catalogRefreshToken += 1
+                            navController.popBackStack()
+                        },
                         onEpisodePlay = vm::onEpisodeClick,
                         onEpisodeToggleWatched = { ep ->
                             vm.markEpisodeWatched(ep, ep.isWatched != true)
@@ -120,6 +133,7 @@ fun DesktopApp(
                         onMarkAllWatched = { vm.markAllWatched(true) },
                         onUpdateFromProvider = vm::updateFromProvider,
                         onDismissUpdateResult = vm::dismissUpdateResult,
+                        onPlayAll = vm::playAll,
                     )
                 }
             }
@@ -155,4 +169,28 @@ private fun launchPlayer(playerCommand: String, url: String) {
         }
         runCatching { ProcessBuilder(fallback).start() }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Browser launch — for web-player page URLs
+// ---------------------------------------------------------------------------
+private fun launchBrowser(browserCommand: String, url: String) {
+    if (browserCommand.isNotBlank()) {
+        // User-configured browser (e.g. "C:\Program Files\Google\Chrome\Application\chrome.exe")
+        val parts = browserCommand.trim().split("\\s+".toRegex()) + url
+        try {
+            ProcessBuilder(parts).inheritIO().start()
+            return
+        } catch (_: Exception) { /* fall through to OS default */ }
+    }
+    // OS default browser
+    try {
+        val os = System.getProperty("os.name").lowercase()
+        val cmd = when {
+            os.contains("win") -> listOf("cmd", "/c", "start", "", url)
+            os.contains("mac") -> listOf("open", url)
+            else               -> listOf("xdg-open", url)
+        }
+        ProcessBuilder(cmd).start()
+    } catch (_: Exception) { }
 }

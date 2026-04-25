@@ -47,8 +47,19 @@ class TitlesUpdateController:
             ext = link.get("external_title_id") if isinstance(link, dict) else getattr(link, "external_title_id", None)
             if ext is None:
                 return None
-            # в БД оно часто строкой
-            return ext
+            ext_str = str(ext).strip()
+
+            # AniMedia requires a compound "id@@name" token so its adapter can do a
+            # name-search and then select the correct item by ID.  Legacy DB rows that
+            # were linked before the compound format was introduced store only the bare
+            # numeric ID (e.g. "2002").  Rebuild the token when the @@-separator is
+            # missing so that fetch_payload_by_external_id gets a usable query string.
+            if provider_code == "animedia" and "@@" not in ext_str:
+                name = TitlesUpdateController._fallback_query(t) or ""
+                if name:
+                    return f"{ext_str}@@{name}"
+
+            return ext_str
 
         return None
 

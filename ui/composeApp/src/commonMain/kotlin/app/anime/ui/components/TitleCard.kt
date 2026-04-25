@@ -3,6 +3,10 @@ package app.anime.ui.components
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -10,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,10 +86,14 @@ fun TitleCard(
                 }
             }
 
-            // Watchlist badge
-            if (title.needToSee == true) {
-                WatchlistBadge(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
-            }
+            TitleStateBadges(
+                ratingValue = title.ratingValue,
+                isWatched = title.isWatched == true || title.allEpisodesWatched == true,
+                needToSee = title.needToSee == true,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp),
+            )
         }
     }
 }
@@ -106,18 +115,86 @@ fun TvTitleCard(
 }
 
 @Composable
-private fun WatchlistBadge(modifier: Modifier = Modifier) {
-    Surface(
+private fun TitleStateBadges(
+    ratingValue: Int?,
+    isWatched: Boolean,
+    needToSee: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (ratingValue == null && !isWatched && !needToSee) return
+
+    Row(
         modifier = modifier,
-        shape = RoundedCornerShape(4.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "★",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-            color = Color.White,
-        )
+        if (ratingValue != null) {
+            RatingBadge(value = ratingValue)
+        }
+        if (isWatched) {
+            IconBadge(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = "Просмотрено",
+                containerColor = Color(0xFF2E7D32),
+            )
+        }
+        if (needToSee) {
+            IconBadge(
+                imageVector = Icons.Default.Favorite,
+                contentDescription = "В избранном",
+                containerColor = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RatingBadge(value: Int) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = Color(0xFFE0A21A).copy(alpha = 0.95f),
+        contentColor = Color.Black,
+    ) {
+        Row(
+            modifier = Modifier
+                .height(22.dp)
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "Рейтинг",
+                modifier = Modifier.size(13.dp),
+            )
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IconBadge(
+    imageVector: ImageVector,
+    contentDescription: String,
+    containerColor: Color,
+) {
+    Surface(
+        modifier = Modifier.size(22.dp),
+        shape = RoundedCornerShape(4.dp),
+        color = containerColor.copy(alpha = 0.92f),
+        contentColor = Color.White,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(14.dp),
+            )
+        }
     }
 }
 

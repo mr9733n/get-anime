@@ -173,6 +173,7 @@ class TitleCardDTO:
 
     poster_path_small: str | None
     poster_path_medium: str | None
+    poster_path_original: str | None   # needed for providers that only supply original size (AniMedia)
 
     genres: list[GenreDTO]
     provider_links: list[ProviderLinkDTO]

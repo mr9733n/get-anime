@@ -14,8 +14,11 @@ data class TitleCardDto(
     @SerialName("type")        val type: String? = null,
     @SerialName("status")      val status: String? = null,
     @SerialName("genres")      val genres: List<String> = emptyList(),
+    @SerialName("rating_name")  val ratingName: String? = null,
+    @SerialName("rating_value") val ratingValue: Int? = null,
     // user prefs (available when enrich=true)
     @SerialName("is_watched")     val isWatched: Boolean? = null,
+    @SerialName("all_episodes_watched") val allEpisodesWatched: Boolean? = null,
     @SerialName("need_to_see")    val needToSee: Boolean? = null,
 )
 

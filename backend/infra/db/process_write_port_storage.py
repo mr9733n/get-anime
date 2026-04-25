@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from backend.core.ports.process_write import IProcessWritePort, ApplyProviderPayloadResult
 
-@dataclass(frozen=True)
+@dataclass
 class StorageProcessWritePort(IProcessWritePort):
     """Адаптер над storage/db_manager.process_*.
 
@@ -16,8 +16,12 @@ class StorageProcessWritePort(IProcessWritePort):
     Это позволяет:
       - core: apply_provider_payload(provider_code, payload, mode)
       - infra/storage: process_titles(title_data), process_episodes(title_data), ...
+
+    poster_job: optional PosterJobAdapter — if set, poster URLs in the payload are
+    queued for background download after a title is successfully saved.
     """
     storage: Any
+    poster_job: Any = field(default=None, compare=False, repr=False)
 
     def apply_provider_payload(
         self,
@@ -43,12 +47,15 @@ class StorageProcessWritePort(IProcessWritePort):
                 title_id = None
                 if isinstance(res, dict):
                     title_id = res.get("title_id") or (res.get("result") or {}).get("title_id")
-                return ApplyProviderPayloadResult(
-                    ok=True,
-                    provider_code=provider_code,
-                    mode=m,
-                    title_id=title_id,
-                    details={"applied": applied, "storage_result": res},
+                return self._with_poster(
+                    ApplyProviderPayloadResult(
+                        ok=True,
+                        provider_code=provider_code,
+                        mode=m,
+                        title_id=title_id,
+                        details={"applied": applied, "storage_result": res},
+                    ),
+                    payload,
                 )
 
             if m in ("title_full", "full"):
@@ -73,30 +80,59 @@ class StorageProcessWritePort(IProcessWritePort):
                             title_id = cand
                             break
 
-                return ApplyProviderPayloadResult(
-                    ok=True,
-                    provider_code=provider_code,
-                    mode=m,
-                    title_id=title_id,
-                    details={
-                        "applied": applied,
-                        "storage_result": {"title": res_title, "episodes": res_eps, "torrents": res_torr},
-                    },
+                return self._with_poster(
+                    ApplyProviderPayloadResult(
+                        ok=True,
+                        provider_code=provider_code,
+                        mode=m,
+                        title_id=title_id,
+                        details={
+                            "applied": applied,
+                            "storage_result": {"title": res_title, "episodes": res_eps, "torrents": res_torr},
+                        },
+                    ),
+                    payload,
                 )
 
             if m == "episodes":
                 res = self.storage.process_episodes(payload)
                 applied.append("episodes")
                 title_id = res.get("title_id") if isinstance(res, dict) else None
-                return ApplyProviderPayloadResult(ok=True, provider_code=provider_code, mode=m, title_id=title_id, details={"applied": applied, "storage_result": res})
+                return self._with_poster(
+                    ApplyProviderPayloadResult(ok=True, provider_code=provider_code, mode=m, title_id=title_id, details={"applied": applied, "storage_result": res}),
+                    payload,
+                )
 
             if m == "torrents":
                 res = self.storage.process_torrents(payload)
                 applied.append("torrents")
                 title_id = res.get("title_id") if isinstance(res, dict) else None
-                return ApplyProviderPayloadResult(ok=True, provider_code=provider_code, mode=m, title_id=title_id, details={"applied": applied, "storage_result": res})
+                return self._with_poster(
+                    ApplyProviderPayloadResult(ok=True, provider_code=provider_code, mode=m, title_id=title_id, details={"applied": applied, "storage_result": res}),
+                    payload,
+                )
 
-            return ApplyProviderPayloadResult(ok=False, provider_code=provider_code, mode=m, title_id=None, error=f"unsupported_mode:{m}")
+            return self._with_poster(
+                ApplyProviderPayloadResult(ok=False, provider_code=provider_code, mode=m, title_id=None, error=f"unsupported_mode:{m}"),
+                payload,
+            )
 
         except Exception as e:
             return ApplyProviderPayloadResult(ok=False, provider_code=provider_code, mode=m, title_id=None, error=str(e))
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _with_poster(
+        self,
+        result: ApplyProviderPayloadResult,
+        payload: Any,
+    ) -> ApplyProviderPayloadResult:
+        """Queue poster download after a successful save. Never raises."""
+        if result.ok and result.title_id is not None and self.poster_job is not None:
+            try:
+                self.poster_job.queue_posters_for_payload(result.title_id, payload)
+            except Exception:
+                pass  # poster failures must never break the sync path
+        return result

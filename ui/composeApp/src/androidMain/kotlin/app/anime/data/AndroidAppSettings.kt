@@ -17,6 +17,11 @@ class AndroidAppSettings(private val prefs: SharedPreferences) : AppSettings {
         get() = prefs.getString(KEY_PLAYER_CMD, AppSettings.DEFAULT_PLAYER_COMMAND)!!
         set(value) { prefs.edit().putString(KEY_PLAYER_CMD, value).apply() }
 
+    // Android uses system intents for browser — no user-configurable command
+    override var browserCommand: String
+        get() = AppSettings.DEFAULT_BROWSER_COMMAND
+        set(_) { /* not applicable on Android */ }
+
     companion object {
         private const val PREFS_NAME = "anime_player"
         private const val KEY_BACKEND_URL = "backend_url"

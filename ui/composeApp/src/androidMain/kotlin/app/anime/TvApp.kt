@@ -1,10 +1,14 @@
 package app.anime
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -119,10 +123,28 @@ fun TvApp(
                     factory = remember(repo, titleId) { vmFactory { TitleViewModel(repo, titleId) } },
                 )
                 val state by vm.uiState.collectAsState()
+                val context = LocalContext.current
+
+                // Back navigation fix: intercept the remote/system back button explicitly
+                // so it always navigates back immediately, without focus-management interference.
+                BackHandler(enabled = true) {
+                    navController.popBackStack()
+                }
 
                 LaunchedEffect(vm) {
                     vm.playerEvent.collect { event ->
-                        if (event is PlayerLaunchEvent.Launch) onPlayStream(event.streamUrl)
+                        when (event) {
+                            is PlayerLaunchEvent.Launch -> onPlayStream(event.streamUrl)
+                            is PlayerLaunchEvent.OpenInBrowser -> {
+                                // On Android TV, open web-player pages via system browser Intent
+                                runCatching {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(event.url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(intent)
+                                }
+                            }
+                            else -> {}
+                        }
                     }
                 }
 
@@ -139,6 +161,7 @@ fun TvApp(
                     onMarkAllWatched = { vm.markAllWatched(true) },
                     onUpdateFromProvider = vm::updateFromProvider,
                     onDismissUpdateResult = vm::dismissUpdateResult,
+                    onPlayAll = vm::playAll,
                 )
             }
         }

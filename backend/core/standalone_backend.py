@@ -69,8 +69,20 @@ class StandaloneBackend:
             composer=composer,
             progress_repo=progress_repo,
         )
-        # write-path
-        write_port = StorageProcessWritePort(storage=self._db)
+        # ── Poster ingestion (background, optional) ──────────────────────────
+        self._poster_job = None
+        try:
+            from utils.net.net_client import NetClient
+            from backend.infra.poster.poster_job_adapter import PosterJobAdapter
+            _net_cfg = getattr(cfg, "network", None)
+            if _net_cfg is not None:
+                self._poster_job = PosterJobAdapter(db=self._db, net_client=NetClient(_net_cfg))
+        except Exception as _poster_err:
+            # Poster ingestion is optional — backend works fine without it
+            logging.getLogger("backend").debug("Poster ingestion not available: %s", _poster_err)
+
+        # write-path (poster_job may be None → posters simply not queued)
+        write_port = StorageProcessWritePort(storage=self._db, poster_job=self._poster_job)
         uc = ApplyProviderPayloadUseCase(write_port=write_port)
         self.process = ProcessController(use_case=uc)
 

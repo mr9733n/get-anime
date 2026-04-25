@@ -225,6 +225,10 @@ backend/
         ├── handlers.py  ← JSON-RPC dispatch table
         └── protocol.py  ← ok() / fail() helpers
 
+storage/                 ← ⚠️ REQUIRED AT RUNTIME (DB access, poster blobs, process/write-path)
+utils/                   ← ⚠️ REQUIRED AT RUNTIME (image helpers, general utilities)
+providers/               ← ⚠️ REQUIRED AT RUNTIME (AniMedia / AniLiberty adapters, local cache)
+
 deploy/
 ├── install_linux.sh
 ├── install_windows.bat
@@ -232,6 +236,15 @@ deploy/
 
 requirements.txt         ← all Python dependencies
 ```
+
+> **Important**: the server is not a self-contained package inside `backend/`.
+> At runtime it also imports from `storage/`, `utils/`, and `providers/` at the
+> **repo root**. When deploying or building a PyInstaller binary, all three
+> directories must be present alongside `backend/` in the working directory (or
+> included in the spec via `datas`/`hiddenimports`).
+>
+> Systemd / Task Scheduler `WorkingDirectory` must point to the repo root, not
+> to the `backend/` subdirectory.
 
 ---
 

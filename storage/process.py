@@ -159,8 +159,19 @@ class ProcessManager:
                 'announce': raw_title_data.get('announce', ''),
                 'status_string': raw_title_data.get('status', {}).get('string', ''),
                 'status_code': raw_title_data.get('status', {}).get('code', None),
-                'poster_path_small': raw_title_data.get('posters', {}).get('small', {}).get('url', ''),
-                'poster_path_medium': raw_title_data.get('posters', {}).get('medium', {}).get('url', ''),
+                # Extract poster URLs — some providers (e.g. AniMedia) only populate
+                # 'original'; fall through sizes so poster_path_medium is never left
+                # empty when a URL is available from any size.
+                'poster_path_small': (
+                    raw_title_data.get('posters', {}).get('small', {}).get('url', '')
+                    or raw_title_data.get('posters', {}).get('medium', {}).get('url', '')
+                    or raw_title_data.get('posters', {}).get('original', {}).get('url', '')
+                ),
+                'poster_path_medium': (
+                    raw_title_data.get('posters', {}).get('medium', {}).get('url', '')
+                    or raw_title_data.get('posters', {}).get('original', {}).get('url', '')
+                    or raw_title_data.get('posters', {}).get('small', {}).get('url', '')
+                ),
                 'poster_path_original': raw_title_data.get('posters', {}).get('original', {}).get('url', ''),
                 'updated': raw_title_data.get('updated', 0) or 0,
                 'last_change': raw_title_data.get('last_change', 0) or 0,

@@ -15,7 +15,10 @@ sealed interface TitleDetailUiState {
 }
 
 sealed interface PlayerLaunchEvent {
+    /** Play a direct media stream or playlist file via the configured video player. */
     data class Launch(val streamUrl: String, val episodeNumber: Int, val titleName: String) : PlayerLaunchEvent
+    /** Open a web-player page in a browser (URL is not a direct media stream). */
+    data class OpenInBrowser(val url: String) : PlayerLaunchEvent
     data class Error(val message: String) : PlayerLaunchEvent
 }
 
@@ -66,11 +69,56 @@ class TitleViewModel(
                 ?: throw Exception("No stream URL available")
                 val titleName = (_uiState.value as? TitleDetailUiState.Success)
                     ?.title?.nameRu ?: "Episode ${episode.episodeNumber}"
-                _playerEvent.emit(PlayerLaunchEvent.Launch(url, episode.episodeNumber, titleName))
+                if (isWebPlayerUrl(url)) {
+                    _playerEvent.emit(PlayerLaunchEvent.OpenInBrowser(url))
+                } else {
+                    _playerEvent.emit(PlayerLaunchEvent.Launch(url, episode.episodeNumber, titleName))
+                }
             }.onFailure { e ->
                 _playerEvent.emit(PlayerLaunchEvent.Error(e.message ?: "Stream error"))
             }
         }
+    }
+
+    /**
+     * Compose a full-title playlist via the backend and send it to the video player.
+     * The playlist file path is emitted as a [PlayerLaunchEvent.Launch] event —
+     * mpv/vlc accept local .m3u8 paths directly.
+     */
+    fun playAll() {
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Loading
+            runCatching { repo.composeSinglePlaylist(titleId) }
+                .onSuccess { path ->
+                    _updateState.value = UpdateState.Idle
+                    if (path.isNotEmpty()) {
+                        val titleName = (_uiState.value as? TitleDetailUiState.Success)
+                            ?.title?.nameRu ?: ""
+                        _playerEvent.emit(PlayerLaunchEvent.Launch(path, 0, titleName))
+                    }
+                }
+                .onFailure { e ->
+                    _updateState.value = UpdateState.Error("Playlist: ${e.message}")
+                }
+        }
+    }
+
+    /**
+     * Returns true when [url] is a web-player page rather than a direct media stream.
+     * Such URLs should be opened in a browser, not passed to mpv/vlc.
+     */
+    private fun isWebPlayerUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
+        // Direct media indicators — these go to the video player
+        return !lower.contains(".m3u8") &&
+            !lower.contains(".mp4") &&
+            !lower.contains(".webm") &&
+            !lower.contains(".mkv") &&
+            !lower.contains(".avi") &&
+            !(lower.endsWith(".ts") || lower.contains(".ts?")) &&
+            !lower.contains("/hls/") &&
+            !lower.contains("playlist")
     }
 
     fun markEpisodeWatched(episode: EpisodeDto, watched: Boolean = true) {
@@ -87,8 +135,19 @@ class TitleViewModel(
             val updatedEpisodes = current.title.episodes.map {
                 if (it.episodeId == episode.episodeId) it.copy(isWatched = watched) else it
             }
+            val watchedEpisodeCount = updatedEpisodes.count { it.isWatched == true }
+            val allEpisodesWatched = updatedEpisodes.isNotEmpty() &&
+                watchedEpisodeCount == updatedEpisodes.size
+            val explicitTitleWatched = current.title.historyRecords.any {
+                it.episodeId == null && it.isWatched
+            }
             _uiState.value = TitleDetailUiState.Success(
-                current.title.copy(episodes = updatedEpisodes)
+                current.title.copy(
+                    episodes = updatedEpisodes,
+                    watchedEpisodeCount = watchedEpisodeCount,
+                    allEpisodesWatched = allEpisodesWatched,
+                    isWatched = explicitTitleWatched || allEpisodesWatched,
+                )
             )
         }
     }
@@ -110,7 +169,12 @@ class TitleViewModel(
             val current = (_uiState.value as? TitleDetailUiState.Success) ?: return@launch
             val updatedEpisodes = current.title.episodes.map { it.copy(isWatched = watched) }
             _uiState.value = TitleDetailUiState.Success(
-                current.title.copy(episodes = updatedEpisodes)
+                current.title.copy(
+                    episodes = updatedEpisodes,
+                    watchedEpisodeCount = if (watched) updatedEpisodes.size else 0,
+                    allEpisodesWatched = watched && updatedEpisodes.isNotEmpty(),
+                    isWatched = watched,
+                )
             )
         }
     }

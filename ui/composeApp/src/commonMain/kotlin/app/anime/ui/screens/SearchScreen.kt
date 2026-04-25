@@ -92,6 +92,18 @@ fun SearchScreen(
                 }
             }
 
+            // Guard against a blank/white screen when results are empty but there is
+            // no active load and no error (e.g. initial state or cleared query).
+            state.results.isEmpty() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (state.query.isBlank()) "Введите запрос для поиска"
+                               else "По запросу «${state.query}» ничего не найдено",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             else -> {
                 val gridState = rememberLazyGridState()
 

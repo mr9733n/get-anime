@@ -51,9 +51,48 @@ def _genres(raw: list) -> list[str]:
     return [g["name"] for g in (raw or []) if g.get("name")]
 
 
+def _ratings(raw: list) -> list[dict]:
+    """Keep only the rating fields the UI can render."""
+    return [
+        {
+            "rating_name": r.get("rating_name"),
+            "rating_value": r.get("rating_value"),
+            "name_external": r.get("name_external"),
+            "score_external": r.get("score_external"),
+        }
+        for r in (raw or [])
+        if r.get("rating_value") is not None or r.get("score_external") is not None
+    ]
+
+
+def _franchises(raw: list) -> list[dict]:
+    """Flatten FranchiseDTO-dicts for the Kotlin UI."""
+    return [
+        {
+            "franchise_id": fr.get("franchise_id"),
+            "franchise_name": fr.get("franchise_name"),
+            "code": fr.get("code"),
+            "ordinal": fr.get("ordinal"),
+            "name_ru": fr.get("name_ru"),
+            "name_en": fr.get("name_en"),
+            "name_alternative": fr.get("name_alternative"),
+        }
+        for fr in (raw or [])
+    ]
+
+
 def _poster_cdn(d: dict) -> str | None:
-    """Return CDN URL from title dict if present (AniLiberty etc.)."""
-    return d.get("poster_path_medium") or d.get("poster_path_small")
+    """Return a CDN poster URL from the title dict, checking all stored sizes.
+
+    AniMedia (and similar providers) only populates poster_path_original;
+    medium/small are stored as empty strings.  Check all three so any provider
+    that supplies at least one size gets a working poster URL.
+    """
+    return (
+        d.get("poster_path_medium")
+        or d.get("poster_path_small")
+        or d.get("poster_path_original")
+    )
 
 
 def _poster_url(d: dict) -> str | None:
@@ -118,7 +157,10 @@ def _normalize_title_card(d: dict) -> dict:
         "type":       d.get("type_string"),
         "status":     d.get("status_string"),
         "genres":     _genres(d.get("genres", [])),
+        "rating_name": d.get("rating_name"),
+        "rating_value": d.get("rating_value"),
         "is_watched": d.get("title_watched"),
+        "all_episodes_watched": d.get("all_episodes_watched"),
         "need_to_see": d.get("need_to_see"),
     }
 
@@ -142,6 +184,8 @@ def _normalize_title_details(d: dict) -> dict:
         "type":        d.get("type_string"),
         "status":      d.get("status_string"),
         "genres":      _genres(d.get("genres", [])),
+        "ratings":     _ratings(d.get("ratings", [])),
+        "franchises":  _franchises(d.get("franchises", [])),
         "episodes": [
             _normalize_episode(ep, title_id, watched_ids, host_for_player=host_for_player)
             for ep in d.get("episodes", [])
@@ -155,6 +199,8 @@ def _normalize_title_details(d: dict) -> dict:
             for pl in d.get("provider_links", [])
         ],
         "is_watched":  d.get("title_watched"),
+        "all_episodes_watched": d.get("all_episodes_watched"),
+        "watched_episode_count": len(watched_ids),
         "need_to_see": d.get("need_to_see"),
         "history_records": [
             {
@@ -229,20 +275,25 @@ def build_app(backend):
     @app.get("/poster/{title_id}")
     def poster(title_id: int):
         """
-        #2 fix: Serve poster blob for titles whose poster is stored in the
-        `posters` table rather than as a CDN URL.
-        Returns JPEG/PNG bytes directly so the Kotlin client can load them
-        as a standard image URL: <backendUrl>/poster/<title_id>
+        Serve poster blob stored in the `posters` table.
+
+        Concurrency fix: uses a *request-local* SQLAlchemy session instead of
+        the shared DatabaseManager.Session to avoid identity-map corruption
+        when multiple requests are in-flight simultaneously.
         """
         from fastapi.responses import Response as FastResponse
+        from sqlalchemy.orm import sessionmaker as _sm
+        from storage.tables import Poster
+        from storage.types import POSTER_FIELDS
         try:
-            blob, _is_placeholder = backend._db.get_poster_blob(title_id, "medium")
-            if blob:
-                return FastResponse(content=blob, media_type="image/jpeg")
-            # Try small as fallback
-            blob, _ = backend._db.get_poster_blob(title_id, "small")
-            if blob:
-                return FastResponse(content=blob, media_type="image/jpeg")
+            _SessionLocal = _sm(bind=backend._db.engine, autocommit=False, autoflush=False)
+            with _SessionLocal() as session:
+                p = session.query(Poster).filter_by(title_id=title_id).first()
+                if p:
+                    for size_key in ("medium", "small"):
+                        raw = getattr(p, POSTER_FIELDS[size_key].blob, None)
+                        if raw:
+                            return FastResponse(content=bytes(raw), media_type="image/jpeg")
         except Exception as exc:
             log.debug("poster fetch failed for title_id=%s: %s", title_id, exc)
         raise HTTPException(status_code=404, detail="Poster not found")

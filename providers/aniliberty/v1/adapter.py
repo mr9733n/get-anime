@@ -72,6 +72,54 @@ class APIAdapter:
             self.logger.error(f"Error in get_schedule: {e}")
             return {'error': str(e)}
 
+    def get_schedule_light(self, day):
+        """Lightweight schedule fetch — external_id + names + poster + week_day only.
+
+        Unlike get_schedule(), does NOT make per-release network calls to fetch
+        episodes / torrents / team / franchises.  Used by backend schedule.sync
+        which only needs to resolve external_id → title_id and store day_of_week.
+        Roughly O(1) network calls instead of O(N).
+        """
+        try:
+            today = datetime.now().isoweekday()
+            day = int(day)
+            if day == today:
+                raw_data = self.client.get_schedule_now()
+            else:
+                raw_data = self.client.get_schedule_week()
+
+            if isinstance(raw_data, dict) and 'error' in raw_data:
+                return raw_data
+
+            releases = self._extract_releases(raw_data)
+            adapted: list[dict] = []
+            for release in releases:
+                try:
+                    rel = release.get("release") if isinstance(release, dict) else None
+                    obj = rel if isinstance(rel, dict) else release
+                    wd = (obj.get("publish_day") or {}).get("value")
+                    if wd is None:
+                        continue
+                    if int(wd) != day:
+                        continue
+                    # Map without any extra network calls — we only need id/names/posters
+                    mapped = self._enrich_and_adapt(
+                        obj,
+                        fetch_episodes=False,
+                        fetch_torrents=False,
+                        fetch_team=False,
+                        fetch_franchises=False,
+                        allow_network=False,
+                    )
+                    adapted.append(mapped)
+                except Exception:
+                    continue
+
+            return [{'day': day, 'list': adapted}]
+        except Exception as e:
+            self.logger.error(f"Error in get_schedule_light: {e}")
+            return {'error': str(e)}
+
     def _process_schedule_releases(self, day, releases):
         filtered = []
         for release in releases:

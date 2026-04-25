@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.anime.data.dto.EpisodeDto
+import app.anime.data.dto.FranchiseDto
+import app.anime.data.dto.RatingDto
 import app.anime.data.dto.TitleDetailsDto
 import app.anime.presentation.TitleDetailUiState
 import app.anime.presentation.UpdateState
@@ -30,6 +32,7 @@ fun TitleDetailScreen(
     onMarkAllWatched: () -> Unit,
     onUpdateFromProvider: () -> Unit = {},
     onDismissUpdateResult: () -> Unit = {},
+    onPlayAll: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -60,6 +63,7 @@ fun TitleDetailScreen(
                 onMarkAllWatched = onMarkAllWatched,
                 onUpdateFromProvider = onUpdateFromProvider,
                 onDismissUpdateResult = onDismissUpdateResult,
+                onPlayAll = onPlayAll,
                 modifier = modifier,
             )
         }
@@ -78,6 +82,7 @@ private fun TitleDetailContent(
     onMarkAllWatched: () -> Unit,
     onUpdateFromProvider: () -> Unit,
     onDismissUpdateResult: () -> Unit,
+    onPlayAll: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Auto-dismiss "Done" state after 2 seconds
@@ -98,6 +103,19 @@ private fun TitleDetailContent(
                     }
                 },
                 actions = {
+                    // Play all episodes as a playlist — only when at least one episode has a
+                    // direct HLS stream (web-player-only titles can't form a local playlist).
+                    val hasStreamableEpisodes = title.episodes.any { ep ->
+                        ep.hlsSd != null || ep.hlsHd != null || ep.hlsFhd != null
+                    }
+                    if (hasStreamableEpisodes) {
+                        IconButton(
+                            onClick = onPlayAll,
+                            enabled = updateState !is UpdateState.Loading,
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Воспроизвести все")
+                        }
+                    }
                     // #3: Update from provider button
                     IconButton(
                         onClick = onUpdateFromProvider,
@@ -191,6 +209,10 @@ private fun TitleDetailContent(
                     }
                 }
 
+                item {
+                    TitleMetadataSection(title = title)
+                }
+
                 if (title.episodes.isNotEmpty()) {
                     item {
                         Text(
@@ -210,6 +232,103 @@ private fun TitleDetailContent(
             }
         }
     }
+}
+
+@Composable
+private fun TitleMetadataSection(title: TitleDetailsDto) {
+    val hasEpisodeState = title.episodes.isNotEmpty()
+    val watchedEpisodeCount = if (hasEpisodeState) {
+        title.episodes.count { it.isWatched == true }
+    } else {
+        title.watchedEpisodeCount ?: 0
+    }
+    val totalEpisodes = title.episodes.size
+    val allEpisodesWatched = if (hasEpisodeState) {
+        watchedEpisodeCount == totalEpisodes
+    } else {
+        title.allEpisodesWatched == true
+    }
+    val explicitTitleWatched = title.isWatched == true ||
+        title.historyRecords.any { it.episodeId == null && it.isWatched }
+    val watchedText = when {
+        allEpisodesWatched || (!hasEpisodeState && explicitTitleWatched) -> "Тайтл просмотрен"
+        watchedEpisodeCount > 0 && totalEpisodes > 0 ->
+            "Тайтл просмотрен частично (просмотрено ${formatEpisodeCount(watchedEpisodeCount)})"
+        else -> "Тайтл не просмотрен"
+    }
+    val ratingLines = title.ratings.mapNotNull(::formatRating).distinct()
+    val franchiseLines = title.franchises
+        .sortedBy { it.ordinal ?: Int.MAX_VALUE }
+        .mapNotNull(::formatFranchise)
+        .distinct()
+
+    if (watchedText.isBlank() && ratingLines.isEmpty() && franchiseLines.isEmpty()) return
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MetadataLine(label = "Просмотр", value = watchedText)
+            if (ratingLines.isNotEmpty()) {
+                MetadataLine(label = "Рейтинг", value = ratingLines.joinToString(", "))
+            }
+            if (franchiseLines.isNotEmpty()) {
+                MetadataLine(label = "Франшизы", value = franchiseLines.joinToString("\n"))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetadataLine(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+private fun formatRating(rating: RatingDto): String? {
+    val value = rating.ratingValue?.toString() ?: rating.scoreExternal?.toString() ?: return null
+    val name = rating.ratingName
+        ?: rating.nameExternal
+        ?: "Рейтинг"
+    return "$name: $value"
+}
+
+private fun formatFranchise(franchise: FranchiseDto): String? {
+    val name = franchise.nameRu
+        ?: franchise.nameEn
+        ?: franchise.nameAlternative
+        ?: franchise.franchiseName
+        ?: franchise.code
+        ?: return null
+    return franchise.ordinal?.let { "$it. $name" } ?: name
+}
+
+private fun formatEpisodeCount(count: Int): String {
+    val mod100 = count % 100
+    val mod10 = count % 10
+    val word = when {
+        mod100 in 11..14 -> "серий"
+        mod10 == 1 -> "серия"
+        mod10 in 2..4 -> "серии"
+        else -> "серий"
+    }
+    return "$count $word"
 }
 
 @Composable

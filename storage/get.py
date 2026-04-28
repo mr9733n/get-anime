@@ -23,6 +23,9 @@ class GetManager:
             try:
                 return (
                     session.query(Title)
+                    .options(
+                        joinedload(Title.schedules).joinedload(Schedule.day),
+                    )
                     .join(Schedule)
                     .filter(Schedule.day_of_week == day_of_week)
                     .filter(Title.is_deleted == False)

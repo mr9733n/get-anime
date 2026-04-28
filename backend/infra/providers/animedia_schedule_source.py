@@ -19,6 +19,7 @@ We derive day_of_week (1=Mon…7=Sun) from the parsed date/relative word.
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -27,6 +28,8 @@ from backend.core.dto.schedule import ScheduleItemNormalized
 from backend.core.ports.schedule_port import IProviderScheduleSource
 
 _PROVIDER_CODE = "animedia"
+_TIME_RE = re.compile(r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})")
+_DATE_RE = re.compile(r"(?P<day>\d{1,2})[-./](?P<month>\d{1,2})[-./](?P<year>\d{4})")
 
 
 def _parse_animedia_meta(meta: str, *, now: datetime | None = None) -> datetime | None:
@@ -36,44 +39,46 @@ def _parse_animedia_meta(meta: str, *, now: datetime | None = None) -> datetime 
     Handles:
       "Сегодня, 16:00"       → today's date at 16:00 (tz-naive)
       "Вчера, 16:00"         → yesterday at 16:00 (tz-naive)
+      "Новая серия в 16:00"  → today's date at 16:00 (tz-naive)
       "7-01-2026, 16:00"     → 2026-01-07 at 16:00 (tz-naive)
       ""                     → None
     Returns tz-naive datetime or None.
     """
-    meta = (meta or "").strip()
+    meta = " ".join((meta or "").replace("\xa0", " ").split())
     if not meta:
         return None
 
     ref = now or datetime.now()
+    normalized = meta.lower()
 
-    # Split on comma: ["Сегодня", " 16:00"] or ["7-01-2026", " 16:00"]
-    parts = meta.split(",", 1)
-    date_part = parts[0].strip().lower()
-    time_str = parts[1].strip() if len(parts) > 1 else ""
-
-    # Parse time
     hour, minute = 0, 0
-    if time_str:
+    time_match = _TIME_RE.search(normalized)
+    if time_match:
         try:
-            t = datetime.strptime(time_str.strip(), "%H:%M")
-            hour, minute = t.hour, t.minute
+            parsed_hour = int(time_match.group("hour"))
+            parsed_minute = int(time_match.group("minute"))
+            if 0 <= parsed_hour <= 23 and 0 <= parsed_minute <= 59:
+                hour, minute = parsed_hour, parsed_minute
+            else:
+                return None
         except ValueError:
-            pass
+            return None
 
-    # Determine base date
-    if date_part in ("сегодня", "today"):
+    if "сегодня" in normalized or "today" in normalized or "новая серия" in normalized:
         base = ref.date()
-    elif date_part in ("вчера", "yesterday"):
+    elif "вчера" in normalized or "yesterday" in normalized:
         base = (ref - timedelta(days=1)).date()
     else:
-        # Try "DD-MM-YYYY"
-        for fmt in ("%d-%m-%Y", "%d.%m.%Y", "%d/%m/%Y"):
-            try:
-                base = datetime.strptime(date_part, fmt).date()
-                break
-            except ValueError:
-                continue
-        else:
+        date_match = _DATE_RE.search(normalized)
+        if date_match is None:
+            return None
+        try:
+            base = datetime(
+                int(date_match.group("year")),
+                int(date_match.group("month")),
+                int(date_match.group("day")),
+            ).date()
+        except ValueError:
             return None
 
     return datetime(base.year, base.month, base.day, hour, minute)
@@ -95,6 +100,11 @@ class AniMediaScheduleSource(IProviderScheduleSource):
     def _log(self, msg: str) -> None:
         lg = self.logger or logging.getLogger(__name__)
         lg.debug(msg)
+
+    def invalidate_cache(self) -> None:
+        invalidate = getattr(self.api, "invalidate_schedule_cache", None)
+        if callable(invalidate):
+            invalidate()
 
     def get_schedule(self, *, day: int | None = None) -> list[ScheduleItemNormalized]:
         """
@@ -124,6 +134,12 @@ class AniMediaScheduleSource(IProviderScheduleSource):
         items: list[ScheduleItemNormalized] = []
 
         for page_entry in pages:
+            page = page_entry.get("page")
+            try:
+                page_int = int(page)
+            except (TypeError, ValueError):
+                page_int = None
+            section = "announcement" if page_int == 0 else "schedule"
             raw_titles: list[str] = page_entry.get("titles") or []
             for raw in raw_titles:
                 if not isinstance(raw, str) or not raw.strip():
@@ -154,9 +170,94 @@ class AniMediaScheduleSource(IProviderScheduleSource):
                         episode_label=si.episode,
                         poster_url=si.poster_url,
                         title_url=si.link,
-                        raw=raw,
+                        raw={
+                            "encoded": raw,
+                            "page": page_int,
+                            "section": section,
+                            "title": si.title,
+                            "meta": si.meta,
+                            "episode": si.episode,
+                            "poster_url": si.poster_url,
+                            "title_url": si.link,
+                        },
                     )
                 )
 
         self._log(f"AniMedia schedule: {len(items)} items (day={day})")
+        return items
+
+    def get_catalog(
+        self,
+        *,
+        max_titles: int = 120,
+        pages: int = 5,
+        load_more: bool = False,
+    ) -> list[ScheduleItemNormalized]:
+        """Fetch AniMedia catalog as lightweight provider-only title cards."""
+        if load_more:
+            raw_pages = self._run_async(self.api.load_more_titles(pages))
+        else:
+            raw_pages = self._run_async(self.api.get_all_titles(max_titles, pages))
+        return self._normalize_pages(raw_pages or [], section="catalog")
+
+    @staticmethod
+    def _run_async(coro):
+        try:
+            return asyncio.run(coro)
+        except RuntimeError:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, coro).result()
+
+    def _normalize_pages(
+        self,
+        pages: list[dict[str, Any]],
+        *,
+        section: str,
+    ) -> list[ScheduleItemNormalized]:
+        from providers.animedia.v0.models import ScheduleItem
+
+        items: list[ScheduleItemNormalized] = []
+        for page_entry in pages:
+            page = page_entry.get("page")
+            try:
+                page_int = int(page)
+            except (TypeError, ValueError):
+                page_int = None
+
+            raw_titles: list[str] = page_entry.get("titles") or []
+            for raw in raw_titles:
+                if not isinstance(raw, str) or not raw.strip():
+                    continue
+                try:
+                    si = ScheduleItem.from_separator_string(raw)
+                except Exception as exc:
+                    self._log(f"AniMedia catalog parse error: {exc!r} raw={raw!r}")
+                    continue
+
+                ext_id = (si.title_id or "").strip()
+                if not ext_id:
+                    continue
+
+                items.append(
+                    ScheduleItemNormalized(
+                        provider_code=_PROVIDER_CODE,
+                        external_title_id=ext_id,
+                        day_of_week=None,
+                        air_dt=None,
+                        episode_label=si.episode,
+                        poster_url=si.poster_url,
+                        title_url=si.link,
+                        raw={
+                            "encoded": raw,
+                            "page": page_int,
+                            "section": section,
+                            "title": si.title,
+                            "meta": si.meta,
+                            "episode": si.episode,
+                            "poster_url": si.poster_url,
+                            "title_url": si.link,
+                        },
+                    )
+                )
         return items

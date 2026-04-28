@@ -4,7 +4,10 @@ from sqlalchemy.orm import joinedload
 
 from backend.core.ports.titles_port import ITitlesPort
 
-from storage.tables import TitleProviderMap, Title, TitleGenreRelation, Genre
+from storage.tables import (
+    TitleProviderMap, Title, TitleGenreRelation, Genre, History,
+    TeamMember, TitleTeamRelation, FranchiseRelease,
+)
 
 
 class SqlAlchemyTitlesPort(ITitlesPort):
@@ -38,12 +41,27 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         genre: str | None,
         status_filter: str | None,
         type_filter: str | None,
+        need_to_see: bool | None,
+        team_member_id: int | None,
+        team_member: str | None,
+        franchise_id: int | None,
+        sort: str | None,
     ) -> bool:
-        return any(x is not None for x in (year, genre, status_filter, type_filter))
+        return (
+            any(x is not None for x in (year, genre, status_filter, type_filter))
+            or need_to_see is True
+            or team_member_id is not None
+            or team_member is not None
+            or franchise_id is not None
+            or sort == "recent"
+        )
 
     def _filtered_query(self, session, query: str,
                         year: int | None, genre: str | None,
-                        status_filter: str | None, type_filter: str | None):
+                        status_filter: str | None, type_filter: str | None,
+                        need_to_see: bool | None, user_id: int,
+                        team_member_id: int | None, team_member: str | None,
+                        franchise_id: int | None):
         """
         #9: SQLAlchemy query that applies optional filters.
         Falls back to legacy get_titles_search_query when no filters given.
@@ -75,7 +93,45 @@ class SqlAlchemyTitlesPort(ITitlesPort):
                  .filter(Genre.name.ilike(f"%{genre}%"))
             )
 
+        if team_member_id is not None:
+            q = (
+                q.join(TitleTeamRelation, TitleTeamRelation.title_id == Title.title_id)
+                 .filter(TitleTeamRelation.team_member_id == int(team_member_id))
+                 .distinct()
+            )
+        elif team_member:
+            q = (
+                q.join(TitleTeamRelation, TitleTeamRelation.title_id == Title.title_id)
+                 .join(TeamMember, TeamMember.id == TitleTeamRelation.team_member_id)
+                 .filter(TeamMember.name.ilike(f"%{team_member}%"))
+                 .distinct()
+            )
+
+        if franchise_id is not None:
+            q = (
+                q.join(FranchiseRelease, FranchiseRelease.title_id == Title.title_id)
+                 .filter(FranchiseRelease.franchise_id == int(franchise_id))
+                 .distinct()
+            )
+
+        if need_to_see is True:
+            q = (
+                q.join(History, History.title_id == Title.title_id)
+                 .filter(History.user_id == int(user_id))
+                 .filter(History.need_to_see.is_(True))
+                 .distinct()
+            )
+
         return q
+
+    def _ordered_query(self, q, sort: str | None):
+        if sort == "recent":
+            return q.order_by(
+                Title.last_updated.desc(),
+                Title.updated.desc(),
+                Title.title_id.desc(),
+            )
+        return q.order_by(Title.title_id.desc())
 
     def search_title_ids(
         self,
@@ -87,15 +143,28 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> list[int]:
         """
         When any filter is set, use a direct SQLAlchemy query.
         Without filters, delegate to the legacy get_titles_search_query.
         """
-        if self._has_filters(year, genre, status_filter, type_filter):
+        sort = (sort or "").strip().lower() or None
+        if self._has_filters(
+            year, genre, status_filter, type_filter, need_to_see,
+            team_member_id, team_member, franchise_id, sort,
+        ):
             with self._db.Session() as session:
-                q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
-                rows = q.order_by(Title.title_id.desc()).offset(int(offset)).limit(int(limit)).all()
+                q = self._filtered_query(
+                    session, query or "", year, genre, status_filter, type_filter, need_to_see, user_id,
+                    team_member_id, team_member, franchise_id,
+                )
+                rows = self._ordered_query(q, sort).offset(int(offset)).limit(int(limit)).all()
                 return [int(r[0]) for r in rows]
 
         # Legacy path (no filters)
@@ -130,10 +199,23 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> int:
-        if self._has_filters(year, genre, status_filter, type_filter):
+        sort = (sort or "").strip().lower() or None
+        if self._has_filters(
+            year, genre, status_filter, type_filter, need_to_see,
+            team_member_id, team_member, franchise_id, sort,
+        ):
             with self._db.Session() as session:
-                q = self._filtered_query(session, query or "", year, genre, status_filter, type_filter)
+                q = self._filtered_query(
+                    session, query or "", year, genre, status_filter, type_filter, need_to_see, user_id,
+                    team_member_id, team_member, franchise_id,
+                )
                 return q.count()
         rows = self._db.get_titles_search_query(query=query)
         return len(rows) if rows else 0

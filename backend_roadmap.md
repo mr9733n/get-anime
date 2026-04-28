@@ -400,16 +400,30 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 * [x] Добавить regression test: для тайтла без AniMedia provider link backend не должен дергать `amd.online` с `story=<local_title_id>`.
   * `tests/backend/test_titles_update_controller.py` (25 tests): unit tests for `_pick_external_id_from_links`, `_fallback_query`, and end-to-end `update_titles` routing — covers no-link name-query, legacy bare-id compound rebuild, explicit vs resolved provider_code.
 
+* [x] AniMedia episodes hot reload: `titles.update` / `sync.fetch_and_process` accept `force_refresh=true`.
+  * Only the matching `temp/am_vlink_cache.json` item is invalidated; schedule/all-title caches remain untouched.
+  * Detail screen exposes a separate force-refresh action for AniMedia-linked titles.
+
 ### AniMedia catalog/cache
 
-* [ ] Реализовать отображение новых тайтлов AniMedia через существующий локальный cache-flow.
-* [ ] Реализовать backend-операцию/путь для списка тайтлов AniMedia из локального кеша.
-* [ ] Определить refresh policy/cache invalidation для AniMedia cache.
-* [ ] Проверить UI browse/search сценарий: новые AniMedia titles видны без прямого API-list endpoint.
+Этот блок теперь разделён на уже сделанную schedule/feed-часть и оставшуюся работу по отдельному каталогу.
+
+* [x] Отображать AniMedia new-title/feed items в schedule UI через существующий локальный cache-flow.
+  * Refresh расписания обновляет provider cache и отдаёт provider-only lightweight items.
+  * Элементы, уже связанные с локальными DB title, открывают detail; unresolved элементы показывают явное действие загрузки.
+* [x] Не вызывать полный AniMedia `get_by_title()` при рендере schedule/feed.
+  * Полная загрузка AniMedia остаётся явной: выбранный item load/update action.
+* [x] Добавить отдельную backend-операцию/путь для полного lightweight-каталога AniMedia из локального кеша.
+  * Целевой источник: provider `get_all_titles(limit/page)` / `am_all_titles_cache.json`.
+  * Реализовано через `provider.catalog`: отдаёт list-safe provider items без per-item `get_by_title()`.
+* [x] Определить refresh policy/cache invalidation для AniMedia catalog cache.
+  * Первый срез cache-first; кнопка «Загрузить еще» двигает catalog cache через `load_more_titles()`.
+* [x] Добавить отдельный UI flow «показать все тайтлы AniMedia» с фильтрами и de-duplication с DB titles.
+  * `AniMediaCatalogScreen`: поиск, фильтр `Все / В базе / Не загружены`, явная загрузка выбранного тайтла.
 
 **Definition of Done:**
 
-* README и build/deploy docs перечисляют все runtime-директории backend.
+* README и build/deploy docs перечисляют все code/runtime и mutable data директории backend.
 * Poster ingestion запускается из provider sync/update path и не блокирует основной read-flow.
 * AniLiberty schedule реально обновляется из API и отображается через `schedule.get`.
 * AniLiberty/AniMedia title fetch работает через общий backend pipeline.
@@ -477,9 +491,46 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 
 ---
 
+## 🟡 TODO — UI Catalog / Title List Layout
+
+**Симптом:** на полноэкранном desktop layout плитки тайтлов выглядят странно: фиксированный размер карточки и фиксированное число колонок плохо используют ширину окна, появляется ощущение пустого/случайного пространства.
+
+* [x] Переработать `SearchScreen` title list layout под adaptive grid:
+  * `SearchScreen` uses `GridCells.Adaptive(minSize = 150.dp)` and stable `TitleCard(width=150, height=225)`.
+  * Follow-up visual QA still lives below as a manual check item.
+* [ ] Добавить режим плотности/представления:
+  * poster grid для визуального browse;
+  * compact list/table для внутреннего поиска по `title_id`, provider, status, rating.
+* [ ] Улучшить содержимое плитки:
+  * не перегружать постер, но аккуратно показывать rating/watched/favorite;
+  * решить, где показывать `title_id` и provider: на плитке, в tooltip/secondary line или только в compact list.
+* [ ] Проверить readability длинных названий: max lines, gradient overlay, размер текста, отсутствие наложений с badges.
+* [ ] Сделать manual visual QA: 1280x800, full HD, ultrawide/fullscreen.
+
+---
+
 ## 🟡 TODO — UI Title State / Ratings / Torrents
 
 **Цель:** закрыть недостающие user-state и title metadata сценарии: просмотренность, рейтинг, избранное, франшизы, торренты и локальное воспроизведение должны быть видны в UI и корректно сохраняться в backend.
+
+### Приоритет ближайших мелких правок
+
+* [x] Если на detail screen отображаются франшизы, элементы франшизы должны быть переходами в соответствующий тайтл.
+  * При наличии `title_id` открывать detail screen этого тайтла.
+  * Если связанный тайтл не найден/не загружен, показывать элемент без перехода или с понятным disabled-состоянием.
+* [x] Вернуть полезные metadata из legacy UI: озвучка и перевод, если сведения о команде есть в данных тайтла.
+  * Detail screen: показывать отдельные строки/чипы `Озвучка` и `Перевод` только при наличии значений.
+  * Проверить mapping `team_members`: роли должны нормально группироваться и не смешиваться с остальной технической metadata.
+* [x] На плитке тайтла стабильно показывать количество эпизодов, если оно известно.
+  * Источник: `episodes_total` / фактический размер episodes list / агрегированное поле из backend, без N+1 для card-view.
+  * Если количество неизвестно, не показывать пустой или вводящий в заблуждение badge.
+* [x] Добавить очистку в текстовые поля desktop/common UI.
+  * Основной поиск, provider-load уточнение, фильтры поиска, AniMedia catalog, schedule search, backend URL и desktop player/browser commands используют общий clear action.
+* [x] Отображать дополнительный внешний рейтинг из таблицы `ratings`: `name_external: score_external`.
+  * Detail screen: внешний рейтинг показывается вместе с основным рейтингом.
+  * Title card / главный экран: внешний рейтинг показывается числом без названия источника, бейджи переносятся строками по доступной ширине карточки.
+  * Главные подборки в пустом поиске переносят карточки строками по ширине окна, а не уходят в горизонтальный скролл.
+* [ ] После этого взять торренты; перед запуском torrent-клиента сначала нужна настройка пути до клиента.
 
 ### Watch history / watched state bug
 
@@ -502,15 +553,69 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 
 ### Ratings
 
-* [ ] Отображать дополнительный внешний рейтинг из таблицы `ratings`: `name_external: score_external`.
-  * Detail screen: показывать внешний рейтинг отдельной строкой рядом с основным `rating_name: rating_value`.
-  * Title card: решить, нужен ли внешний рейтинг на плитке или только основной CMERS.
-  * Проверить mapping: `RatingDto.nameExternal` / `RatingDto.scoreExternal` уже должны приходить из HTTP normalizer, UI не должен терять эти поля.
+* [x] Отображать дополнительный внешний рейтинг из таблицы `ratings`: `name_external: score_external`.
+  * Detail screen: внешний рейтинг показывается рядом с основным `rating_name: rating_value`.
+  * Title card: внешний рейтинг показывается на плитке числом без названия источника, бейджи переносятся строками при нехватке ширины.
+  * Mapping: `RatingDto.nameExternal` / `RatingDto.scoreExternal` протянуты в card DTO через HTTP normalizer.
+* [ ] Добавить возможность выставлять рейтинг `CMERS` из UI.
+  * Backend: добавить write operation вроде `ratings.set` / `title.rating.set` с параметрами `title_id`, `rating_value`, `rating_name=CMERS`, `user_id?`.
+  * Storage: использовать/проверить `save_ratings()` как upsert, чтобы повторная установка обновляла существующую строку `ratings`.
+  * UI detail screen: добавить компактный контрол выбора рейтинга CMERS.
+  * UI list/card: после установки рейтинга сразу обновлять бейдж рейтинга без ручного refresh.
+  * Validation: определить допустимую шкалу CMERS (например 0-10 или 1-10) и явно показать/проверять её в UI/backend.
+
+### Title technical metadata
+
+* [ ] Отображать `title_id` в UI.
+  * [x] Detail screen: показывать явно, чтобы можно было быстро сверить/скопировать внутренний ID.
+  * Search/list: решить, нужен ли компактный ID на плитке или только в detail.
+* [ ] Отображать provider name / provider code в UI.
+  * Проверить, что `provider_links` или enriched scalar `provider` доходят до `TitleDetailsDTO` и `TitleCardDTO`.
+  * [x] Detail screen: показывать источник данных рядом с metadata.
+* [ ] Отображать данные о студии в UI.
+  * Проверить mapping `production_studio` / scalar `studio` из backend DTO.
+  * Detail screen: показывать название студии отдельной строкой.
+* [ ] Отображать данные о команде в UI.
+  * Проверить mapping `team_members` / scalar `team` из backend DTO.
+  * Detail screen: показывать роли/участников компактно, без перегруза карточки.
+  * Legacy-compatible группировки: отдельно показывать озвучку и перевод, когда эти роли присутствуют.
+
+### Aggregated title lists / navigation
+
+* [ ] Добавить агрегированные списки тайтлов:
+  * по жанрам;
+  * по членам команды;
+  * по статусам;
+  * по году;
+  * по франшизе.
+* [x] Переходы в агрегированные списки должны быть доступны из detail screen тайтла.
+  * [x] Жанр в detail → список тайтлов этого жанра.
+  * [x] Участник команды в detail → список тайтлов с этим участником/ролью.
+  * [x] Статус в detail → список тайтлов с этим статусом.
+  * [x] Год в detail → список тайтлов этого года.
+  * [x] Франшиза в detail → список тайтлов этой франшизы.
+* [x] Backend/API: решить, достаточно ли расширить `titles.search` фильтрами или нужен отдельный endpoint для facet/list navigation.
+  * Реализовано через расширение `titles.search`: `year`, `genre`, `status_filter`, `team_member_id` / `team_member`, `franchise_id`.
+  * Для team/franchise используется id-based фильтр, когда ID есть, чтобы не зависеть от текста имени.
+* [x] UI: у каждого списка должен быть понятный заголовок и возможность вернуться к исходному тайтлу без потери контекста.
+  * Detail screen использует action chips вместо синих текстовых ссылок.
+
+### Franchise discovery
+
+* [ ] Подумать над экраном/разделом “Все франшизы” с главного экрана.
+  * Это должен быть список франшиз, а не список тайтлов.
+  * Нужно решить, какой постер показывать у франшизы: первый тайтл по хронологии, самый популярный/рейтинговый, последний обновленный или явно выбранный representative title.
+  * При открытии франшизы показывать список всех тайтлов франшизы с переходами в detail.
+  * Если у франшизы нет подходящего постера, использовать аккуратный текстовый/placeholder вариант, а не случайную картинку.
 
 ### Torrents
 
-* [ ] Отображать список торрентов в detail screen.
+* [x] Отображать список торрентов в detail screen.
+  * HTTP normalizer отдаёт `torrents` в `titles.get`.
+  * KMP detail screen показывает качество, диапазон серий, размер, filename/hash и seed/leech/download stats.
 * [ ] Добавить настройку пути до torrent-клиента в UI settings.
+  * Desktop: хранить путь до executable/команды клиента и валидировать, что путь доступен перед запуском.
+  * Android TV: оставить запуск торрентов disabled/unsupported, пока не определён системный сценарий.
 * [ ] При выборе торрента сохранять `.torrent` meta file в папку `torrents/` и открывать его выбранным torrent-клиентом.
 * [ ] Backend/UI contract должен возвращать понятный результат: путь к сохраненному `.torrent`, имя торрента, размер/качество, ошибки сохранения/запуска клиента.
 
@@ -532,9 +637,127 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 
 * Mark-all-watched работает для всего тайтла и не падает при `episode_ids=None`.
 * Detail screen показывает watched/history, rating, franchises и torrents.
+* Отображаемые франшизы ведут в соответствующий тайтл, если связанный `title_id` доступен.
 * Torrent-клиент настраивается, `.torrent` сохраняется в `torrents/`, запуск клиента дает понятный feedback.
 * Если локальный видеофайл доступен, его можно открыть из UI.
 * Плитки списка сразу отражают rating/watched/favorite изменения.
+
+---
+
+## 🟡 TODO — Provider Catalog / Discovery
+
+**Problem:** title discovery/add flows should be driven by provider capabilities, not hardcoded provider names. AniMedia "new titles" / "all titles" currently can become too slow if the UI path triggers full `get_by_title()` loading for every item, while AniLiberty has API-backed schedule/catalog/random flows.
+
+### Product scope / sequencing
+
+* Current priority: stabilize backend contracts and bring the KMP UI to a usable pre-production level with existing providers.
+* New providers are a later enrichment phase, after backend/provider contracts and core frontend workflows are stable enough for daily use.
+* Provider expansion should focus on enriching metadata and availability, not forcing UI-specific branches.
+
+### Current provider capabilities snapshot
+
+| Capability | AniLiberty | AniMedia | Notes |
+|---|---|---|---|
+| Load random title | yes | no | AniLiberty provider has random release endpoint; backend/UI exposure needs verification. |
+| Load by name/search | yes | yes | Covered by provider pipeline: `sync.search_and_process` / `sync.fetch_and_process` depending on input. |
+| Load by external id | yes | yes | AniMedia may require compound token `external_id@@title` when bare id is not enough. |
+| Load/update existing title | yes | yes | `titles.update`; AniMedia is slower because it uses HTML parsing. |
+| Schedule sync | yes | yes | AniLiberty is day/week API; AniMedia is feed/cache with date/meta labels. |
+| Lightweight catalog | likely | yes | AniMedia has cache-backed `get_all_titles`; AniLiberty appears to have `get_catalog_releases`, but backend usage needs verification. |
+
+* [ ] Add a provider capability contract for UI actions.
+  * Example capabilities: `search`, `fetch_by_external_id`, `random`, `schedule`, `catalog`, `update_existing`.
+  * UI should render "add title" actions from capabilities instead of special-casing AniMedia/AniLiberty.
+  * Future providers should plug into the same capability model without new screen-specific branches.
+
+### Backend contract
+
+Runtime/data layout currently assumed by the backend:
+
+* Code/runtime imports live alongside the backend process: `backend/`, `storage/`, `utils/`, `providers/`.
+* Mutable runtime dirs live under the same runtime root for now: `config/`, `db/`, `playlists/`, `torrents/`, `temp/`, `logs/`.
+* AniMedia cache files live in backend runtime `temp/`:
+  * Schedule/new titles cache: `temp/am_schedule_cache.json`
+  * Lightweight all-titles cache: `temp/am_all_titles_cache.json`
+  * Title episode/vlink cache: `temp/am_vlink_cache.json`
+* [ ] Follow-up: decide whether mutable runtime dirs should be grouped under a single data root next to `db/` instead of living directly beside code/runtime imports.
+
+* [x] Add a lightweight AniMedia discovery/list contract.
+  * `get_new_titles(max_titles)` is used for the "new titles" feed.
+  * `get_all_titles(limit/page)` is used for the wider AniMedia catalog; the provider already returns a minimal batch (about 50 titles).
+  * The response should expose only list-safe data: provider code, external id, title/name, poster URL, page/title URL, meta/date label, episode label, and optional mapped `title_id`.
+  * These list operations must not call `get_by_title()` per item.
+  * Implemented as backend op `provider.catalog`.
+* [x] Resolve already-loaded titles in batch through `TitleProviderMap`.
+  * If AniMedia minimal item maps to an existing DB title, merge/attach the corresponding `TitleCardDTO`.
+  * If the item is not loaded yet, show it as a lightweight provider item and offer an explicit load/update action.
+  * [x] Schedule provider-only items now expose mapped `title_id` when available; mapped items open detail, unresolved items show an explicit load action via `sync.fetch_and_process`.
+  * [x] Catalog provider-only items expose mapped `title_id` when available; unresolved items show an explicit load action via `sync.fetch_and_process`.
+  * De-duplicate loaded DB titles and AniMedia cache entries by provider external id first; normalized title/code fallback remains a future hardening item.
+* [x] Keep full AniMedia loading explicit.
+  * `get_by_title()` is used only for title detail, manual update, or a background job that loads missing/selected titles.
+  * Follow-up: add/adjust job flow for "load/update AniMedia title" so slow HTML parsing is visible as a job, not hidden inside list refresh.
+* [ ] Keep AniLiberty weekly schedule and AniMedia feed separate in backend semantics.
+  * AniLiberty has real day-based schedule.
+  * AniMedia is a feed/catalog with optional meta date, not a strict day schedule.
+
+### UI
+
+* [x] Schedule screen can show one combined list, but entries must keep provider-specific meaning.
+  * AniLiberty entries: grouped/filtered by day.
+  * AniMedia entries: shown as a feed/new-titles block or unified list row with provider/source labels.
+* [x] Add basic filters to the schedule screen.
+  * [x] Provider: all / AniLiberty / AniMedia.
+  * [x] Text search by title.
+  * [x] Loaded/unloaded state for AniMedia lightweight items.
+  * [ ] Optional year/type/status filters when the lightweight provider item or mapped DB title has those fields.
+* [x] Add "show all AniMedia titles" action/screen.
+  * Display lightweight AniMedia catalog from `get_all_titles`.
+  * Mix with already-loaded DB titles without duplicates.
+  * Add filters for AniMedia catalog: text query, loaded/unloaded, year/type/status when available, provider/source.
+* [ ] Main screen: normalize title discovery/add controls.
+  * [x] Existing DB search/browse использует главное поле поиска.
+  * [x] Empty search result может явно загрузить запрос из AniLiberty или AniMedia через `sync.search_and_process`.
+  * [x] Provider controls поддерживают уточнённый provider query, fallback по external id и загрузку до 3 кандидатов.
+  * [x] Provider controls доступны не только в empty-state, но и при частичных DB-результатах по непустому запросу.
+  * [ ] Заменить hardcoded provider buttons на provider capability metadata, когда backend начнёт это отдавать.
+  * [x] Добавить кнопку случайного тайтла AniLiberty через `sync.random_and_process`.
+  * [x] Добавить отдельный "load by external id" affordance, если обычный текстовый поиск станет неоднозначным.
+* [x] Main screen: add a compact "recently loaded titles" block.
+  * Use DB-loaded titles, sorted by creation/update timestamp.
+  * `titles.search` supports `sort=recent`; UI shows a small `Недавно загружено` rail on the main screen.
+  * [ ] Follow-up: add a link/action to the full catalog/search view for more.
+* [x] Main screen: add a separate `need_to_see` block.
+  * Reuse `TitleCardDTO` state so favorite/watched/rating badges stay consistent with the main catalog.
+  * `titles.search` supports `need_to_see=true` for request-local watchlist queries.
+
+---
+
+## 🟡 FUTURE — Full Playback / Mini Browser Layer
+
+**Current scope:** KMP UI is intentionally a light client for pre-production. It can launch external players/browsers and manage catalog/detail/schedule/history flows, but it does not yet own video playback or embedded web playback.
+
+**Later target:** add a full playback layer on top of the stabilized backend/UI.
+
+* [ ] Integrated video player.
+  * HLS/direct stream playback.
+  * Playlist playback.
+  * Opening from selected episode or continuing from last watched episode.
+  * Skip opening/ending/credits awareness.
+  * Screenshot saving.
+  * Subtitle support.
+  * Local downloaded video playback.
+* [ ] Embedded mini browser for provider web-player links.
+  * Open non-HLS web-player pages inside the app.
+  * Keep fallback to external browser when embedded browser is unavailable.
+* [ ] Stream proxy/caching layer.
+  * Route playback through local proxy when needed.
+  * Cache/normalize stream access.
+  * Preserve provider-specific headers/redirect behaviour where required.
+* [ ] Playback state integration.
+  * Persist watch progress.
+  * Update watched/title state immediately in UI.
+  * Keep playlists, screenshots, subtitles, and local files under stable runtime data directories.
 
 ---
 
@@ -579,6 +802,45 @@ pyinstaller backend_tool.spec  # → dist/backend_tool(.exe)
 * [ ] Metrics / debug
 * [ ] Web API поверх backend
 * [ ] Документация API
+
+---
+
+## 🟡 TODO — UI Build / Tooling
+
+### Gradle 9.0 deprecation warnings
+
+**Симптом:** сборка завершается с предупреждением:
+```
+Deprecated Gradle features were used in this build,
+making it incompatible with Gradle 9.0.
+```
+
+**Текущие версии:**
+
+| Компонент | Версия |
+|-----------|--------|
+| Gradle | 8.9 (`gradle-wrapper.properties`) |
+| AGP (Android Gradle Plugin) | 8.5.2 |
+| Kotlin / KMP | 2.0.21 |
+| Compose Multiplatform | 1.7.1 |
+| `navigation-compose` | 2.8.0-alpha10 |
+
+**Вероятные источники предупреждений:**
+
+* **AGP 8.5.2** — основной виновник. AGP 8.5.x использует `Project.getConvention()` и другие API, удалённые в Gradle 9.0. Сборка будет ломаться при переходе на Gradle 9.0.
+* **`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`** в `settings.gradle.kts` — функциональность стала стабильной в Gradle 8.x; сама строка `enableFeaturePreview` может генерировать предупреждение о том, что preview больше не нужен.
+* **`navigation-compose = "2.8.0-alpha10"`** — alpha-зависимость; следует перейти на стабильный релиз.
+
+**Шаги фикса:**
+
+* [ ] Запустить `./gradlew :composeApp:assembleDebug --warning-mode all 2>&1 | grep -i deprecat` — увидеть точный список предупреждений со стек-трейсом.
+* [ ] Обновить AGP с `8.5.2` до последней стабильной, совместимой с Gradle 8.9 (рекомендуется `8.7.x` или `8.8.x`). Обновить в `libs.versions.toml`: `agp = "8.7.3"` (или актуальный).
+* [ ] Удалить `enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")` из `settings.gradle.kts` если Gradle сообщает, что оно устарело.
+* [ ] Обновить `navigation-compose` с `2.8.0-alpha10` до стабильного релиза (`2.8.x` stable).
+* [ ] Перепроверить сборку: `./gradlew :composeApp:compileKotlinDesktop :composeApp:assembleDebug` — должно завершаться без deprecation warnings.
+* [ ] Опционально: обновить Gradle wrapper с `8.9` до `8.12` (последний стабильный), чтобы получить поддержку новых AGP/KMP версий.
+
+**Риск без фикса:** при обновлении Gradle до 9.0 (например, через auto-update в Android Studio) сборка сломается без предупреждения.
 
 ---
 

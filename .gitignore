@@ -60,5 +60,6 @@ anime_player.db.zip
 obsolete/title_cut.html
 /ui/composeApp/build/
 /ui/.gradle/
+/ui/.kotlin/
 
 /ui/build

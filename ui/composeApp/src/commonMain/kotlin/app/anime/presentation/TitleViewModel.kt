@@ -180,10 +180,16 @@ class TitleViewModel(
     }
 
     /** #3: Re-fetch title data from its upstream provider(s) and reload. */
-    fun updateFromProvider() {
+    fun updateFromProvider(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _updateState.value = UpdateState.Loading
-            runCatching { repo.updateTitle(titleId) }
+            runCatching {
+                repo.updateTitle(
+                    titleId = titleId,
+                    providerCode = if (forceRefresh) "animedia" else null,
+                    forceRefresh = forceRefresh,
+                )
+            }
                 .onSuccess {
                     _updateState.value = UpdateState.Done
                     // Reload to show updated data

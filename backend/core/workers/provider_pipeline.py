@@ -42,6 +42,7 @@ class ProviderPipeline:
             external_id: str | int | None = None,
             query: str | None = None,
             max_results: int = 10,
+            force_refresh: bool = False,
     ) -> tuple[str | int | None, dict[str, Any] | None]:
         if external_id is None and (query is None or not query.strip()):
             raise ValueError("Either external_id or query must be provided")
@@ -54,7 +55,15 @@ class ProviderPipeline:
                 return None, None
             external_id = ids[0]
 
-        payload = await self._call_provider(source.fetch_payload_by_external_id, external_id)
+        supports_force_refresh = "force_refresh" in inspect.signature(source.fetch_payload_by_external_id).parameters
+        if supports_force_refresh:
+            payload = await self._call_provider(
+                source.fetch_payload_by_external_id,
+                external_id,
+                force_refresh=force_refresh,
+            )
+        else:
+            payload = await self._call_provider(source.fetch_payload_by_external_id, external_id)
         if payload is None:
             return external_id, None
         if isinstance(payload, dict) and payload.get("error"):
@@ -81,6 +90,7 @@ class ProviderPipeline:
         query: str | None = None,
         mode: str = "auto",
         max_results: int = 10,
+        force_refresh: bool = False,
     ) -> FetchAndProcessResult:
         try:
             ext_id, payload = await self.fetch_payload(
@@ -88,6 +98,7 @@ class ProviderPipeline:
                 external_id=external_id,
                 query=query,
                 max_results=max_results,
+                force_refresh=force_refresh,
             )
             if payload is None:
                 return FetchAndProcessResult(
@@ -120,6 +131,63 @@ class ProviderPipeline:
                 provider_code=provider_code,
                 mode=mode,
                 external_id=external_id,
+                title_id=None,
+                ok=False,
+                error=str(e),
+            )
+
+    async def random_and_process(
+        self,
+        *,
+        provider_code: str,
+        mode: str = "title_full",
+    ) -> FetchAndProcessResult:
+        try:
+            source = self._resolver.resolve(provider_code)
+            fetch_random_payload = getattr(source, "fetch_random_payload", None)
+            if fetch_random_payload is None:
+                return FetchAndProcessResult(
+                    provider_code=provider_code,
+                    mode=mode,
+                    external_id=None,
+                    title_id=None,
+                    ok=False,
+                    error="provider_random_not_supported",
+                )
+
+            payload = await self._call_provider(fetch_random_payload)
+            if not isinstance(payload, dict) or payload.get("error"):
+                return FetchAndProcessResult(
+                    provider_code=provider_code,
+                    mode=mode,
+                    external_id=None,
+                    title_id=None,
+                    ok=False,
+                    error="payload_not_found",
+                )
+
+            external_id = payload.get("external_id") or payload.get("id")
+            res = await asyncio.to_thread(
+                self._process.apply_provider_payload,
+                provider_code=provider_code,
+                payload=payload,
+                mode=mode,
+            )
+
+            return FetchAndProcessResult(
+                provider_code=provider_code,
+                mode=mode,
+                external_id=external_id,
+                title_id=res.title_id,
+                ok=res.ok,
+                details=res.details,
+                error=res.error,
+            )
+        except Exception as e:
+            return FetchAndProcessResult(
+                provider_code=provider_code,
+                mode=mode,
+                external_id=None,
                 title_id=None,
                 ok=False,
                 error=str(e),

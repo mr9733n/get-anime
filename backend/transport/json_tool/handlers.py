@@ -41,6 +41,13 @@ def h_titles_search(backend, params):
     genre: str | None = (params.get("genre") or "").strip() or None
     status_filter: str | None = (params.get("status_filter") or "").strip() or None
     type_filter: str | None = (params.get("type_filter") or "").strip() or None
+    need_to_see: bool | None = True if params.get("need_to_see") is True else None
+    raw_team_member_id = params.get("team_member_id")
+    team_member_id: int | None = int(raw_team_member_id) if raw_team_member_id not in (None, "", False) else None
+    team_member: str | None = (params.get("team_member") or "").strip() or None
+    raw_franchise_id = params.get("franchise_id")
+    franchise_id: int | None = int(raw_franchise_id) if raw_franchise_id not in (None, "", False) else None
+    sort: str | None = (params.get("sort") or "").strip().lower() or None
 
     dtos = backend.titles.titles_search(
         query=query,
@@ -53,11 +60,21 @@ def h_titles_search(backend, params):
         genre=genre,
         status_filter=status_filter,
         type_filter=type_filter,
+        need_to_see=need_to_see,
+        team_member_id=team_member_id,
+        team_member=team_member,
+        franchise_id=franchise_id,
+        sort=sort,
     )
     total_count = backend.titles.count_titles(
         query,
         year=year, genre=genre,
         status_filter=status_filter, type_filter=type_filter,
+        need_to_see=need_to_see, user_id=ctx.user_id,
+        team_member_id=team_member_id,
+        team_member=team_member,
+        franchise_id=franchise_id,
+        sort=sort,
     )
     has_more = (offset + len(dtos)) < total_count
 
@@ -156,6 +173,7 @@ def h_sync_fetch_and_process(backend, params):
             query=ctx.query,
             mode=ctx.mode(backend.ctx.sync_mode_default),
             max_results=ctx.max_results(backend.ctx.sync_max_results_default),
+            force_refresh=bool(params.get("force_refresh", False)),
         )
     )
     return ok({"result": to_jsonable(res)})
@@ -220,6 +238,22 @@ def h_sync_search_and_process(backend, params):
     return ok({"result": to_jsonable(res)})
 
 
+def h_sync_random_and_process(backend, params):
+    provider_code = (params.get("provider_code") or "").strip().lower()
+    mode = (params.get("mode") or backend.ctx.sync_mode_default).strip().lower()
+
+    if provider_code == "":
+        raise ValueError("provider_code is required")
+
+    res = run(
+        backend.sync_random_and_process(
+            provider_code=provider_code,
+            mode=mode,
+        )
+    )
+    return ok({"result": to_jsonable(res)})
+
+
 def h_titles_update_start(backend, params):
     """
     Non-blocking counterpart of titles.update.
@@ -249,12 +283,14 @@ def h_titles_update_start(backend, params):
     )
     mode = (params.get("mode") or backend.ctx.update_mode_default).strip().lower()
     max_results = int(params.get("max_results", backend.ctx.sync_max_results_default))
+    force_refresh = bool(params.get("force_refresh", False))
 
     job = backend.jobs.create("titles.update", {
         "title_ids": title_ids,
         "provider_code": provider_code,
         "mode": mode,
         "max_results": max_results,
+        "force_refresh": force_refresh,
     })
     job_id = job.job_id
 
@@ -270,6 +306,7 @@ def h_titles_update_start(backend, params):
                 provider_code=provider_code,
                 mode=mode,
                 max_results=max_results,
+                force_refresh=force_refresh,
             )
             backend.jobs.update(
                 job_id,
@@ -332,6 +369,7 @@ def h_titles_update(backend, params):
 
     mode = (params.get("mode") or backend.ctx.update_mode_default).strip().lower()
     max_results = int(params.get("max_results", backend.ctx.sync_max_results_default))
+    force_refresh = bool(params.get("force_refresh", False))
 
     res = run(
         backend.titles_update.update_titles(
@@ -339,6 +377,7 @@ def h_titles_update(backend, params):
             provider_code=provider_code,
             mode=mode,
             max_results=max_results,
+            force_refresh=force_refresh,
         )
     )
     return ok({"result": to_jsonable(res)})
@@ -416,10 +455,28 @@ def h_schedule_sync(backend, params):
     if day is not None:
         day = int(day)
     fetch_unresolved = bool(params.get("fetch_unresolved", False))
+    force_refresh = bool(params.get("force_refresh", False))
     res = backend.schedule.schedule_sync(
         provider_code=provider_code,
         day=day,
         fetch_unresolved=fetch_unresolved,
+        force_refresh=force_refresh,
+    )
+    return ok({"result": to_jsonable(res)})
+
+
+def h_provider_catalog(backend, params):
+    provider_code = (params.get("provider_code") or "").strip().lower()
+    if not provider_code:
+        raise ValueError("provider.catalog requires 'provider_code'")
+    max_titles = int(params.get("max_titles", 120))
+    pages = int(params.get("pages", 5))
+    load_more = bool(params.get("load_more", False))
+    res = backend.schedule.provider_catalog(
+        provider_code=provider_code,
+        max_titles=max_titles,
+        pages=pages,
+        load_more=load_more,
     )
     return ok({"result": to_jsonable(res)})
 
@@ -436,11 +493,13 @@ HANDLERS: dict[str, Handler] = {
     "sync.search_external_ids": h_sync_search_external_ids,
     "sync.fetch_payload": h_sync_fetch_payload,
     "sync.search_and_process": h_sync_search_and_process,
+    "sync.random_and_process": h_sync_random_and_process,
     "titles.update": h_titles_update,
     "titles.update.start": h_titles_update_start,
     "jobs.get": h_jobs_get,
     "schedule.get": h_schedule_get,
     "schedule.sync": h_schedule_sync,
+    "provider.catalog": h_provider_catalog,
     "history.mark_watched": h_history_mark_watched,
     "history.mark_all_watched": h_history_mark_all_watched,
     "history.set_need_to_see": h_history_set_need_to_see,

@@ -102,6 +102,20 @@ class AniLibertyPayloadSource(IProviderPayloadSource):
 
         raise AttributeError("AniLiberty api has no fetch method")
 
+    def _api_random(self) -> Any:
+        if hasattr(self.api, "get_random_title"):
+            return self.api.get_random_title()
+
+        inner = getattr(self.api, "_api", None)
+        if inner is not None and hasattr(inner, "get_random_title"):
+            return inner.get_random_title()
+
+        if hasattr(self.api, "get_random"):
+            details = self.api.get_random()
+            return getattr(details, "raw", None) if details is not None else None
+
+        raise AttributeError("AniLiberty api has no random method")
+
     def search_external_ids(self, query: str, *, max_results: int = 10) -> list[int]:
         q = (query or "").strip()
         if not q:
@@ -147,3 +161,15 @@ class AniLibertyPayloadSource(IProviderPayloadSource):
         if payload.get("error"):
             return None
         return payload
+
+    def fetch_random_payload(self) -> dict[str, Any] | None:
+        data = self._api_random()
+        if not isinstance(data, dict):
+            return None
+        if data.get("error"):
+            return None
+
+        items = _first_list(data)
+        if items:
+            return items[0]
+        return data

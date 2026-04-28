@@ -63,6 +63,10 @@ class FakeSource:
         self.items = items or []
         self.raise_exc = raise_exc
         self.calls: list[int | None] = []  # day args received
+        self.invalidate_calls = 0
+
+    def invalidate_cache(self) -> None:
+        self.invalidate_calls += 1
 
     def get_schedule(self, *, day: int | None = None) -> list[ScheduleItemNormalized]:
         self.calls.append(day)
@@ -169,6 +173,11 @@ class TestDayWeekMapping:
         result = ctrl.schedule_sync(provider_code="aniliberty")
         assert result.fetched == 3
 
+    def test_force_refresh_invalidates_source_cache(self):
+        ctrl, source, _ = make_controller()
+        ctrl.schedule_sync(provider_code="aniliberty", force_refresh=True)
+        assert source.invalidate_calls == 1
+
     def test_empty_source_returns_zero_counts(self):
         ctrl, _, _ = make_controller(items=[])
         result = ctrl.schedule_sync(provider_code="aniliberty")
@@ -240,6 +249,31 @@ class TestUnresolvedTitles:
         assert len(write.calls) == 1
         sent = write.calls[0]
         assert {i.external_title_id for i in sent} == {"a", "b"}
+
+    def test_animedia_announcements_are_provider_items_not_db_schedule(self):
+        released = make_item("released", provider_code="animedia")
+        announcement = ScheduleItemNormalized(
+            provider_code="animedia",
+            external_title_id="soon",
+            day_of_week=3,
+            air_dt=datetime(2026, 1, 7, 14, 0),
+            episode_label="4 серия",
+            poster_url=None,
+            title_url=None,
+            raw={"section": "announcement", "meta": "Новая серия в 14:00"},
+        )
+        ctrl, _, write = make_controller(
+            items=[released, announcement],
+            resolved_ids={"released", "soon"},
+            provider_code="animedia",
+        )
+
+        result = ctrl.schedule_sync(provider_code="animedia")
+
+        assert result.upserted == 1
+        assert result.unresolved == 0
+        assert {i.external_title_id for i in write.calls[0]} == {"released"}
+        assert [i.external_title_id for i in result.provider_items] == ["soon"]
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +481,30 @@ class TestFetchUnresolvedAndRetry:
         ctrl.schedule_sync(provider_code="aniliberty", fetch_unresolved=True)
         # Only one upsert call (no retry when retry_items is empty)
         assert len(write.calls) == 1
+
+    def test_animedia_fetch_unresolved_uses_schedule_title_token(self):
+        item = ScheduleItemNormalized(
+            provider_code="animedia",
+            external_title_id="20422",
+            day_of_week=3,
+            air_dt=None,
+            episode_label=None,
+            poster_url=None,
+            title_url="https://amd.online/example.html",
+            raw={"title": "Grand Blue Season 2"},
+        )
+        fetch_fn = FakeFetchTitleFn(ok_ids={"20422@@Grand Blue Season 2"})
+        ctrl, _, _ = make_controller(
+            items=[item],
+            resolved_ids=set(),
+            fetch_fn=fetch_fn,
+            provider_code="animedia",
+        )
+
+        result = ctrl.schedule_sync(provider_code="animedia", fetch_unresolved=True)
+
+        assert result.fetched_missing == 1
+        assert fetch_fn.calls == [("animedia", "20422@@Grand Blue Season 2")]
 
 
 # ---------------------------------------------------------------------------

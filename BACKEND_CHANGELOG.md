@@ -1,3 +1,64 @@
+## v0.3.8.47 — UI Detail Follow-ups
+
+**Дата:** 2026-04-28
+**Обновлено:** 2026-04-29
+**Статус:** detail layout accepted; external rating implemented, awaiting local verification
+
+Зафиксированы ближайшие мелкие правки для detail screen после блока metadata.
+
+### Что добавлено в roadmap
+
+- Если на detail screen отображаются франшизы, каждый элемент франшизы должен вести в соответствующий тайтл при наличии `title_id`.
+- Из legacy UI нужно вернуть полезные metadata: `Озвучка` и `Перевод`, если эти сведения есть в team/member данных тайтла.
+- На плитке тайтла нужно стабильно показывать количество эпизодов, если оно известно.
+- Зафиксирована идея агрегированных списков тайтлов: по жанрам, членам команды, статусам, году и франшизе; переходы в такие списки должны быть доступны из detail screen.
+- Для франшизы нужен отдельный список тайтлов франшизы, а также стоит подумать об экране “Все франшизы” с главного экрана.
+- Кандидат на реализацию в этом блоке: показ дополнительного внешнего рейтинга из `ratings` (`name_external: score_external`).
+- После рейтингов можно брать торренты, но сначала нужна настройка пути до torrent-клиента в UI settings.
+- Для torrent-сценария уточнено: Desktop хранит путь до executable/команды клиента и валидирует его перед запуском; Android TV остается disabled/unsupported до отдельного решения.
+
+### Что реализовано
+
+- HTTP normalizer теперь отдаёт `team_members` в `titles.get`; KMP detail screen группирует роли `voice` → `Озвучка`, `translator` → `Перевод`.
+- Franchise DTO расширен связанным `related_title_id`; detail screen показывает тайтлы франшизы как кликабельные переходы в detail screen.
+- `TitleCardDTO` получил `episodes_count`; HTTP card normalizer отдаёт фактическое количество эпизодов, а плитка показывает отдельный compact badge.
+- HTTP normalizer теперь отдаёт `torrents` в `titles.get`; KMP detail screen показывает список торрентов с качеством, диапазоном серий, размером и seed/leech/download stats.
+- `titles.search` расширен facet-фильтрами `team_member_id` / `team_member` и `franchise_id`; detail screen теперь ведёт в списки по году, статусу, жанру, участнику команды и франшизе.
+- Синие текстовые ссылки в metadata заменены на более спокойные action chips; заголовки metadata больше не выглядят как ссылки.
+- Поля ввода в desktop/common UI получили кнопку очистки: основной поиск, provider-load уточнение, фильтры поиска, AniMedia catalog, schedule search, backend URL и desktop player/browser commands.
+- Дополнительные внешние рейтинги из `ratings` теперь доходят до card DTO и отображаются на плитках числом без названия источника; бейджи рейтингов переносятся строками в зависимости от доступной ширины карточки. Detail screen показывает основной и внешний рейтинг отдельными значениями.
+- Главные подборки в пустом поиске (`Недавно загружено`, `Хочу посмотреть`) больше не горизонтальные ленты: карточки переносятся строками по ширине окна.
+
+### Проверка
+
+- Пользователь подтвердил локальную проверку detail layout/chips; внешний рейтинг добавлен после этого и ждёт локальной проверки. `git diff --check` по изменённым файлам чистый.
+
+---
+
+## v0.3.8.46 — AniMedia Lightweight Catalog UI
+
+**Дата:** 2026-04-28
+**Статус:** verified locally
+
+Добавлен первый рабочий срез полного lightweight-каталога AniMedia без скрытой полной загрузки каждого тайтла.
+
+### Что сделано
+
+- Новый backend op `provider.catalog` возвращает list-safe элементы каталога AniMedia из `get_all_titles()` / `am_all_titles_cache.json`.
+- Каталог не вызывает `get_by_title()` на каждый item; полная AniMedia-загрузка остаётся явным действием пользователя.
+- Уже загруженные элементы резолвятся через `TitleProviderMap` и получают `title_id`, поэтому их можно открыть сразу.
+- Незагруженные элементы показываются как provider-only карточки с отдельной кнопкой загрузки через `sync.fetch_and_process`.
+- Добавлен отдельный desktop UI screen `Каталог AniMedia`.
+- На экране каталога есть поиск, фильтр `Все / В базе / Не загружены`, кнопка `Загрузить еще`.
+- На главном экране добавлена кнопка перехода в каталог AniMedia.
+
+### Проверка
+
+- Проверено вручную: каталог открывается, элементы отображаются, фильтры работают, загрузка выбранного тайтла работает.
+- `git diff --check` чистый, только CRLF warnings.
+
+---
+
 ## v0.3.8.45 — Write-Path Correctness + Job-Flow + Test Coverage
 
 **Дата:** 2026-04-26
@@ -158,7 +219,7 @@ queued → running → done
 
 ### 1. Runtime / Packaging
 
-- Обновлена backend runtime-документация: для standalone/HTTP запуска обязательны `storage/`, `utils/`, `providers/`.
+- Обновлена backend runtime-документация: для standalone/HTTP запуска обязательны code/runtime dirs `backend/`, `storage/`, `utils/`, `providers/`; mutable runtime dirs зафиксированы как `config/`, `db/`, `playlists/`, `torrents/`, `temp/`, `logs/`.
 - Добавлена fail-fast диагностика в `build_backend()`: путь к DB должен указывать на существующую директорию; отсутствие runtime imports логируется warning.
 - Добавлены PyInstaller specs:
   - `make_bin/specs/backend_http.spec`
@@ -207,6 +268,13 @@ queued → running → done
 - Каждый storage method теперь открывает отдельный `with self.Session() as session`, что убирает гонку `identity map is no longer valid` при параллельных HTTP/UI запросах.
 - Исправлены прямые infra consumers новой session factory: `SqlAlchemyTitlesPort` и `SqlAlchemyProgressRepo` теперь также используют `Session()`. Это чинит `titles.search`/filtered search после перехода на factory.
 - Добавлен regression test на параллельные `get_titles_from_db` через один `DatabaseManager`.
+- `schedule.get` больше не возвращает detached `Title` ORM-объекты из `get_titles_for_day()`: `SqlAlchemyScheduleReadPort` читает строки `Schedule` напрямую через request-local session, поэтому UI-расписание не ловит lazy-load ошибку на `Title.schedules`.
+- Legacy helper `get_titles_for_day()` теперь тоже eager-load'ит `Title.schedules.day`, чтобы старый storage path оставался безопасным для будущих вызовов.
+- `schedule.sync` теперь делает replace для расписания конкретного провайдера: строки за затронутые дни, которых больше нет в свежем ответе провайдера, удаляются; расписание других провайдеров не трогается.
+- SQLite engine создаётся с `check_same_thread=False` и `NullPool`, чтобы request-local sessions не оставляли открытые DBAPI-соединения в threaded HTTP/UI сценариях.
+- AniMedia schedule discovery: unresolved schedule items теперь передают в lazy fetch compound token `external_id@@title` из карточки расписания, поэтому `fetch_unresolved=true` может добавить отсутствующий тайтл через AniMedia search flow.
+- `schedule.sync` enriches provider-only items with mapped `title_id` when `TitleProviderMap` already knows the title; UI can open mapped AniMedia schedule cards and explicitly load missing ones via `sync.fetch_and_process`.
+- Roadmap now tracks provider discovery/add-title as a capability-driven UI layer: random/search/external-id/schedule/catalog/update are provider capabilities, not AniMedia-only behavior.
 
 ---
 
@@ -222,6 +290,7 @@ queued → running → done
 
 - `py_compile backend\transport\http\server.py storage\database_manager.py storage\delete.py storage\get.py storage\save.py storage\utils.py`
 - `pytest tests\backend\test_history_storage.py tests\backend\test_json_handlers_history.py tests\backend\test_storage_session_scope.py -q` → 20 passed
+- `pytest tests\backend\test_storage_session_scope.py tests\backend\test_schedule_controller.py tests\backend\test_json_handlers_schedule.py -q` → 32 passed
 - `:composeApp:compileKotlinDesktop` → BUILD SUCCESSFUL
 
 ---
@@ -637,5 +706,3 @@ backend = build_backend(
 * Нестабильные entry-points
 
 ---
-
-

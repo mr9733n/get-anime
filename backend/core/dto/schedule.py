@@ -20,6 +20,7 @@ class ScheduleItemNormalized:
     poster_url: str | None
     title_url: str | None
     raw: str | dict[str, Any] | None  # original payload from provider
+    title_id: int | None = None  # internal DB title_id when the provider item is already mapped
 
 
 @dataclass(frozen=True)
@@ -50,3 +51,7 @@ class ScheduleSyncResult:
     unresolved: int
     fetched_missing: int    # titles fetched from provider for previously unresolved items
     error: str | None
+    # Items that should be shown outside the DB-backed day schedule:
+    # provider announcements/future releases plus unresolved provider items.
+    provider_items: list[ScheduleItemNormalized] = field(default_factory=list)
+    unresolved_items: list[ScheduleItemNormalized] = field(default_factory=list)

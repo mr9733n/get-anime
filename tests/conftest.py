@@ -41,6 +41,11 @@ class FakeTitlesController:
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        sort: str | None = None,
     ):
         return [{"title_id": 1, "query": query, "user_id": user_id, "enrich": enrich, "limit": limit, "offset": offset, "view": view_mode.value}]
 
@@ -55,6 +60,12 @@ class FakeTitlesController:
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> int:
         return 42
 
@@ -91,7 +102,15 @@ class FakePlaylistsController:
 
 
 class FakeTitlesUpdateController:
-    async def update_titles(self, *, title_ids, provider_code=None, mode="title_full", max_results=5):
+    async def update_titles(
+        self,
+        *,
+        title_ids,
+        provider_code=None,
+        mode="title_full",
+        max_results=5,
+        force_refresh=False,
+    ):
         return {"ok": True, "applied": [{"title_ids": title_ids}], "skipped": 0, "error": None}
 
 
@@ -99,7 +118,7 @@ class FakeScheduleController:
     def schedule_get(self, *, day: int):
         return [{"title_id": 1, "day_of_week": day, "last_updated": None}]
 
-    def schedule_sync(self, *, provider_code: str, day=None, fetch_unresolved: bool = False):
+    def schedule_sync(self, *, provider_code: str, day=None, fetch_unresolved: bool = False, force_refresh: bool = False):
         return {
             "ok": True,
             "provider_code": provider_code,
@@ -108,6 +127,8 @@ class FakeScheduleController:
             "unresolved": 1,
             "fetched_missing": 1 if fetch_unresolved else 0,
             "error": None,
+            "provider_items": [],
+            "unresolved_items": [],
         }
 
 
@@ -172,8 +193,24 @@ class FakeBackend:
             "error": None,
         }
 
-    async def sync_fetch_and_process(self, *, provider_code: str, external_id=None, query=None, mode: str = "title_full", max_results: int = 5):
-        return {"provider_code": provider_code, "external_id": external_id, "query": query, "mode": mode, "max_results": max_results}
+    async def sync_fetch_and_process(
+        self,
+        *,
+        provider_code: str,
+        external_id=None,
+        query=None,
+        mode: str = "title_full",
+        max_results: int = 5,
+        force_refresh: bool = False,
+    ):
+        return {
+            "provider_code": provider_code,
+            "external_id": external_id,
+            "query": query,
+            "mode": mode,
+            "max_results": max_results,
+            "force_refresh": force_refresh,
+        }
 
     async def sync_search_external_ids(self, *, provider_code: str, query: str, max_results: int = 10):
         return [1, 2, 3][:max_results]

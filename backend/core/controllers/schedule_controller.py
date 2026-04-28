@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 from typing import Callable
 
@@ -58,6 +59,7 @@ class ScheduleController:
         provider_code: str,
         day: int | None = None,
         fetch_unresolved: bool = False,
+        force_refresh: bool = False,
     ) -> ScheduleSyncResult:
         """
         Fetch schedule from *provider_code*, normalise, upsert into DB.
@@ -80,6 +82,18 @@ class ScheduleController:
                 error=f"No schedule source registered for provider '{provider_code}'",
             )
 
+        if force_refresh:
+            invalidate_cache = getattr(source, "invalidate_cache", None)
+            if callable(invalidate_cache):
+                try:
+                    invalidate_cache()
+                except Exception as exc:
+                    self._logger.warning(
+                        "schedule source cache invalidation failed for %s: %s",
+                        provider_code,
+                        exc,
+                    )
+
         try:
             items = source.get_schedule(day=day)
         except Exception as exc:
@@ -93,19 +107,21 @@ class ScheduleController:
                 error=str(exc),
             )
 
-        if not items:
-            return ScheduleSyncResult(
-                ok=True,
-                provider_code=provider_code,
-                fetched=0,
-                upserted=0,
-                unresolved=0,
-                fetched_missing=0,
-                error=None,
-            )
+        provider_only_items = [
+            item for item in items
+            if self._is_provider_only_item(provider_code, item)
+        ]
+        write_items = [
+            item for item in items
+            if not self._is_provider_only_item(provider_code, item)
+        ]
 
         try:
-            upsert_result = self._write.upsert_schedule(items)
+            upsert_result = self._replace_or_upsert(
+                provider_code=provider_code,
+                items=write_items,
+                day=day,
+            )
         except Exception as exc:
             return ScheduleSyncResult(
                 ok=False,
@@ -115,10 +131,13 @@ class ScheduleController:
                 unresolved=len(items),
                 fetched_missing=0,
                 error=str(exc),
+                provider_items=list(items),
+                unresolved_items=list(items),
             )
 
         fetched_missing = 0
         final_unresolved = upsert_result.unresolved
+        final_unresolved_items = upsert_result.unresolved_items
 
         # ── Lazy enrich: fetch missing titles then retry upsert ───────────
         if (
@@ -139,10 +158,15 @@ class ScheduleController:
                         unresolved_items=retry_result.unresolved_items,
                     )
                     final_unresolved = retry_result.unresolved
+                    final_unresolved_items = retry_result.unresolved_items
                 except Exception as exc:
                     self._logger.warning(
                         "schedule retry upsert failed after fetch_missing: %s", exc
                     )
+
+        provider_items = self._dedupe_provider_items(provider_only_items + final_unresolved_items)
+        provider_items = self._with_resolved_title_ids(provider_code, provider_items)
+        unresolved_items = self._with_resolved_title_ids(provider_code, final_unresolved_items)
 
         return ScheduleSyncResult(
             ok=True,
@@ -152,11 +176,78 @@ class ScheduleController:
             unresolved=final_unresolved,
             fetched_missing=fetched_missing,
             error=None,
+            provider_items=provider_items,
+            unresolved_items=unresolved_items,
         )
+
+    def provider_catalog(
+        self,
+        *,
+        provider_code: str,
+        max_titles: int = 120,
+        pages: int = 5,
+        load_more: bool = False,
+    ) -> dict:
+        source = self._sources.get(provider_code)
+        if source is None:
+            return {
+                "ok": False,
+                "provider_code": provider_code,
+                "fetched": 0,
+                "items": [],
+                "error": f"No provider source registered for provider '{provider_code}'",
+            }
+
+        get_catalog = getattr(source, "get_catalog", None)
+        if not callable(get_catalog):
+            return {
+                "ok": False,
+                "provider_code": provider_code,
+                "fetched": 0,
+                "items": [],
+                "error": f"Provider '{provider_code}' does not expose a catalog",
+            }
+
+        try:
+            items = get_catalog(max_titles=max_titles, pages=pages, load_more=load_more)
+            items = self._dedupe_provider_items(items)
+            items = self._with_resolved_title_ids(provider_code, items)
+            return {
+                "ok": True,
+                "provider_code": provider_code,
+                "fetched": len(items),
+                "items": items,
+                "error": None,
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "provider_code": provider_code,
+                "fetched": 0,
+                "items": [],
+                "error": str(exc),
+            }
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _replace_or_upsert(
+        self,
+        *,
+        provider_code: str,
+        items: list[ScheduleItemNormalized],
+        day: int | None,
+    ):
+        replace_schedule = getattr(self._write, "replace_schedule", None)
+        if callable(replace_schedule):
+            days = {int(day)} if day is not None else set(range(1, 8))
+            return replace_schedule(
+                provider_code=provider_code,
+                items=items,
+                days=days,
+            )
+        return self._write.upsert_schedule(items)
 
     def _fetch_missing(
         self,
@@ -175,12 +266,13 @@ class ScheduleController:
         retry_items: list[ScheduleItemNormalized] = []
 
         for item in unresolved:
+            fetch_external_id = self._fetch_external_id_for_item(provider_code, item)
             try:
-                ok = self._fetch_title_fn(provider_code, item.external_title_id)
+                ok = self._fetch_title_fn(provider_code, fetch_external_id)
             except Exception as exc:
                 self._logger.debug(
                     "fetch_title_fn failed for %s/%s: %s",
-                    provider_code, item.external_title_id, exc,
+                    provider_code, fetch_external_id, exc,
                 )
                 ok = False
 
@@ -194,3 +286,70 @@ class ScheduleController:
                 )
 
         return fetched_count, retry_items
+
+    @staticmethod
+    def _fetch_external_id_for_item(provider_code: str, item: ScheduleItemNormalized) -> str:
+        external_id = str(item.external_title_id).strip()
+        if provider_code != "animedia" or "@@" in external_id:
+            return external_id
+
+        raw = item.raw
+        title = None
+        if isinstance(raw, dict):
+            title = raw.get("title") or raw.get("name") or raw.get("name_ru") or raw.get("name_en")
+
+        if isinstance(title, str) and title.strip():
+            return f"{external_id}@@{title.strip()}"
+
+        return external_id
+
+    @staticmethod
+    def _is_provider_only_item(provider_code: str, item: ScheduleItemNormalized) -> bool:
+        if provider_code != "animedia":
+            return False
+
+        raw = item.raw
+        if not isinstance(raw, dict):
+            return False
+
+        section = raw.get("section")
+        meta = raw.get("meta")
+        section_text = str(section).strip().lower() if section is not None else ""
+        meta_text = str(meta).strip().lower() if meta is not None else ""
+        return section_text == "announcement" or "новая серия" in meta_text
+
+    @staticmethod
+    def _dedupe_provider_items(items: list[ScheduleItemNormalized]) -> list[ScheduleItemNormalized]:
+        result: list[ScheduleItemNormalized] = []
+        seen: set[tuple[str, str]] = set()
+        for item in items:
+            key = (str(item.provider_code), str(item.external_title_id))
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+        return result
+
+    def _with_resolved_title_ids(
+        self,
+        provider_code: str,
+        items: list[ScheduleItemNormalized],
+    ) -> list[ScheduleItemNormalized]:
+        if not items:
+            return items
+
+        resolver = getattr(self._write, "resolve_provider_title_ids", None)
+        if not callable(resolver):
+            return items
+
+        external_ids = [str(item.external_title_id) for item in items if item.external_title_id]
+        try:
+            resolved = resolver(provider_code, external_ids)
+        except Exception as exc:
+            self._logger.debug("provider title id resolution failed for %s: %s", provider_code, exc)
+            return items
+
+        return [
+            replace(item, title_id=title_id) if (title_id := resolved.get(str(item.external_title_id))) is not None else item
+            for item in items
+        ]

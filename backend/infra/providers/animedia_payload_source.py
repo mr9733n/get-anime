@@ -58,7 +58,12 @@ class AniMediaPayloadSource(IProviderPayloadSource):
 
         return out
 
-    async def fetch_payload_by_external_id(self, external_id: str | int) -> dict[str, Any] | None:
+    async def fetch_payload_by_external_id(
+        self,
+        external_id: str | int,
+        *,
+        force_refresh: bool = False,
+    ) -> dict[str, Any] | None:
         token = str(external_id).strip()
         if not token:
             return None
@@ -74,7 +79,11 @@ class AniMediaPayloadSource(IProviderPayloadSource):
             ext_id_part = left.strip() or None
             name_part = (right or "").strip() or token
 
-        items = await self.api.get_by_title(name_part, max_titles=25)
+        items = await self.api.get_by_title(
+            name_part,
+            max_titles=25,
+            force_vlink_refresh=force_refresh,
+        )
         if not items:
             return None
 

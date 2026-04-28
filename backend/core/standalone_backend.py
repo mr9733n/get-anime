@@ -212,6 +212,9 @@ class StandaloneBackend:
     async def sync_fetch_and_process(self, *a, **kw):
         return await self.sync.fetch_and_process(*a, **kw)
 
+    async def sync_random_and_process(self, *a, **kw):
+        return await self.sync.random_and_process(*a, **kw)
+
     async def sync_search_external_ids(self, *a, **kw):
         return await self.sync.search_external_ids(*a, **kw)
 

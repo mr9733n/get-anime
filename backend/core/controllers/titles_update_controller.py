@@ -96,6 +96,7 @@ class TitlesUpdateController:
         provider_code: str | None = None,
         mode: str = "title_full",
         max_results: int = 5,
+        force_refresh: bool = False,
     ) -> dict:
         # ВАЖНО: enrich=True, иначе provider_links обычно пустые и нечего маппить.
         dtos = self._titles.titles_get(
@@ -126,6 +127,7 @@ class TitlesUpdateController:
                 query=query,
                 mode=mode,
                 max_results=max_results,
+                force_refresh=force_refresh,
             )
             applied.append(res)
 

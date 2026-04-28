@@ -183,11 +183,39 @@ class ScheduleItem:
     def from_separator_string(cls, s: str, separator: str = "\u00B7") -> "ScheduleItem":
         """Парсинг из строки формата 'title·meta·episode·id·poster·link'."""
         parts = s.split(separator)
+        episode = None
+        title_id = ""
+        poster_url = None
+        link = None
+
+        for part in parts[2:]:
+            value = part.strip()
+            if not value:
+                continue
+            value_lower = value.lower()
+            if value_lower.startswith(("http://", "https://")):
+                if (
+                    poster_url is None
+                    and (
+                        "/uploads/" in value_lower
+                        or value_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
+                    )
+                ):
+                    poster_url = value
+                elif link is None:
+                    link = value
+                continue
+            if not title_id and value.isdigit():
+                title_id = value
+                continue
+            if episode is None:
+                episode = value
+
         return cls(
             title=parts[0] if len(parts) > 0 else "",
             meta=parts[1] if len(parts) > 1 else "",
-            episode=parts[2] if len(parts) > 2 else None,
-            title_id=parts[3] if len(parts) > 3 else "",
-            poster_url=parts[4] if len(parts) > 4 else None,
-            link=parts[5] if len(parts) > 5 else None,
+            episode=episode,
+            title_id=title_id,
+            poster_url=poster_url,
+            link=link,
         )

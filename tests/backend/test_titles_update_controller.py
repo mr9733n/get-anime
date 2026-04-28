@@ -83,6 +83,7 @@ class FakeSyncController:
         query=None,
         mode: str = "title_full",
         max_results: int = 5,
+        force_refresh: bool = False,
     ):
         self.calls.append(
             {
@@ -91,6 +92,7 @@ class FakeSyncController:
                 "query": query,
                 "mode": mode,
                 "max_results": max_results,
+                "force_refresh": force_refresh,
             }
         )
         return {"ok": True, "provider_code": provider_code}
@@ -341,6 +343,14 @@ class TestUpdateTitlesQueryRouting:
 
         assert sync.calls[0]["mode"] == "title"
         assert sync.calls[0]["max_results"] == 3
+
+    def test_force_refresh_forwarded(self):
+        t = title(title_id=1, name_en="Show", provider_links=[animedia_link("100@@Show")])
+        ctrl, sync = make_controller([t])
+        run(ctrl.update_titles(title_ids=[1], provider_code="animedia", force_refresh=True))
+
+        assert sync.calls[0]["provider_code"] == "animedia"
+        assert sync.calls[0]["force_refresh"] is True
 
 
 class TestUpdateTitlesProviderResolution:

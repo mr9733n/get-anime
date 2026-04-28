@@ -102,7 +102,12 @@ class AniMediaProviderAdapter:
 
     # ── Details ──────────────────────────────────────────────────────────────
 
-    def get_details(self, external_id_or_token: str | int) -> TitleDetails | None:
+    def get_details(
+        self,
+        external_id_or_token: str | int,
+        *,
+        force_refresh: bool = False,
+    ) -> TitleDetails | None:
         """
         Fetch full title details.
 
@@ -119,7 +124,9 @@ class AniMediaProviderAdapter:
             ext_id_part = left.strip() or None
             name_part = (right or "").strip() or token
 
-        items: list[dict] = _run_async(self._api.get_by_title(name_part, max_titles=25)) or []
+        items: list[dict] = _run_async(
+            self._api.get_by_title(name_part, max_titles=25, force_vlink_refresh=force_refresh)
+        ) or []
 
         if not items:
             return None
@@ -165,6 +172,11 @@ class AniMediaProviderAdapter:
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
+    def invalidate_schedule_cache(self) -> None:
+        invalidate = getattr(self._api, "invalidate_schedule_cache", None)
+        if callable(invalidate):
+            invalidate()
+
     def _map_to_details(self, raw: dict) -> TitleDetails:
         names = raw.get("names") or {}
         status = raw.get("status") or {}
@@ -206,11 +218,29 @@ class AniMediaProviderAdapter:
     # this adapter, without changes to the infra layer.
 
     async def get_by_title(
-        self, name: str, max_titles: int = 5
+        self,
+        name: str,
+        max_titles: int = 5,
+        *,
+        force_vlink_refresh: bool = False,
     ) -> list[dict[str, Any]]:
         """Async proxy → AniMediaAdapter.get_by_title()."""
-        return await self._api.get_by_title(name, max_titles=max_titles)
+        return await self._api.get_by_title(
+            name,
+            max_titles=max_titles,
+            force_vlink_refresh=force_vlink_refresh,
+        )
 
     async def get_new_titles(self, max_titles: int = 60) -> list[dict[str, Any]]:
         """Async proxy → AniMediaAdapter.get_new_titles()."""
         return await self._api.get_new_titles(max_titles)
+
+    async def get_all_titles(
+        self,
+        max_titles: int = 60,
+        pages: int = 5,
+    ) -> list[dict[str, Any]]:
+        return await self._api.get_all_titles(max_titles=max_titles, pages=pages)
+
+    async def load_more_titles(self, pages: int = 5) -> list[dict[str, Any]]:
+        return await self._api.load_more_titles(pages=pages)

@@ -44,6 +44,7 @@ class SyncController:
         query: str | None = None,
         mode: str = "title_full",
         max_results: int = 5,
+        force_refresh: bool = False,
     ):
         return await self._pipeline.fetch_and_process(
             provider_code=provider_code,
@@ -51,6 +52,18 @@ class SyncController:
             query=query,
             mode=mode,
             max_results=max_results,
+            force_refresh=force_refresh,
+        )
+
+    async def random_and_process(
+        self,
+        *,
+        provider_code: str,
+        mode: str = "title_full",
+    ):
+        return await self._pipeline.random_and_process(
+            provider_code=provider_code,
+            mode=mode,
         )
 
     async def search_external_ids(

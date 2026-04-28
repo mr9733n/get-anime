@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.anime.ui.components.ClearableOutlinedTextField
 import kotlinx.coroutines.delay
 
 @Composable
@@ -24,7 +25,7 @@ actual fun PlayerSettingsSection(
 
     Text("Плеер", style = MaterialTheme.typography.headlineMedium)
 
-    OutlinedTextField(
+    ClearableOutlinedTextField(
         value = playerDraft,
         onValueChange = onPlayerChange,
         label = { Text("Команда плеера") },
@@ -78,7 +79,7 @@ actual fun PlayerSettingsSection(
 
     Text("Браузер", style = MaterialTheme.typography.headlineMedium)
 
-    OutlinedTextField(
+    ClearableOutlinedTextField(
         value = browserDraft,
         onValueChange = onBrowserChange,
         label = { Text("Команда браузера") },

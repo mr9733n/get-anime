@@ -61,11 +61,22 @@ class TitlesController:
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        sort: str | None = None,
     ):
         title_ids = self._titles.search_title_ids(
             query=query, limit=limit, offset=offset,
             year=year, genre=genre,
             status_filter=status_filter, type_filter=type_filter,
+            need_to_see=need_to_see,
+            team_member_id=team_member_id,
+            team_member=team_member,
+            franchise_id=franchise_id,
+            user_id=user_id,
+            sort=sort,
         )
         if not title_ids:
             return []
@@ -93,12 +104,24 @@ class TitlesController:
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> int:
         """Total number of DB titles matching query + optional filters (for pagination)."""
         return self._titles.count_search_titles(
             query=(query or "").strip(),
             year=year, genre=genre,
             status_filter=status_filter, type_filter=type_filter,
+            need_to_see=need_to_see,
+            team_member_id=team_member_id,
+            team_member=team_member,
+            franchise_id=franchise_id,
+            user_id=user_id,
+            sort=sort,
         )
 
     # -----------------------
@@ -211,6 +234,28 @@ class TitlesController:
                 name_en=fr.get("name_en"),
                 name_alternative=fr.get("name_alternative"),
                 franchise_name=fr.get("franchise_name"),
+                related_title_id=fr.get("related_title_id"),
+                related_title_name_ru=fr.get("related_title_name_ru"),
+                related_title_name_en=fr.get("related_title_name_en"),
+            )
+
+        related_title_id = getattr(fr, "title_id", None)
+        if related_title_id is not None:
+            rels = getattr(fr, "franchises", []) or []
+            first_rel = rels[0] if rels else None
+            franchise_obj = getattr(first_rel, "franchise", None) if first_rel else None
+            return FranchiseDTO(
+                id=int(getattr(first_rel, "id", 0)) if first_rel else 0,
+                franchise_id=int(getattr(first_rel, "franchise_id", 0)) if first_rel else 0,
+                code=getattr(first_rel, "code", None) if first_rel else None,
+                ordinal=getattr(first_rel, "ordinal", None) if first_rel else None,
+                name_ru=getattr(first_rel, "name_ru", None) if first_rel else None,
+                name_en=getattr(first_rel, "name_en", None) if first_rel else None,
+                name_alternative=getattr(first_rel, "name_alternative", None) if first_rel else None,
+                franchise_name=getattr(franchise_obj, "franchise_name", None) if franchise_obj else None,
+                related_title_id=int(related_title_id),
+                related_title_name_ru=getattr(fr, "name_ru", None),
+                related_title_name_en=getattr(fr, "name_en", None),
             )
 
         return FranchiseDTO(
@@ -392,6 +437,7 @@ class TitlesController:
                 provider_links=provider_links,
                 production_studio=production_studio,
                 ratings=ratings,
+                episodes_count=len(getattr(t, "episodes", []) or []) or None,
 
                 provider=getattr(t, "_pref_provider", None),
                 studio=getattr(t, "_pref_studio", None),

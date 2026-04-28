@@ -77,7 +77,8 @@ class AniMediaParser:
             if a.has_attr("href"):
                 link_tag = urljoin(self.base_url, a["href"])
 
-            title_id = str(extract_id_from_url(link_tag))
+            extracted_id = extract_id_from_url(link_tag)
+            title_id = str(extracted_id) if extracted_id is not None else ""
 
             title_tag = a.select_one("div.ftop-item__title")
             title = title_tag.get_text(strip=True) if title_tag else "—"

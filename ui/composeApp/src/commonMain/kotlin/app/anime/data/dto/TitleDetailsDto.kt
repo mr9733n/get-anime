@@ -17,6 +17,8 @@ data class TitleDetailsDto(
     @SerialName("genres")        val genres: List<String> = emptyList(),
     @SerialName("ratings")       val ratings: List<RatingDto> = emptyList(),
     @SerialName("franchises")    val franchises: List<FranchiseDto> = emptyList(),
+    @SerialName("team_members")  val teamMembers: List<TeamMemberDto> = emptyList(),
+    @SerialName("torrents")      val torrents: List<TorrentDto> = emptyList(),
     @SerialName("episodes")      val episodes: List<EpisodeDto> = emptyList(),
     @SerialName("provider_links") val providerLinks: List<ProviderLinkDto> = emptyList(),
     // user prefs
@@ -58,6 +60,38 @@ data class FranchiseDto(
     @SerialName("name_ru")       val nameRu: String? = null,
     @SerialName("name_en")       val nameEn: String? = null,
     @SerialName("name_alternative") val nameAlternative: String? = null,
+    @SerialName("related_title_id") val relatedTitleId: Int? = null,
+    @SerialName("related_title_name_ru") val relatedTitleNameRu: String? = null,
+    @SerialName("related_title_name_en") val relatedTitleNameEn: String? = null,
+)
+
+@Serializable
+data class TeamMemberDto(
+    @SerialName("id")       val id: Int? = null,
+    @SerialName("name")     val name: String,
+    @SerialName("role")     val role: String,
+)
+
+@Serializable
+data class TorrentDto(
+    @SerialName("torrent_id")     val torrentId: Int,
+    @SerialName("episodes_range") val episodesRange: String? = null,
+    @SerialName("range_first")    val rangeFirst: Int? = null,
+    @SerialName("range_last")     val rangeLast: Int? = null,
+    @SerialName("quality")        val quality: String? = null,
+    @SerialName("quality_type")   val qualityType: String? = null,
+    @SerialName("resolution")     val resolution: String? = null,
+    @SerialName("encoder")        val encoder: String? = null,
+    @SerialName("leechers")       val leechers: Int? = null,
+    @SerialName("seeders")        val seeders: Int? = null,
+    @SerialName("downloads")      val downloads: Int? = null,
+    @SerialName("total_size")     val totalSize: Long? = null,
+    @SerialName("size_string")    val sizeString: String? = null,
+    @SerialName("url")            val url: String? = null,
+    @SerialName("magnet_link")    val magnetLink: String? = null,
+    @SerialName("label")          val label: String? = null,
+    @SerialName("filename")       val filename: String? = null,
+    @SerialName("hash")           val hash: String? = null,
 )
 
 /** titles.get response envelope. */

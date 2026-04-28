@@ -76,8 +76,49 @@ def _franchises(raw: list) -> list[dict]:
             "name_ru": fr.get("name_ru"),
             "name_en": fr.get("name_en"),
             "name_alternative": fr.get("name_alternative"),
+            "related_title_id": fr.get("related_title_id"),
+            "related_title_name_ru": fr.get("related_title_name_ru"),
+            "related_title_name_en": fr.get("related_title_name_en"),
         }
         for fr in (raw or [])
+    ]
+
+def _team_members(raw: list) -> list[dict]:
+    return [
+        {
+            "id": m.get("id"),
+            "name": m.get("name"),
+            "role": m.get("role") or "",
+        }
+        for m in (raw or [])
+        if m.get("name")
+    ]
+
+
+def _torrents(raw: list) -> list[dict]:
+    return [
+        {
+            "torrent_id": tr.get("torrent_id"),
+            "episodes_range": tr.get("episodes_range"),
+            "range_first": tr.get("range_first"),
+            "range_last": tr.get("range_last"),
+            "quality": tr.get("quality"),
+            "quality_type": tr.get("quality_type"),
+            "resolution": tr.get("resolution"),
+            "encoder": tr.get("encoder"),
+            "leechers": tr.get("leechers"),
+            "seeders": tr.get("seeders"),
+            "downloads": tr.get("downloads"),
+            "total_size": tr.get("total_size"),
+            "size_string": tr.get("size_string"),
+            "url": tr.get("url"),
+            "magnet_link": tr.get("magnet_link"),
+            "label": tr.get("label"),
+            "filename": tr.get("filename"),
+            "hash": tr.get("hash"),
+        }
+        for tr in (raw or [])
+        if tr.get("torrent_id") is not None
     ]
 
 
@@ -109,6 +150,15 @@ def _poster_url(d: dict) -> str | None:
     if title_id is not None:
         return f"/poster/{title_id}"
     return None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _make_abs_stream(url: str | None, host_for_player: str | None) -> str | None:
@@ -156,9 +206,14 @@ def _normalize_title_card(d: dict) -> dict:
         "year":       d.get("season_year"),
         "type":       d.get("type_string"),
         "status":     d.get("status_string"),
+        "day_of_week": d.get("day_of_week"),
+        "day_name":   d.get("day_name"),
+        "episodes_count": _optional_int(d.get("episodes_count")) or _optional_int(d.get("type_episodes")),
+        "provider":   d.get("provider"),
         "genres":     _genres(d.get("genres", [])),
         "rating_name": d.get("rating_name"),
         "rating_value": d.get("rating_value"),
+        "ratings":    _ratings(d.get("ratings", [])),
         "is_watched": d.get("title_watched"),
         "all_episodes_watched": d.get("all_episodes_watched"),
         "need_to_see": d.get("need_to_see"),
@@ -186,6 +241,8 @@ def _normalize_title_details(d: dict) -> dict:
         "genres":      _genres(d.get("genres", [])),
         "ratings":     _ratings(d.get("ratings", [])),
         "franchises":  _franchises(d.get("franchises", [])),
+        "team_members": _team_members(d.get("team_members", [])),
+        "torrents":    _torrents(d.get("torrents", [])),
         "episodes": [
             _normalize_episode(ep, title_id, watched_ids, host_for_player=host_for_player)
             for ep in d.get("episodes", [])

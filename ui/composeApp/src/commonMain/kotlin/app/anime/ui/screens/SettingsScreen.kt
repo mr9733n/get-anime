@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.anime.data.AppSettings
+import app.anime.ui.components.ClearableOutlinedTextField
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,7 +50,7 @@ fun SettingsScreen(
         ) {
             Text("Backend сервер", style = MaterialTheme.typography.headlineMedium)
 
-            OutlinedTextField(
+            ClearableOutlinedTextField(
                 value = urlDraft,
                 onValueChange = { urlDraft = it },
                 label = { Text("URL сервера") },

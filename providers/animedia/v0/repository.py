@@ -46,22 +46,26 @@ class AniMediaRepository:
         self._logger.info(f"search_title_urls: found {len(urls[:limit])} URLs")
         return urls[:limit]
 
-    async def fetch_title(self, url: str) -> Title:
+    async def fetch_title(self, url: str, *, force_vlink_refresh: bool = False) -> Title:
         """Получить полные данные тайтла."""
         html = await self._http.get_page(url)
         meta = self._parser.parse_title_page(html, self._http.base_url)
 
         original_id = self._extract_id(url)
-        episodes, video_host = await self._fetch_episodes(html, original_id)
+        episodes, video_host = await self._fetch_episodes(html, original_id, force_refresh=force_vlink_refresh)
 
         return self._build_title(url, meta, episodes, video_host)
 
     async def _fetch_episodes(
-            self, html: str, original_id: str
+            self, html: str, original_id: str, *, force_refresh: bool = False
     ) -> tuple[list[Episode], str]:
         """Получить эпизоды: сначала кэш, потом сеть."""
+        if force_refresh and original_id:
+            self._cache.invalidate_vlink(original_id)
+            self._logger.info(f"Episodes cache invalidated for {original_id}")
+
         # Try cache
-        cached = self._cache.load_vlink(original_id)
+        cached = None if force_refresh else self._cache.load_vlink(original_id)
         if cached:
             self._logger.info(f"Episodes loaded from cache for {original_id}")
             file_urls = list(cached.values())
@@ -153,6 +157,11 @@ class AniMediaRepository:
     # ══════════════════════════════════════════════════════════
     # All titles operations
     # ══════════════════════════════════════════════════════════
+
+    def invalidate_schedule_cache(self) -> None:
+        """Force the next schedule request to fetch fresh provider data."""
+        self._cache.invalidate_cache(self._cfg.schedule_key)
+        self._logger.debug("Schedule cache invalidated")
 
     async def fetch_catalog_page(self, page: int) -> str:
         """Raw HTML страницы каталога."""

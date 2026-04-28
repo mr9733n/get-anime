@@ -39,6 +39,9 @@ class FranchiseDTO:
     name_alternative: str | None
     # franchise itself (optional)
     franchise_name: str | None = None
+    related_title_id: int | None = None
+    related_title_name_ru: str | None = None
+    related_title_name_en: str | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +182,7 @@ class TitleCardDTO:
     provider_links: list[ProviderLinkDTO]
     production_studio: ProductionStudioDTO | None
     ratings: list[RatingDTO]
+    episodes_count: int | None
 
     # Enrichment (scalar)
     provider: str | None

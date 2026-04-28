@@ -53,7 +53,10 @@ fun TvScheduleScreen(
                     color = Color.White,
                 )
             }
-            Button(onClick = onRefresh) {
+            Button(
+                onClick = onRefresh,
+                enabled = !state.isLoading,
+            ) {
                 Icon(Icons.Default.Refresh, null)
             }
         }
@@ -77,7 +80,7 @@ fun TvScheduleScreen(
                 items(state.days, key = { it.day }) { dayState ->
                     TvContentRow(
                         title = dayState.dayName,
-                        items = dayState.entries.map { TitleCardDto(titleId = it.titleId) },
+                        items = dayState.entries.map { it.title ?: TitleCardDto(titleId = it.titleId) },
                         onItemClick = onTitleClick,
                     )
                 }

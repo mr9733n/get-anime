@@ -26,7 +26,13 @@ class AniMediaService:
     # Title search
     # ══════════════════════════════════════════════════════════
 
-    async def get_titles_by_name(self, name: str, max_titles: int = 5) -> list[Title]:
+    async def get_titles_by_name(
+        self,
+        name: str,
+        max_titles: int = 5,
+        *,
+        force_vlink_refresh: bool = False,
+    ) -> list[Title]:
         """
         Поиск и загрузка полных данных тайтлов.
         Policy: ограничение concurrent запросов.
@@ -41,7 +47,7 @@ class AniMediaService:
 
         async def fetch_limited(url: str) -> Title:
             async with semaphore:
-                return await self._repo.fetch_title(url)
+                return await self._repo.fetch_title(url, force_vlink_refresh=force_vlink_refresh)
 
         titles = await asyncio.gather(
             *(fetch_limited(u) for u in urls),
@@ -130,6 +136,9 @@ class AniMediaService:
     # ══════════════════════════════════════════════════════════
     # All titles (catalog)
     # ══════════════════════════════════════════════════════════
+
+    def invalidate_schedule_cache(self) -> None:
+        self._repo.invalidate_schedule_cache()
 
     async def get_all_titles(
             self,

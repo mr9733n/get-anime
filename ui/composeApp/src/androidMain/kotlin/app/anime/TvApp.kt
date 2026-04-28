@@ -22,9 +22,12 @@ import app.anime.data.AppSettings
 import app.anime.presentation.*
 import app.anime.ui.screens.SettingsScreen
 import app.anime.ui.screens.TitleDetailScreen
+import app.anime.ui.screens.TitleFacet
 import app.anime.ui.tv.TvHomeScreen
 import app.anime.ui.tv.TvScheduleScreen
 import app.anime.ui.tv.TvSearchScreen
+import java.net.URLDecoder
+import java.net.URLEncoder
 import kotlin.reflect.KClass
 
 private object TvRoute {
@@ -34,6 +37,9 @@ private object TvRoute {
     const val SCHEDULE = "schedule"   // #8
     fun title(id: Int) = "title/$id"
     const val TITLE    = "title/{titleId}"
+    fun facet(facet: TitleFacet) =
+        "facet/${facet.kindValue()}/${encode(facet.routeValue())}/${encode(facet.title)}"
+    const val FACET = "facet/{kind}/{value}/{label}"
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -73,6 +79,41 @@ fun TvApp(
             composable(TvRoute.SEARCH) {
                 val vm: SearchViewModel = viewModel(
                     factory = remember(repo) { vmFactory { SearchViewModel(repo) } }
+                )
+                val state by vm.state.collectAsState()
+                TvSearchScreen(
+                    state = state,
+                    onQueryChange = vm::onQueryChange,
+                    onTitleClick = { navController.navigate(TvRoute.title(it.titleId)) },
+                    onLoadMore = vm::loadMore,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = TvRoute.FACET,
+                arguments = listOf(
+                    navArgument("kind") { type = NavType.StringType },
+                    navArgument("value") { type = NavType.StringType },
+                    navArgument("label") { type = NavType.StringType },
+                ),
+            ) { backStackEntry ->
+                val kind = backStackEntry.arguments!!.getString("kind").orEmpty()
+                val value = decode(backStackEntry.arguments!!.getString("value").orEmpty())
+                val label = decode(backStackEntry.arguments!!.getString("label").orEmpty())
+                val filters = facetFilters(kind, value, label)
+                val vm: SearchViewModel = viewModel(
+                    key = "facet_${kind}_${value}_${label}",
+                    factory = remember(repo, kind, value, label) {
+                        vmFactory {
+                            SearchViewModel(
+                                repo,
+                                autoLoad = true,
+                                initialFilters = filters,
+                                initialFacetTitle = label,
+                            )
+                        }
+                    },
                 )
                 val state by vm.state.collectAsState()
                 TvSearchScreen(
@@ -159,14 +200,57 @@ fun TvApp(
                     },
                     onToggleNeedToSee = vm::toggleNeedToSee,
                     onMarkAllWatched = { vm.markAllWatched(true) },
-                    onUpdateFromProvider = vm::updateFromProvider,
+                    onUpdateFromProvider = { vm.updateFromProvider() },
+                    onForceUpdateEpisodes = { vm.updateFromProvider(forceRefresh = true) },
                     onDismissUpdateResult = vm::dismissUpdateResult,
                     onPlayAll = vm::playAll,
+                    onRelatedTitleClick = { relatedTitleId ->
+                        navController.navigate(TvRoute.title(relatedTitleId))
+                    },
+                    onFacetClick = { facet ->
+                        navController.navigate(TvRoute.facet(facet))
+                    },
                 )
             }
         }
     }
 }
+
+private fun TitleFacet.kindValue(): String =
+    when {
+        year != null -> "year"
+        genre.isNotBlank() -> "genre"
+        status.isNotBlank() -> "status"
+        teamMemberId != null || teamMember.isNotBlank() -> "team"
+        franchiseId != null -> "franchise"
+        else -> "query"
+    }
+
+private fun TitleFacet.routeValue(): String =
+    when (kindValue()) {
+        "year" -> year?.toString().orEmpty()
+        "genre" -> genre
+        "status" -> status
+        "team" -> teamMemberId?.toString() ?: teamMember
+        "franchise" -> franchiseId?.toString().orEmpty()
+        else -> title
+    }
+
+private fun facetFilters(kind: String, value: String, label: String): SearchFilters =
+    when (kind) {
+        "year" -> SearchFilters(year = value.toIntOrNull())
+        "genre" -> SearchFilters(genre = value)
+        "status" -> SearchFilters(status = value)
+        "team" -> SearchFilters(teamMemberId = value.toIntOrNull(), teamMember = label.removePrefix("Команда: ").ifBlank { value })
+        "franchise" -> SearchFilters(franchiseId = value.toIntOrNull(), franchise = label.removePrefix("Франшиза: ").ifBlank { value })
+        else -> SearchFilters()
+    }
+
+private fun encode(value: String): String =
+    URLEncoder.encode(value, Charsets.UTF_8.name())
+
+private fun decode(value: String): String =
+    URLDecoder.decode(value, Charsets.UTF_8.name())
 
 private inline fun <reified T : ViewModel> vmFactory(
     crossinline create: () -> T,

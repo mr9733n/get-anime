@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from storage.save import SaveManager
 from storage.process import ProcessManager
 from storage.get import GetManager
@@ -18,7 +19,12 @@ class DatabaseManager:
     def __init__(self, db_path):
         self.current_poster_index = None
         self.logger = logging.getLogger(__name__)
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
+        self.engine = create_engine(
+            f'sqlite:///{db_path}',
+            echo=False,
+            connect_args={"check_same_thread": False},
+            poolclass=NullPool,
+        )
         self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # TODO: fix this backward compat

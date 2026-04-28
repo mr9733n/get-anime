@@ -179,16 +179,17 @@ The binary reads one JSON line from stdin and writes one JSON line to stdout, th
 
 ---
 
-## Available Operations (17)
+## Available Operations (21)
 
 | Group | Operations |
 |-------|-----------|
 | titles | `titles.search`, `titles.get`, `titles.list_episodes`, `titles_ids.search` |
 | streams | `streams.get` |
 | playlists | `playlist.compose`, `playlist.compose_multi` |
-| sync | `sync.fetch_and_process`, `sync.search_and_process`, `sync.search_external_ids`, `sync.fetch_payload` |
-| update | `titles.update` |
+| sync | `sync.fetch_and_process`, `sync.search_and_process`, `sync.search_external_ids`, `sync.fetch_payload`, `sync.random_and_process` |
+| update/jobs | `titles.update`, `titles.update.start`, `jobs.get` |
 | schedule | `schedule.get`, `schedule.sync` |
+| provider | `provider.catalog` |
 | history | `history.mark_watched`, `history.mark_all_watched`, `history.set_need_to_see` |
 
 All operations follow the same envelope:
@@ -229,6 +230,13 @@ storage/                 ← ⚠️ REQUIRED AT RUNTIME (DB access, poster blobs
 utils/                   ← ⚠️ REQUIRED AT RUNTIME (image helpers, general utilities)
 providers/               ← ⚠️ REQUIRED AT RUNTIME (AniMedia / AniLiberty adapters, local cache)
 
+config/                  ← mutable runtime config
+db/                      ← mutable runtime database files
+playlists/               ← generated playlist files
+torrents/                ← downloaded/saved .torrent metadata
+temp/                    ← provider caches and temporary runtime files
+logs/                    ← runtime logs
+
 deploy/
 ├── install_linux.sh
 ├── install_windows.bat
@@ -239,9 +247,14 @@ requirements.txt         ← all Python dependencies
 
 > **Important**: the server is not a self-contained package inside `backend/`.
 > At runtime it also imports from `storage/`, `utils/`, and `providers/` at the
-> **repo root**. When deploying or building a PyInstaller binary, all three
-> directories must be present alongside `backend/` in the working directory (or
-> included in the spec via `datas`/`hiddenimports`).
+> runtime root. When deploying or building a PyInstaller binary, all code/runtime
+> directories (`backend/`, `storage/`, `utils/`, `providers/`) must be present in
+> the working directory (or included in the spec via `datas`/`hiddenimports`).
+>
+> Mutable runtime directories (`config/`, `db/`, `playlists/`, `torrents/`,
+> `temp/`, `logs/`) should exist or be creatable by the backend process. AniMedia
+> cache files are stored in `temp/` (`am_schedule_cache.json`,
+> `am_all_titles_cache.json`, `am_vlink_cache.json`).
 >
 > Systemd / Task Scheduler `WorkingDirectory` must point to the repo root, not
 > to the `backend/` subdirectory.
@@ -270,6 +283,9 @@ No `.env` file required for basic operation. All configuration is passed via CLI
 The database path (`--db`) must point to an existing SQLite database file.
 If the file does not exist, the server will fail to start.
 
-Default database location (if you initialized via the legacy app):
+Preferred standalone runtime database location:
+- `db/anime_player.db` under the backend runtime root
+
+Legacy/default database locations (if you initialized via the legacy app):
 - Windows: `%APPDATA%\AnimePlayer\anime_player.db` or `C:\AnimePlayer\db\anime_player.db`
 - Linux: `/opt/anime-player/db/anime_player.db` or `~/.local/share/anime_player/anime_player.db`

@@ -33,6 +33,21 @@ class IScheduleWritePort(Protocol):
         """
         ...
 
+    def replace_schedule(
+        self,
+        *,
+        provider_code: str,
+        items: list[ScheduleItemNormalized],
+        days: set[int],
+    ) -> ScheduleUpsertResult:
+        """
+        Replace provider-owned schedule rows for affected days.
+
+        Rows for the same provider/day that are absent from `items` are removed.
+        Rows for other providers are preserved.
+        """
+        ...
+
 
 @runtime_checkable
 class IProviderScheduleSource(Protocol):

@@ -27,6 +27,12 @@ class ITitlesPort(Protocol):
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> list[int]:
         """Возвращает только title_id по строке поиска (с опциональными фильтрами)."""
         ...
@@ -46,6 +52,12 @@ class ITitlesPort(Protocol):
         genre: str | None = None,
         status_filter: str | None = None,
         type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
     ) -> int:
         """Total number of titles matching query + optional filters (for pagination)."""
         ...

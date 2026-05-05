@@ -10,6 +10,8 @@ private data class SettingsData(
     val backendUrl: String = AppSettings.DEFAULT_BACKEND_URL,
     val playerCommand: String = AppSettings.DEFAULT_PLAYER_COMMAND,
     val browserCommand: String = AppSettings.DEFAULT_BROWSER_COMMAND,
+    val useCustomMpvPlayer: Boolean = AppSettings.DEFAULT_USE_CUSTOM_MPV,
+    val customMpvPlayerCommand: String = AppSettings.DEFAULT_CUSTOM_MPV_COMMAND,
 )
 
 class DesktopAppSettings : AppSettings {
@@ -40,6 +42,14 @@ class DesktopAppSettings : AppSettings {
     override var browserCommand: String
         get() = data.browserCommand
         set(value) { data = data.copy(browserCommand = value); save() }
+
+    override var useCustomMpvPlayer: Boolean
+        get() = data.useCustomMpvPlayer
+        set(value) { data = data.copy(useCustomMpvPlayer = value); save() }
+
+    override var customMpvPlayerCommand: String
+        get() = data.customMpvPlayerCommand
+        set(value) { data = data.copy(customMpvPlayerCommand = value); save() }
 }
 
 actual fun createAppSettings(): AppSettings = DesktopAppSettings()

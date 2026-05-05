@@ -27,7 +27,7 @@ class AniMediaParser:
                 "name_en": ".amd-sub",
                 "alternative": ".amd-alt-names div",
                 "description": ".amd-description",
-                "rating": ".amd-score",
+                "rating": ".amd-score div",
             },
             "poster": ".amd-poster > img",
             "genres": ".amd-tags a",

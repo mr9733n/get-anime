@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
 [project]
 name = "get-anime"
 version = "0.3.8"
@@ -37,7 +44,7 @@ dependencies = [
     "pyinstaller~=6.17.0",
 
     # Optional utilities
-    "python-dotenv~=1.1.0",
+    "python-dotenv>=1.2.2",
     "qrcode~=8.2",
 ]
 

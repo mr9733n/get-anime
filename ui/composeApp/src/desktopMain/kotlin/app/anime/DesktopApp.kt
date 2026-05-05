@@ -218,7 +218,13 @@ fun DesktopApp(
                         vm.playerEvent.collect { event ->
                             when (event) {
                                 is PlayerLaunchEvent.Launch ->
-                                    launchPlayer(settings.playerCommand, event.streamUrl)
+                                    launchPlayer(
+                                        playerCommand = settings.playerCommand,
+                                        url = event.streamUrl,
+                                        titleId = event.titleId,
+                                        useCustomMpv = settings.useCustomMpvPlayer,
+                                        customMpvCommand = settings.customMpvPlayerCommand,
+                                    )
                                 is PlayerLaunchEvent.OpenInBrowser ->
                                     launchBrowser(settings.browserCommand, event.url)
                                 else -> {}
@@ -308,8 +314,19 @@ private inline fun <reified T : ViewModel> vmFactory(
 // ---------------------------------------------------------------------------
 // Player launch
 // ---------------------------------------------------------------------------
-private fun launchPlayer(playerCommand: String, url: String) {
-    val parts = playerCommand.trim().split("\\s+".toRegex()) + url
+private fun launchPlayer(
+    playerCommand: String,
+    url: String,
+    titleId: Int,
+    useCustomMpv: Boolean,
+    customMpvCommand: String,
+) {
+    val parts = if (useCustomMpv && customMpvCommand.isNotBlank()) {
+        customMpvCommand.trim().split("\\s+".toRegex()) +
+            listOf("--playlist", url, "--title_id", titleId.toString())
+    } else {
+        playerCommand.trim().split("\\s+".toRegex()) + url
+    }
     try {
         ProcessBuilder(parts).inheritIO().start()
     } catch (_: Exception) {

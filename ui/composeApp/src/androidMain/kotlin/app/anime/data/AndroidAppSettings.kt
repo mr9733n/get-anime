@@ -22,6 +22,14 @@ class AndroidAppSettings(private val prefs: SharedPreferences) : AppSettings {
         get() = AppSettings.DEFAULT_BROWSER_COMMAND
         set(_) { /* not applicable on Android */ }
 
+    override var useCustomMpvPlayer: Boolean
+        get() = false
+        set(_) { /* not applicable on Android */ }
+
+    override var customMpvPlayerCommand: String
+        get() = AppSettings.DEFAULT_CUSTOM_MPV_COMMAND
+        set(_) { /* not applicable on Android */ }
+
     companion object {
         private const val PREFS_NAME = "anime_player"
         private const val KEY_BACKEND_URL = "backend_url"

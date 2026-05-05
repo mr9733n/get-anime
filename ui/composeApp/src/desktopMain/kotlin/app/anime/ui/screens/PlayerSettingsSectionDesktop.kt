@@ -19,6 +19,11 @@ actual fun PlayerSettingsSection(
     browserDraft: String,
     onBrowserChange: (String) -> Unit,
     onBrowserSave: () -> Unit,
+    useCustomMpv: Boolean,
+    onUseCustomMpvChange: (Boolean) -> Unit,
+    customMpvCommandDraft: String,
+    onCustomMpvCommandChange: (String) -> Unit,
+    onCustomMpvCommandSave: () -> Unit,
 ) {
     // ── Video player ──────────────────────────────────────────────────────────
     var playerSaved by remember { mutableStateOf(false) }
@@ -121,6 +126,69 @@ actual fun PlayerSettingsSection(
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // ── Custom MPV player ─────────────────────────────────────────────────────
+    Text("Встроенный MPV плеер", style = MaterialTheme.typography.headlineMedium)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Switch(checked = useCustomMpv, onCheckedChange = onUseCustomMpvChange)
+        Text("Использовать кастомный MPV плеер (--playlist, --title_id)")
+    }
+
+    if (useCustomMpv) {
+        var mpvSaved by remember { mutableStateOf(false) }
+
+        ClearableOutlinedTextField(
+            value = customMpvCommandDraft,
+            onValueChange = onCustomMpvCommandChange,
+            label = { Text("Команда запуска MPV") },
+            placeholder = { Text("python -m app.mpv.main") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            supportingText = {
+                Text("Запускается как: <команда> --playlist <url> --title_id <id>")
+            },
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(onClick = {
+                onCustomMpvCommandSave()
+                mpvSaved = true
+            }) {
+                Text("Сохранить")
+            }
+
+            if (mpvSaved) {
+                LaunchedEffect(Unit) {
+                    delay(2_000)
+                    mpvSaved = false
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        "Сохранено",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
     }

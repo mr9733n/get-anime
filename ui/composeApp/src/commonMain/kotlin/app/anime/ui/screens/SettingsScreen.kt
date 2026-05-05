@@ -24,6 +24,8 @@ fun SettingsScreen(
     var urlDraft by remember { mutableStateOf(settings.backendUrl) }
     var playerDraft by remember { mutableStateOf(settings.playerCommand) }
     var browserDraft by remember { mutableStateOf(settings.browserCommand) }
+    var useCustomMpv by remember { mutableStateOf(settings.useCustomMpvPlayer) }
+    var customMpvCommandDraft by remember { mutableStateOf(settings.customMpvPlayerCommand) }
     var testResult by remember { mutableStateOf<TestResult?>(null) }
     var isTesting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -137,6 +139,11 @@ fun SettingsScreen(
                 browserDraft = browserDraft,
                 onBrowserChange = { browserDraft = it },
                 onBrowserSave = { settings.browserCommand = browserDraft.trim() },
+                useCustomMpv = useCustomMpv,
+                onUseCustomMpvChange = { useCustomMpv = it; settings.useCustomMpvPlayer = it },
+                customMpvCommandDraft = customMpvCommandDraft,
+                onCustomMpvCommandChange = { customMpvCommandDraft = it },
+                onCustomMpvCommandSave = { settings.customMpvPlayerCommand = customMpvCommandDraft.trim() },
             )
         }
     }
@@ -150,6 +157,11 @@ expect fun PlayerSettingsSection(
     browserDraft: String,
     onBrowserChange: (String) -> Unit,
     onBrowserSave: () -> Unit,
+    useCustomMpv: Boolean,
+    onUseCustomMpvChange: (Boolean) -> Unit,
+    customMpvCommandDraft: String,
+    onCustomMpvCommandChange: (String) -> Unit,
+    onCustomMpvCommandSave: () -> Unit,
 )
 
 private enum class TestResult { Ok, Fail, Saved }

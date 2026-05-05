@@ -20,10 +20,18 @@ interface AppSettings {
      */
     var browserCommand: String
 
+    /** When true, use the custom MPV player with --playlist and --title_id flags (Desktop only). */
+    var useCustomMpvPlayer: Boolean
+
+    /** Command to launch the custom MPV player, e.g. "python -m app.mpv.main" (Desktop only). */
+    var customMpvPlayerCommand: String
+
     companion object {
         const val DEFAULT_BACKEND_URL = "http://localhost:8765"
         const val DEFAULT_PLAYER_COMMAND = "mpv"
         const val DEFAULT_BROWSER_COMMAND = ""
+        const val DEFAULT_USE_CUSTOM_MPV = false
+        const val DEFAULT_CUSTOM_MPV_COMMAND = "python -m app.mpv.main"
     }
 }
 

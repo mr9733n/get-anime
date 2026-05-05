@@ -35,35 +35,35 @@ def main():
     app.setApplicationName("Anime Player MPV")
     app.setWindowIcon(QIcon(icon_path))
 
-    if args.prod_key:
-        unique_key = str(args.prod_key) + '-APM'
-        shared_memory = QSharedMemory(unique_key)
-        if not shared_memory.create(1):
-            logging.getLogger().error("Anime Player MPV player is already running!")
-            sys.exit(1)
+    # if args.prod_key:
+    #    unique_key = str(args.prod_key) + '-APM'
+    #    shared_memory = QSharedMemory(unique_key)
+    #    if not shared_memory.create(1):
+    #        logging.getLogger().error("Anime Player MPV player is already running!")
+    #        sys.exit(1)
 
-        loglevel = "info" if args.verbose else "warn"
-        engine = MpvEngine(proxy=args.proxy, loglevel=loglevel, log_file=args.log)
+    loglevel = "info" if args.verbose else "warn"
+    engine = MpvEngine(proxy=args.proxy, loglevel=loglevel, log_file=args.log)
 
-        w = PlayerWindow(
-            engine,
-            playlist=args.playlist,
-            title_id=args.title_id,
-            skip_data=args.skip_data,
-            proxy=args.proxy,
-            autoplay=not args.no_autoplay,
-            template=args.template,
-        )
-        w.show()
+    w = PlayerWindow(
+        engine,
+        playlist=args.playlist,
+        title_id=args.title_id,
+        skip_data=args.skip_data,
+        proxy=args.proxy,
+        autoplay=not args.no_autoplay,
+        template=args.template,
+    )
+    w.show()
 
-    else:
-        message = "MPV player cannot be run without AnimePlayer application!"
-        logging.getLogger().error(message)
-        tray_icon = QSystemTrayIcon()
-        tray_icon.setIcon(app.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
-        tray_icon.show()
-        tray_icon.showMessage("Error", message, QSystemTrayIcon.MessageIcon.Warning, 5000)
-        QTimer.singleShot(500, lambda: sys.exit(1))
+    # else:
+    #    message = "MPV player cannot be run without AnimePlayer application!"
+    #    logging.getLogger().error(message)
+    #    tray_icon = QSystemTrayIcon()
+    #    tray_icon.setIcon(app.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
+    #    tray_icon.show()
+    #    tray_icon.showMessage("Error", message, QSystemTrayIcon.MessageIcon.Warning, 5000)
+    #    QTimer.singleShot(500, lambda: sys.exit(1))
 
     sys.exit(app.exec())
 

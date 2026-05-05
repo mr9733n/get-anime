@@ -33,6 +33,7 @@ from app.mpv.timing_config import (
     METADATA_LOAD_WAIT,
     PLAYBACK_START_WAIT,
     WATCHDOG_PAUSE,
+    FORCE_RELOAD_WATCHDOG_PAUSE,
     SEEKING_GUARD,
     VIDEO_WIN_USER_CLOSE,
     TimingConfig, FORCE_RELOAD_CUR, NEXT_MEDIA, SWITCHING_TRACK, ZERO_DELAY
@@ -839,7 +840,9 @@ class PlayerWindow(QMainWindow):
         if not self.playlist_urls:
             return
 
-        self._pause_watchdog_temporarily(2000)
+        # Даём больше времени чем после обычного seek: нужно переподключиться к CDN,
+        # разобрать HLS-манифест и накопить cache-pause-initial буфер.
+        self._pause_watchdog_temporarily(FORCE_RELOAD_WATCHDOG_PAUSE)
 
         url = self.playlist_urls[self.playlist_index]
         self.engine.load(url)

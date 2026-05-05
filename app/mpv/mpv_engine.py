@@ -61,8 +61,14 @@ class MpvEngine:
                 'audio-fallback-to-null': 'yes',
                 # ЗАЩИТА ОТ ПРОБЛЕМ С КЭШЕМ:
                 'cache': 'yes',
-                'demuxer-max-bytes': '150M',  # Уменьшил с 100M
-                'demuxer-readahead-secs': '20',  # Уменьшил с 20
+                'demuxer-max-bytes': '150M',
+                'demuxer-readahead-secs': '20',
+                # БУФЕРИЗАЦИЯ: пауза пока не накоплен начальный буфер,
+                # авто-возобновление/пауза при низком кэше во время воспроизведения.
+                # Не трогать: эти опции работают независимо от engine.play()/pause().
+                'cache-pause': 'yes',
+                'cache-pause-initial': 'yes',
+                'cache-pause-wait': '5',        # минимум 5 секунд данных перед стартом
                 # ЗАЩИТА ОТ THREADING ISSUES:
                 'input-terminal': 'no',
                 'terminal': 'no',
@@ -76,10 +82,15 @@ class MpvEngine:
             self.logger.error(f"Failed to create MPV instance: {e}", exc_info=True)
             self.logger.error(f"Stack trace: {traceback.format_exc()}")
             raise
-        self._player["http-header-fields"] = "Connection: close"
+        # НЕ устанавливаем "Connection: close" — он ломает HLS keepalive на Windows:
+        # MPV пытается переиспользовать сокет после того, как сервер его закрыл,
+        # получает WSAEINVAL ("Invalid argument"), и ретраит с нуля. За это время
+        # кэш демуксера опустошается → декодер получает неполный TS-сегмент → H264 ошибки.
         self._player["user-agent"] = "Mozilla/5.0"
-        self._player["network-timeout"] = "10"
+        self._player["network-timeout"] = "30"      # было 10: CDN иногда отвечает долго
         self._player["demuxer-hysteresis-secs"] = "10"
+        # Авто-переподключение при разрыве потока (reconnect_streamed нужен для HLS)
+        self._player["stream-lavf-o"] = "reconnect=1,reconnect_streamed=1,reconnect_delay_max=10"
 
         self._alive = True
 

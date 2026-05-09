@@ -17,6 +17,7 @@ import app.anime.ui.screens.*
 import app.anime.ui.theme.AnimePlayerTheme
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.Base64
 import kotlin.reflect.KClass
 
 private object Route {
@@ -224,6 +225,11 @@ fun DesktopApp(
                                         titleId = event.titleId,
                                         useCustomMpv = settings.useCustomMpvPlayer,
                                         customMpvCommand = settings.customMpvPlayerCommand,
+                                        skipData = buildSkipData(
+                                            event.episodeNumber,
+                                            event.skipsOpening,
+                                            event.skipsEnding,
+                                        ),
                                     )
                                 is PlayerLaunchEvent.OpenInBrowser ->
                                     launchBrowser(settings.browserCommand, event.url)
@@ -320,13 +326,21 @@ private fun launchPlayer(
     titleId: Int,
     useCustomMpv: Boolean,
     customMpvCommand: String,
+    skipData: String? = null,
 ) {
     val parts = if (useCustomMpv && customMpvCommand.isNotBlank()) {
-        customMpvCommand.trim().split("\\s+".toRegex()) +
-            listOf("--playlist", url, "--title_id", titleId.toString())
+        buildList {
+            addAll(customMpvCommand.trim().split("\\s+".toRegex()))
+            add("--playlist"); add(url)
+            add("--title_id"); add(titleId.toString())
+            if (skipData != null) { add("--skip_data"); add(skipData) }
+        }
     } else {
         playerCommand.trim().split("\\s+".toRegex()) + url
     }
+    // DEBUG — remove after confirming skip_data reaches MPV
+    System.err.println("[launchPlayer] useCustomMpv=$useCustomMpv skipData=${skipData?.take(40)}")
+    System.err.println("[launchPlayer] parts=$parts")
     try {
         ProcessBuilder(parts).inheritIO().start()
     } catch (_: Exception) {
@@ -339,6 +353,42 @@ private fun launchPlayer(
         runCatching { ProcessBuilder(fallback).start() }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Skip data — build the base64url JSON the custom MPV player expects
+// ---------------------------------------------------------------------------
+
+/**
+ * Encodes per-episode skip ranges as the base64url JSON blob that
+ * `app/mpv/main.py --skip_data` accepts.
+ *
+ * Backend stores ranges as JSON-encoded strings, e.g. "[0.0, 89.5]".
+ * MPV player decodes them with json.loads(), so we keep the value as-is.
+ *
+ * Returns null when both ranges are absent (no --skip_data flag added).
+ */
+private fun buildSkipData(
+    episodeNumber: Int,
+    skipsOpening: String?,
+    skipsEnding: String?,
+): String? {
+    if (skipsOpening.isNullOrBlank() && skipsEnding.isNullOrBlank()) return null
+    val json = buildString {
+        append("{")
+        append("\"episode_number\":$episodeNumber")
+        if (!skipsOpening.isNullOrBlank())
+            append(",\"skip_opening\":${jsonStringLiteral(skipsOpening)}")
+        if (!skipsEnding.isNullOrBlank())
+            append(",\"skip_ending\":${jsonStringLiteral(skipsEnding)}")
+        append("}")
+    }
+    return Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(json.toByteArray(Charsets.UTF_8))
+}
+
+/** Wrap a string in JSON quotes, escaping backslashes and double-quotes. */
+private fun jsonStringLiteral(s: String): String =
+    "\"${s.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 // ---------------------------------------------------------------------------
 // Browser launch — for web-player page URLs

@@ -316,9 +316,14 @@ class PlayerWindow(QMainWindow):
 
     def _decode_skip_data(self, skip_data: str) -> None:
         try:
-            skip_data_json = base64.urlsafe_b64decode(skip_data.encode()).decode()
+            # urlsafe_b64decode requires padding; Kotlin's withoutPadding() strips it.
+            # Adding '=' * (-len % 4) restores the missing padding harmlessly.
+            padded = skip_data + '=' * (-len(skip_data) % 4)
+            skip_data_json = base64.urlsafe_b64decode(padded.encode()).decode()
             self.skip_data_cache = json.loads(skip_data_json)
-        except Exception:
+            self.logger.info("skip_data decoded: %s", self.skip_data_cache)
+        except Exception as exc:
+            self.logger.warning("skip_data decode failed: %s", exc)
             self.skip_data_cache = None
 
     def load_playlist(self, path: str, title_id: int | None, skip_data: str | None = None) -> None:
@@ -572,9 +577,8 @@ class PlayerWindow(QMainWindow):
         self.play_index(prv)
 
     def on_play_pause(self):
-        self.engine.toggle_pause()
-        st = self.engine.get_state()
-        if st.is_playing:
+        is_playing = self.engine.toggle_pause()  # returns new is_playing state directly
+        if is_playing:
             self.btn_play.setText("PAUSE")
             self._start_watchdog()
             self.video_window.show()
@@ -597,8 +601,10 @@ class PlayerWindow(QMainWindow):
     def toggle_repeat(self):
         self._repeat_enabled = not self._repeat_enabled
         if self._repeat_enabled:
+            self.btn_repeat.setText("REPEAT ✓")
             self.btn_repeat.setObjectName("ToggleOn")
         else:
+            self.btn_repeat.setText("REPEAT")
             self.btn_repeat.setObjectName("")
         self.btn_repeat.style().unpolish(self.btn_repeat)
         self.btn_repeat.style().polish(self.btn_repeat)
@@ -631,6 +637,10 @@ class PlayerWindow(QMainWindow):
         if not self._dragging and st.length_ms > 0:
             ratio = st.time_ms / st.length_ms
             self.prog.setValue(int(ratio * 1000))
+        # Sync play/pause button label with actual engine state (handles auto-start).
+        expected = "PAUSE" if st.is_playing else "PLAY"
+        if self.btn_play.text() != expected:
+            self.btn_play.setText(expected)
 
     def _on_seek_press(self):
         self._dragging = True
@@ -686,6 +696,10 @@ class PlayerWindow(QMainWindow):
 
                         self.engine.load(url2)
                         self.engine.play()
+                        # Reset watchdog: stale _wd_last_time_ms from before the error
+                        # would trigger a false force-reload the moment the timer fires.
+                        self._after_seek_reset_watchdog()
+                        self._pause_watchdog_temporarily(FORCE_RELOAD_WATCHDOG_PAUSE)
                         QTimer.singleShot(SWITCHING_TRACK, lambda: setattr(self, "_switching_track", False))
                         return
                     except Exception as e:
@@ -767,6 +781,24 @@ class PlayerWindow(QMainWindow):
 
         try:
             episode_number = self.get_playing_episode_number()
+
+            # Fallback: if URL-based detection failed but we have a single-episode
+            # skip_data_cache (the common case when launched from UI for one episode),
+            # read episode_number directly from the cache.
+            if episode_number is None and self.skip_data_cache:
+                _entries = self.skip_data_cache.get("episode_skips")
+                if not _entries:
+                    try:
+                        episode_number = int(self.skip_data_cache.get("episode_number", 0)) or None
+                    except Exception:
+                        pass
+
+            self.logger.debug(
+                "perform_skip_credits: ep=%s cache=%s",
+                episode_number,
+                bool(self.skip_data_cache),
+            )
+
             if episode_number is None:
                 return
             self.get_episode_skips(episode_number)
@@ -779,6 +811,10 @@ class PlayerWindow(QMainWindow):
             total_length = max(((st.length_ms or 0) / 1000.0), 0.0)
             opening = _norm_pair(self.skip_opening)
             ending = _norm_pair(self.skip_ending)
+            self.logger.debug(
+                "perform_skip_credits: t=%.1f opening=%s ending=%s",
+                current_time, opening, ending,
+            )
             if opening:
                 start_o, end_o = opening
                 if current_time + EPS < end_o:
@@ -797,8 +833,8 @@ class PlayerWindow(QMainWindow):
                     self._after_seek_reset_watchdog()
                     self._pause_watchdog_temporarily(WATCHDOG_PAUSE)
                     return
-        except Exception:
-            return
+        except Exception as exc:
+            self.logger.warning("perform_skip_credits error: %s", exc, exc_info=True)
 
     def _start_watchdog(self):
         self.prevent_sleep()
@@ -864,13 +900,23 @@ class PlayerWindow(QMainWindow):
         try:
             out_dir = Path.cwd() / "screenshots"
             out_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+            ts  = datetime.now().strftime("%Y%m%d_%H-%M-%S")
             tid = self.title_id if self.title_id is not None else "noid"
             path = out_dir / f"screenshot_{tid}_{ts}.png"
-            if hasattr(self.engine, "screenshot"):
-                self.engine.screenshot(str(path))
-        except Exception:
-            pass
+            if not hasattr(self.engine, "screenshot"):
+                return
+            # as_posix() avoids Windows backslash issues at the call-site too
+            ok = self.engine.screenshot(path.as_posix())
+            self._flash_button(self.btn_shot, "SAVED ✓" if ok else "NO FRAME", 1500)
+        except Exception as e:
+            self.logger.warning(f"take_screenshot failed: {e}")
+            self._flash_button(self.btn_shot, "ERROR", 1500)
+
+    def _flash_button(self, btn: QPushButton, text: str, ms: int) -> None:
+        """Temporarily change a button's label, then restore it."""
+        original = btn.text()
+        btn.setText(text)
+        QTimer.singleShot(ms, lambda: btn.setText(original))
 
     def prevent_sleep(self):
         if os.name != "nt":
@@ -986,6 +1032,8 @@ class PlayerWindow(QMainWindow):
         }}
         QPushButton#ToggleOn {{
             border: 2px solid {fill};
+            background: {fill};
+            color: {bg};
         }}
         QLabel {{
             background: transparent;

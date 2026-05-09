@@ -16,7 +16,15 @@ sealed interface TitleDetailUiState {
 
 sealed interface PlayerLaunchEvent {
     /** Play a direct media stream or playlist file via the configured video player. */
-    data class Launch(val streamUrl: String, val episodeNumber: Int, val titleName: String, val titleId: Int) : PlayerLaunchEvent
+    data class Launch(
+        val streamUrl: String,
+        val episodeNumber: Int,
+        val titleName: String,
+        val titleId: Int,
+        /** Raw JSON-encoded skip range, e.g. "[0.0, 89.5]". Null = no data. */
+        val skipsOpening: String? = null,
+        val skipsEnding: String? = null,
+    ) : PlayerLaunchEvent
     /** Open a web-player page in a browser (URL is not a direct media stream). */
     data class OpenInBrowser(val url: String) : PlayerLaunchEvent
     data class Error(val message: String) : PlayerLaunchEvent
@@ -72,7 +80,14 @@ class TitleViewModel(
                 if (isWebPlayerUrl(url)) {
                     _playerEvent.emit(PlayerLaunchEvent.OpenInBrowser(url))
                 } else {
-                    _playerEvent.emit(PlayerLaunchEvent.Launch(url, episode.episodeNumber, titleName, titleId))
+                    _playerEvent.emit(PlayerLaunchEvent.Launch(
+                        streamUrl = url,
+                        episodeNumber = episode.episodeNumber,
+                        titleName = titleName,
+                        titleId = titleId,
+                        skipsOpening = episode.skipsOpening,
+                        skipsEnding = episode.skipsEnding,
+                    ))
                 }
             }.onFailure { e ->
                 _playerEvent.emit(PlayerLaunchEvent.Error(e.message ?: "Stream error"))

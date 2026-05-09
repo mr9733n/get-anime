@@ -314,18 +314,22 @@ class MpvEngine:
             except Exception as e:
                 self.logger.error(f"pause() failed: {e}")
 
-    def toggle_pause(self) -> None:
+    def toggle_pause(self) -> bool:
+        """Toggle pause and return the new is_playing state (True = playing)."""
         if not self._safe():
-            return
+            return False
         with self._lock:
             if not self._safe():
-                return
+                return False
             try:
-                current = bool(self._player.pause)
-                self._player.pause = not current
-                self.logger.info(f"Toggled pause: {current} -> {not current}")
+                current_paused = bool(self._player.pause)
+                new_paused = not current_paused
+                self._player.pause = new_paused
+                self.logger.info(f"Toggled pause: {current_paused} -> {new_paused}")
+                return not new_paused  # is_playing = not paused
             except Exception as e:
                 self.logger.error(f"toggle_pause() failed: {e}")
+                return False
 
     def stop(self) -> None:
         if not self._safe():
@@ -374,17 +378,41 @@ class MpvEngine:
             except Exception as e:
                 self.logger.error(f"set_volume({volume}) failed: {e}")
 
-    def screenshot(self, path: str) -> None:
+    def screenshot(self, path: str) -> bool:
+        """Save a screenshot to *path*.  Returns True on success, False otherwise."""
         if not self._safe():
-            return
+            return False
         with self._lock:
             if not self._safe():
-                return
+                return False
             try:
-                self.logger.info(f"Taking screenshot: {path}")
-                self._player.command("screenshot-to-file", path, "video")
+                # MPV/libavformat requires forward slashes even on Windows.
+                # str(pathlib.Path) produces backslashes, which cause
+                # MPV_ERROR_COMMAND (-12) inside the encoder.
+                clean_path = path.replace('\\', '/')
+
+                # Guard: screenshot-to-file fails with MPV_ERROR_COMMAND (-12)
+                # when there is no decoded video frame yet — e.g. paused_for_cache,
+                # initial buffering, or seeking.
+                try:
+                    vf       = self._player.video_format
+                    time_pos = self._player.time_pos
+                    if not vf or time_pos is None:
+                        self.logger.warning(
+                            f"screenshot(): no video frame yet "
+                            f"(video_format={vf!r}, time_pos={time_pos})"
+                        )
+                        return False
+                except Exception as e:
+                    self.logger.debug(f"screenshot pre-flight check failed: {e}")
+
+                self.logger.info(f"Taking screenshot: {clean_path}")
+                self._player.command("screenshot-to-file", clean_path, "video")
+                self.logger.info("Screenshot saved successfully")
+                return True
             except Exception as e:
                 self.logger.error(f"screenshot() failed: {e}")
+                return False
 
     def get_state(self) -> PlaybackState:
         if not self._safe():

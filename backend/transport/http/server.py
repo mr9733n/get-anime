@@ -194,6 +194,8 @@ def _normalize_episode(ep: dict, title_id: int, watched_ids: set,
         "hls_fhd":        _s("hls_fhd_abs", "hls_fhd"),
         "preview_abs":    ep.get("preview_abs"),
         "is_watched":     ep.get("episode_id") in watched_ids,
+        "skips_opening":  ep.get("skips_opening"),
+        "skips_ending":   ep.get("skips_ending"),
     }
 
 

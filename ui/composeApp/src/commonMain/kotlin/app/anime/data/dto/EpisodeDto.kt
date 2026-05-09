@@ -13,6 +13,10 @@ data class EpisodeDto(
     @SerialName("hls_hd")          val hlsHd: String? = null,
     @SerialName("hls_fhd")         val hlsFhd: String? = null,
     @SerialName("preview_abs")     val previewAbs: String? = null,
+    // opening/ending skip ranges — JSON-encoded pair "[startSec, endSec]", e.g. "[0.0, 89.5]"
+    // null means no skip data stored for this episode
+    @SerialName("skips_opening")   val skipsOpening: String? = null,
+    @SerialName("skips_ending")    val skipsEnding: String? = null,
     // per-episode user prefs (from enricher)
     @SerialName("is_watched")      val isWatched: Boolean? = null,
 )

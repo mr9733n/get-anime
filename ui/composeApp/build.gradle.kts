@@ -18,7 +18,6 @@ kotlin {
         }
     }
 
-    // Kotlin 2.0 / CMP 1.7: mainRun sets mainClass on the KotlinJvmRun task
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
     jvm("desktop") {
         mainRun {
@@ -110,8 +109,6 @@ android {
     }
 }
 
-// compose.desktop is kept for native distribution packaging (Dmg/Msi/Deb).
-// mainClass for desktopRun is set via mainRun {} above (KotlinJvmRun, Kotlin 2.0 API).
 compose.desktop {
     application {
         mainClass = "app.anime.MainKt"

@@ -109,14 +109,28 @@ hidden_imports = [
 # Analysis
 # ---------------------------------------------------------------------------
 a = Analysis(
-    [os.path.join(project_dir, "backend", "transport", "http", "server.py")],
+    [
+        # Use a wrapper outside backend/transport/http. If server.py is used
+        # directly as the entry script, PyInstaller records the package as the
+        # top-level stdlib name "http" and shadows http.client at runtime.
+        os.path.join(project_dir, "make_bin", "stubs", "backend_http_entry.py"),
+        # Extra script analysed statically so PyInstaller walks its full import
+        # graph.  This is the only way to guarantee http.client, urllib.request,
+        # email.* etc. are collected — hiddenimports does NOT follow imports.
+        os.path.join(project_dir, "make_bin", "stubs", "preimport_stdlib.py"),
+    ],
     pathex=[project_dir],
     binaries=[],
     datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[os.path.join(project_dir, "make_bin", "hooks")],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[
+        # Must be listed FIRST — runs before pyi_rth_pkgres and pre-loads the
+        # http / urllib / email chain so pyi_rth_pkgres never hits a missing
+        # http.client (Python 3.13 frozen-module issue).
+        os.path.join(project_dir, "make_bin", "rthooks", "rthook_fix_http_client.py"),
+    ],
     excludes=[
         # Qt / UI — not needed in backend binary
         "PyQt5", "PyQt6", "PySide6", "PySide2",

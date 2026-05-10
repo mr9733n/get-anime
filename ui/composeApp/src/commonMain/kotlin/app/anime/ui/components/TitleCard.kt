@@ -94,24 +94,28 @@ fun TitleCard(
                 }
             }
 
-            TitleStateBadges(
-                ratingValue = title.ratingValue,
-                externalRatings = title.externalRatingBadges(),
-                isWatched = title.isWatched == true || title.allEpisodesWatched == true,
-                needToSee = title.needToSee == true,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .widthIn(max = (width * 0.68f).dp),
-            )
-
-            TitleTopStartBadges(
-                providerLabel = title.provider?.takeIf { it.isNotBlank() },
-                episodesCount = title.episodesCount?.takeIf { it > 0 },
+            // All top badges in one row — provider/episodes on the left, ratings on the right.
+            // Using a single Row prevents the two groups from overlapping each other.
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
+                    .fillMaxWidth()
                     .padding(4.dp),
-            )
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                TitleTopStartBadges(
+                    providerLabel = title.provider?.takeIf { it.isNotBlank() },
+                    episodesCount = title.episodesCount?.takeIf { it > 0 },
+                )
+                TitleStateBadges(
+                    ratingValue = title.ratingValue,
+                    externalRatings = title.externalRatingBadges(),
+                    isWatched = title.isWatched == true || title.allEpisodesWatched == true,
+                    needToSee = title.needToSee == true,
+                    modifier = Modifier.widthIn(max = (width * 0.62f).dp),
+                )
+            }
         }
     }
 }

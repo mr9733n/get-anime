@@ -134,6 +134,9 @@ class AniMediaCacheManager(Generic[T]):
         """
         return self.save_item(self.cfg.vlink_key, original_id, vlink_dict)
 
+    def invalidate_vlink(self, original_id: str) -> AniMediaCacheStatus:
+        return self.invalidate_item(self.cfg.vlink_key, original_id)
+
     def save_item(self, key: str, item_id: ItemKey, data: T) -> AniMediaCacheStatus:
         path = self._file(key)
 

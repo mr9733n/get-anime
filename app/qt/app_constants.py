@@ -4,11 +4,11 @@ from __future__ import annotations
 
 # --- Security hashes (executables) ---
 # Hash of compiled executable
-VLC_PLAYER_HASH = "4d798e851aba59aba38df447ee87ecc6984f25546e53ccf9335f7adc540d990b"
+VLC_PLAYER_HASH = "d13f499d59afb4cc85f0c6a8e832479617ce885589dac79e697b082269a19ec0"
 # Hash of compiled executable
-MPV_PLAYER_HASH = "f6a4a38df7c810bb0fee14bfb135faf83c4ed8e69fbffe1c1d75dd2d771e42c8"
+MPV_PLAYER_HASH = "a27a84b2d83b491ecfeea67d0e2eaf832303037537a8201c704b8fd73bb94d68"
 # Hash of compiled executable
-MINI_BROWSER_HASH = "3efaaec9afd88cf422f0a79f5b49529fa5ffebf261cf3725f120e3c71c71a80e"
+MINI_BROWSER_HASH = "081287a90dce56ba7cec0e7253e3b3e1afc487fb7bf56bf33f17c3ca7605eb73"
 
 # --- Providers ---
 PROVIDER_ANILIBERTY = "aniliberty"

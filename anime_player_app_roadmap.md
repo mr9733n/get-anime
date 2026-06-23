@@ -644,6 +644,8 @@ python enhanced_duplicate_finder.py --output /path/to/results.txt
 - [ ] Add provider OnWaveDub.org
 
 ### 8.40 Fixes in Qt
+- [x] Fix AniMedia parser
+- [x] Add DTO in AniMedia parser
 - [ ] Fix crash on fullscreen in mini browser
 - [ ] Add fullscreen mode in mpv
 - [ ] Fix highlighting episode in VLC playlist

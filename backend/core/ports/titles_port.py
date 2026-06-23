@@ -17,8 +17,24 @@ class ITitlesPort(Protocol):
         ...
 
     # --- search ---
-    def search_title_ids(self, query: str, *, limit: int = 50, offset: int = 0) -> list[int]:
-        """Возвращает только title_id по строке поиска."""
+    def search_title_ids(
+        self,
+        query: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
+    ) -> list[int]:
+        """Возвращает только title_id по строке поиска (с опциональными фильтрами)."""
         ...
 
     def search_title_ids_with_providers(self, query: str) -> tuple[list[int], list[str]]:
@@ -26,6 +42,24 @@ class ITitlesPort(Protocol):
         Возвращает (title_ids, providers) как быстрый поиск для старого UI.
         providers — параллельный список (того же размера), где provider — строка (как возвращает DbManager.get_titles_by_keywords).
         """
+        ...
+
+    def count_search_titles(
+        self,
+        query: str,
+        *,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
+    ) -> int:
+        """Total number of titles matching query + optional filters (for pagination)."""
         ...
 
     # --- provider links ---

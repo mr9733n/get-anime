@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from backend.core.ports.playlists import IPlaylistStorage
@@ -12,7 +13,11 @@ class PlaylistManagerStorage(IPlaylistStorage):
     """
     def __init__(self, playlists_dir: str | Path = "playlists"):
         self._pm = PlaylistManager()
-        self._pm.playlist_path = str(playlists_dir)
+        # Always use an absolute path so that the .m3u8 file path returned to
+        # the Desktop UI is openable from any working directory.
+        abs_dir = str(Path(playlists_dir).resolve())
+        self._pm.playlist_path = abs_dir
+        os.makedirs(abs_dir, exist_ok=True)
 
     def save_bundle(
         self,

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
-from backend.core.state import BusinessState
+from app.backend.core.state import BusinessState
 
 if TYPE_CHECKING:
     from PyQt6.QtWidgets import QGridLayout, QLineEdit, QComboBox, QScrollArea, QWidget

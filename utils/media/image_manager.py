@@ -6,9 +6,6 @@ import hashlib
 from io import BytesIO
 from PIL import Image, ImageFilter
 
-from PyQt6.QtCore import QByteArray, QBuffer
-from PyQt6.QtGui import QPixmap
-
 MIN_ORIGINAL_W = 455
 
 
@@ -89,28 +86,23 @@ def guess_mime(b: bytes) -> str:
 
 def convert_image(blob: bytes) -> bytes | None:
     """
-    Convert any blob (e.g. WEBP) to PNG bytes using QPixmap.
-    More compatible with Qt5 QTextBrowser.
+    Convert any blob (e.g. WEBP) to PNG bytes using PIL.
+    Qt-free implementation — safe to use in the backend binary.
     """
     try:
         if not blob:
             return None
 
-        pixmap = QPixmap()
-        if not pixmap.loadFromData(blob):
-            return None
+        img = Image.open(BytesIO(blob))
 
-        byte_array = QByteArray()
-        buffer = QBuffer(byte_array)
-        if not buffer.open(QBuffer.WriteOnly):
-            return None
+        # Ensure a mode PIL can save as PNG
+        if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+            img = img.convert("RGBA") if img.mode in ("PA",) else img.convert("RGB")
 
-        if not pixmap.save(buffer, "PNG"):
-            return None
-
-        return bytes(byte_array)
+        out = BytesIO()
+        img.save(out, format="PNG", optimize=True)
+        return out.getvalue()
 
     except Exception as e:
-        # хотя бы так, раз тут нет logger
         print(f"Error converting image: {e}", file=sys.stderr)
         return None

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from logging import Logger
     from app.qt.app_context import AppContext
     from providers.animedia.v0.adapter import AniMediaAdapter
-    from app.core.use_cases.title_search_use_case import TitleSearchUseCase, TitleSearchResult
+    from app.backend.core.use_cases.title_search_use_case import TitleSearchUseCase, TitleSearchResult
 
 @dataclass
 class ActionsControllerDeps:

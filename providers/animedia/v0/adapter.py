@@ -24,12 +24,18 @@ class AniMediaAdapter:
         self,
         anime_name: str,
         max_titles: int = 5,
+        *,
+        force_vlink_refresh: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Поиск тайтлов по названию.
         Returns: list of legacy-formatted dicts for DB storage.
         """
-        titles = await self._service.get_titles_by_name(anime_name, max_titles)
+        titles = await self._service.get_titles_by_name(
+            anime_name,
+            max_titles,
+            force_vlink_refresh=force_vlink_refresh,
+        )
         result = [self._to_legacy_format(t) for t in titles]
         self._logger.info(f"get_by_title: returning {len(result)} titles for '{anime_name}'")
         return result
@@ -40,6 +46,9 @@ class AniMediaAdapter:
         Returns: list of {"page": int, "titles": list[str]}
         """
         return await self._service.get_schedule(max_titles)
+
+    def invalidate_schedule_cache(self) -> None:
+        self._service.invalidate_schedule_cache()
 
     async def get_all_titles(
         self,

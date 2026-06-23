@@ -57,3 +57,11 @@ anime_player.db.zip
 /app/demo_qt_browser/playlists
 /libs
 *.zip
+obsolete/title_cut.html
+/ui/composeApp/build/
+/ui/.gradle/
+/ui/.kotlin/
+
+/ui/build
+/get_anime.egg-info
+/ui/composeApp/screenshots

@@ -6,10 +6,34 @@ from typing import List, Dict, Any, Optional, Callable, Awaitable, TypeVar
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
-
 from providers.animedia.v0.legacy_mapper import extract_id_from_url
 
 class AniMediaParser:
+    TITLE_LAYOUTS = {
+        "old": {
+            "simple_fields": {
+                "name_ru": "header.pmovie__header h1",
+                "name_en": "header.pmovie__header div.pmovie__main-info",
+                "alternative": "header.pmovie__header div.courssp",
+                "description": "div.pmovie__text.full-text.clearfix p",
+                "rating": "div.item-slide__ext-rating.item-slide__ext-rating--imdb",
+            },
+            "poster": "div.pmovie__img img",
+            "genres": "div.animli a",
+        },
+        "new": {
+            "simple_fields": {
+                "name_ru": ".amd-title h1",
+                "name_en": ".amd-sub",
+                "alternative": ".amd-alt-names div",
+                "description": ".amd-description",
+                "rating": ".amd-score div",
+            },
+            "poster": ".amd-poster > img",
+            "genres": ".amd-tags a",
+        },
+    }
+
     def __init__(self, base_url: str, logger: logging.Logger | None = None,):
         self.logger = logger or logging.getLogger(__name__)
         self.base_url = base_url
@@ -53,7 +77,8 @@ class AniMediaParser:
             if a.has_attr("href"):
                 link_tag = urljoin(self.base_url, a["href"])
 
-            title_id = str(extract_id_from_url(link_tag))
+            extracted_id = extract_id_from_url(link_tag)
+            title_id = str(extracted_id) if extracted_id is not None else ""
 
             title_tag = a.select_one("div.ftop-item__title")
             title = title_tag.get_text(strip=True) if title_tag else "—"
@@ -85,45 +110,153 @@ class AniMediaParser:
         return results
 
     @staticmethod
-    def _parse_type_info(soup) -> dict:
-        """
-        Извлекает:
-        - full_string  → «ТВ (12 эп.), 24 мин.»
-        - episodes → 12
-        - lenght → 24
-        """
-        result = {
-            "type_full": None,
-            "episodes": 0,
-            "length": None,
-        }
-
-        # <div class="spanser"><span>9</span> <i>из</i> 12+</div>
-        spanser = soup.select_one("div.spanser")
-        if spanser:
-            txt = spanser.get_text(separator=" ", strip=True)
-            m = re.search(r"из\s+(\d+)\+?", txt)
-            total = int(m.group(1)) if m else 0
-            result["episodes"] = total
-            result["type_full"] = f"ТВ ({total} эп.)"
-
-        # Длительность эпизода – не отдается
-        # lenght = int(0)
-        # result["lenght"] = lenght
-        # result["type_full"] += f", {lenght} мин."
-        return result
-
-    @staticmethod
     def _text_or_none(tag) -> Optional[str]:
         return tag.get_text(strip=True) if tag else None
 
+    def detect_title_layout(self, soup: BeautifulSoup) -> str:
+        if soup.select_one(".amd-title"):
+            return "new"
+        if soup.select_one("header.pmovie__header"):
+            return "old"
+        return "unknown"
+
     @staticmethod
-    def _parse_season_and_updated(li_tag) -> tuple[Optional[str], int]:
-        """
-        Принимает <li>‑элемент «Сезон года: …», возвращает:
-        - season_name – только название сезона в нижнем регистре,
-        - updated_ts – timestamp даты выхода (если есть).
-        """
+    def _safe_int(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        m = re.search(r"\d+", value)
+        return int(m.group()) if m else None
+
+    @staticmethod
+    def _safe_float(value: Optional[str]) -> Optional[float]:
+        if value is None:
+            return None
+        value = value.strip().replace(",", ".")
+        if not value:
+            return None
+        m = re.search(r"\d+(?:\.\d+)?", value)
+        return float(m.group()) if m else None
+
+    def _parse_simple_title_fields(
+        self,
+        soup: BeautifulSoup,
+        layout: str,
+    ) -> Dict[str, Optional[str]]:
+        config = self.TITLE_LAYOUTS[layout]["simple_fields"]
+        result: Dict[str, Optional[str]] = {}
+
+        for field, selector in config.items():
+            result[field] = self._text_or_none(soup.select_one(selector))
+
+        return result
+
+    def _parse_title_poster(
+        self,
+        soup: BeautifulSoup,
+        layout: str,
+        base_url: str,
+    ) -> Optional[str]:
+        selector = self.TITLE_LAYOUTS[layout]["poster"]
+        poster_tag = soup.select_one(selector)
+        if not poster_tag:
+            # fallback если верстка снова изменится
+            imgs = soup.select(".amd-poster img")
+            for img in imgs:
+                src = img.get("src", "")
+                if "/posts/" in src:
+                    poster_tag = img
+                    break
+
+        src = poster_tag.get("src")
+        if not src:
+            return None
+
+        return urljoin(base_url, src)
+
+    def _parse_title_genres(
+        self,
+        soup: BeautifulSoup,
+        layout: str,
+    ) -> List[str]:
+        selector = self.TITLE_LAYOUTS[layout]["genres"]
+        return [a.get_text(strip=True) for a in soup.select(selector)]
+
+    def _parse_old_title_meta(self, soup: BeautifulSoup) -> Dict[str, Optional[str]]:
+        meta = {
+            "year": "li:has(span:-soup-contains('Год')) a",
+            "status": "li:has(span:-soup-contains('Статус')) a",
+            "type": "li:has(span:-soup-contains('Тип')) a",
+            "studio": "li:has(span:-soup-contains('Студия')) a",
+        }
+
+        extracted = {}
+        for field, selector in meta.items():
+            extracted[field] = self._text_or_none(soup.select_one(selector))
+
+        season_li = soup.select_one("li:has(span:-soup-contains('Сезон года'))")
+        season_name, updated_ts = self._parse_season_and_updated_old(season_li)
+
+        return {
+            "year": self._safe_int(extracted["year"]),
+            "status": extracted["status"],
+            "type": extracted["type"],
+            "studio": extracted["studio"],
+            "season": season_name,
+            "updated": updated_ts,
+        }
+
+    def _parse_new_title_meta(self, soup: BeautifulSoup) -> Dict[str, Optional[str]]:
+        result = {
+            "year": None,
+            "status": None,
+            "type": None,
+            "studio": None,
+            "season": None,
+            "updated": 0,
+        }
+
+        for a in soup.select(".amd-meta a"):
+            href = a.get("href", "")
+            text = a.get_text(strip=True)
+
+            if "/god/" in href:
+                result["year"] = self._safe_int(text)
+            elif "/ongoingi/" in href:
+                result["status"] = text
+            elif "/sezon_goda/" in href:
+                result["season"] = text.split()[0].lower() if text else None
+            elif "/tip/" in href:
+                result["type"] = text
+            elif "/stydiya/" in href:
+                result["studio"] = text
+
+        result["updated"] = self._parse_updated_from_new_layout(soup)
+        return result
+
+    def _parse_title_meta(
+        self,
+        soup: BeautifulSoup,
+        layout: str,
+    ) -> Dict[str, Optional[str]]:
+        if layout == "old":
+            return self._parse_old_title_meta(soup)
+        if layout == "new":
+            return self._parse_new_title_meta(soup)
+
+        return {
+            "year": None,
+            "status": None,
+            "type": None,
+            "studio": None,
+            "season": None,
+            "updated": 0,
+        }
+
+    @staticmethod
+    def _parse_season_and_updated_old(li_tag) -> tuple[Optional[str], int]:
         if not li_tag:
             return None, 0
 
@@ -131,13 +264,12 @@ class AniMediaParser:
         season_full = season_a.get_text(strip=True) if season_a else ""
         season_name = season_full.split()[0].lower() if season_full else None
 
-        # пример: "Осень 2025, выходит с 2 октября 2025"
         raw = li_tag.get_text(separator=" ", strip=True)
         m = re.search(r"выходит с\s+(\d{1,2}\s+\w+\s+\d{4})", raw, re.IGNORECASE)
         if not m:
             return season_name, 0
 
-        date_str = m.group(1)  # "2 октября 2025"
+        date_str = m.group(1)
         months = {
             "января": "01", "февраля": "02", "марта": "03",
             "апреля": "04", "мая": "05", "июня": "06",
@@ -148,79 +280,163 @@ class AniMediaParser:
         month = months.get(month_ru.lower())
         if not month:
             return season_name, 0
+
         iso = f"{year}-{month}-{day.zfill(2)}T00:00:00+00:00"
         try:
             ts = int(datetime.fromisoformat(iso).timestamp())
         except Exception:
             ts = 0
+
         return season_name, ts
 
-    def parse_title_page(self, html: str, base_url: str) -> Dict[str, Optional[str]]:
-        """Извлекает все требуемые поля из HTML страницы тайтла."""
-        soup = BeautifulSoup(html, "html.parser")
-
-        # ── названия ──
-        header = soup.select_one("header.pmovie__header")
-        name_ru = self._text_or_none(header.select_one("h1"))
-        name_en = self._text_or_none(header.select_one("div.pmovie__main-info"))
-        name_alter = self._text_or_none(header.select_one("div.courssp"))
-
-        # ── жанры ──
-        genres = [
-            a.get_text(strip=True)
-            for a in soup.select("div.animli a")
-        ]
-
-        # ── список <ul> с метаданными ──
-        meta = {  # ключ → CSS‑селектор внутри <li>
-            "year": "li:has(span:-soup-contains('Год')) a",
-            "status": "li:has(span:-soup-contains('Статус')) a",
-            "type": "li:has(span:-soup-contains('Тип')) a",
-            "studio": "li:has(span:-soup-contains('Студия')) a",
+    @staticmethod
+    def _parse_russian_partial_date_to_ts(raw: str) -> int:
+        raw = raw.strip().lower()
+        months = {
+            "января": 1, "февраля": 2, "марта": 3,
+            "апреля": 4, "мая": 5, "июня": 6,
+            "июля": 7, "августа": 8, "сентября": 9,
+            "октября": 10, "ноября": 11, "декабря": 12,
         }
-        extracted = {}
-        for field, selector in meta.items():
-            extracted[field] = self._text_or_none(soup.select_one(selector))
 
-        # ── рейтинг ──
-        rating = self._text_or_none(soup.select_one(
-            "div.item-slide__ext-rating.item-slide__ext-rating--imdb"
-        ))
-        # TODO: add Chinese rating. But it displays not for every title
-        # rating_kp = _text_or_none(soup.select_one(
-        #    "div.item-slide__ext-rating.item-slide__ext-rating--kp"
-        # ))
+        m = re.search(r"(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?(?:\s+(\d{1,2}):(\d{2}))?", raw, re.IGNORECASE)
+        if not m:
+            return 0
 
-        # ── описание ──
-        description = self._text_or_none(soup.select_one(
-            "div.pmovie__text.full-text.clearfix p"
-        ))
+        day = int(m.group(1))
+        month_name = m.group(2)
+        year = int(m.group(3)) if m.group(3) else datetime.now(timezone.utc).year
+        hour = int(m.group(4)) if m.group(4) else 0
+        minute = int(m.group(5)) if m.group(5) else 0
 
-        # ── постер ──
-        poster_tag = soup.select_one("div.pmovie__img img")
-        poster = urljoin(base_url, poster_tag["src"]) if poster_tag else None
+        month = months.get(month_name)
+        if not month:
+            return 0
 
-        # ── сезон и дата выхода ──
-        season_li = soup.select_one("li:has(span:-soup-contains('Сезон года'))")
-        season_name, updated_ts = self._parse_season_and_updated(season_li)
+        try:
+            dt = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except Exception:
+            return 0
 
-        # ── типовая информация (эпизоды, длительность) ──
-        type_info = self._parse_type_info(soup)
+    def _parse_updated_from_new_layout(self, soup: BeautifulSoup) -> int:
+        timer = soup.select_one(".amd-timer")
+        if timer:
+            timer_value = timer.get("data-timer")
+            if timer_value:
+                return self._parse_russian_partial_date_to_ts(timer_value)
+
+        next_block = soup.select_one(".amd-next")
+        if next_block:
+            raw = next_block.get_text(" ", strip=True)
+            m = re.search(r"(\d{1,2}\s+[а-яё]+(?:\s+\d{4})?)", raw, re.IGNORECASE)
+            if m:
+                return self._parse_russian_partial_date_to_ts(m.group(1))
+
+        return 0
+
+
+    def _parse_old_title_type_info(self, soup: BeautifulSoup) -> Dict[str, Optional[int]]:
+        result = {
+            "type_full": None,
+            "episodes": 0,
+            "length": None,
+        }
+
+        spanser = soup.select_one("div.spanser")
+        if spanser:
+            txt = spanser.get_text(separator=" ", strip=True)
+            m = re.search(r"из\s+(\d+)\+?", txt)
+            total = int(m.group(1)) if m else 0
+            result["episodes"] = total
+            result["type_full"] = f"ТВ ({total} эп.)" if total else None
+
+        return result
+
+
+    def _parse_new_title_type_info(self, soup: BeautifulSoup, meta_type: Optional[str]) -> Dict[str, Optional[int]]:
+        result = {
+            "type_full": None,
+            "episodes": 0,
+            "length": None,
+        }
+
+        vser = soup.select_one(".amd-vser")
+        if not vser:
+            return result
+
+        txt = vser.get_text(" ", strip=True)
+        m = re.search(r"из\s+(\d+)\+?", txt)
+        total = int(m.group(1)) if m else 0
+
+        result["episodes"] = total
+        if meta_type and total:
+            result["type_full"] = f"{meta_type} ({total} эп.)"
+        elif total:
+            result["type_full"] = f"ТВ ({total} эп.)"
+
+        return result
+
+    def _parse_title_type_info(
+        self,
+        soup: BeautifulSoup,
+        layout: str,
+        meta_type: Optional[str],
+    ) -> Dict[str, Optional[int]]:
+        if layout == "old":
+            return self._parse_old_title_type_info(soup)
+        if layout == "new":
+            return self._parse_new_title_type_info(soup, meta_type)
 
         return {
-            "name_ru": name_ru,
-            "name_en": name_en,
-            "alternative": name_alter,
-            "genres": genres,
-            "season": season_name,
-            "updated": updated_ts,
-            "year": int(extracted["year"]),
-            "status": extracted["status"],
-            "type": extracted["type"],
-            "studio": extracted["studio"],
-            "rating": float(rating),
-            "description": description,
-            "poster": poster,
+            "type_full": None,
+            "episodes": 0,
+            "length": None,
+        }
+
+    def parse_title_page(self, html: str, base_url: str) -> Dict[str, Optional[str]]:
+        soup = BeautifulSoup(html, "html.parser")
+        layout = self.detect_title_layout(soup)
+
+        if layout == "unknown":
+            self.logger.warning("Unknown title page layout")
+            return {
+                "name_ru": None,
+                "name_en": None,
+                "alternative": None,
+                "genres": [],
+                "season": None,
+                "updated": 0,
+                "year": None,
+                "status": None,
+                "type": None,
+                "studio": None,
+                "rating": None,
+                "description": None,
+                "poster": None,
+                "type_full": None,
+                "episodes": 0,
+                "length": None,
+            }
+
+        simple = self._parse_simple_title_fields(soup, layout)
+        meta = self._parse_title_meta(soup, layout)
+        type_info = self._parse_title_type_info(soup, layout, meta["type"])
+
+        return {
+            "name_ru": simple["name_ru"],
+            "name_en": simple["name_en"],
+            "alternative": simple["alternative"],
+            "genres": self._parse_title_genres(soup, layout),
+            "season": meta["season"],
+            "updated": meta["updated"],
+            "year": meta["year"],
+            "status": meta["status"],
+            "type": meta["type"],
+            "studio": meta["studio"],
+            "rating": self._safe_float(simple["rating"]),
+            "description": simple["description"],
+            "poster": self._parse_title_poster(soup, layout, base_url),
             "type_full": type_info["type_full"],
             "episodes": type_info["episodes"],
             "length": type_info["length"],

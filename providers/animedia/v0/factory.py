@@ -16,6 +16,7 @@ def create_animedia_adapter(
         base_url: str,
         net_client: Any,
         cache_dir: Path,
+        timeout: float = 90.0,
         logger: logging.Logger | None = None,
 ) -> AniMediaAdapter:
     """
@@ -25,6 +26,8 @@ def create_animedia_adapter(
         base_url: Base URL сайта (e.g., "https://amd.online")
         net_client: Ваш кастомный net_client с методом create_async_httpx_client
         cache_dir: Директория для файлового кэша
+        timeout: Таймаут одного HTTP-запроса AniMedia. Провайдер парсится через HTML,
+            поэтому ему нужен больший timeout, чем API-провайдерам.
         logger: Опциональный логгер
 
     Returns:
@@ -47,7 +50,7 @@ def create_animedia_adapter(
     transport = HttpxTransport(
         net_client=net_client,
         headers=headers,
-        timeout=30.0,
+        timeout=timeout,
         follow_redirects=True,
         logger=log,
     )
@@ -96,6 +99,7 @@ def create_adapter(
         base_url: str,
         net_client: Any,
         cache_dir: Path | str,
+        timeout: float = 90.0,
         logger: logging.Logger | None = None,
 ) -> AniMediaAdapter:
     """Alias for create_animedia_adapter with Path coercion."""
@@ -103,5 +107,6 @@ def create_adapter(
         base_url=base_url,
         net_client=net_client,
         cache_dir=Path(cache_dir) if isinstance(cache_dir, str) else cache_dir,
+        timeout=timeout,
         logger=logger,
     )

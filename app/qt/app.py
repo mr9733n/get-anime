@@ -10,9 +10,8 @@ import importlib.resources as ir
 from PyQt6.QtWidgets import QWidget, QTextBrowser, QApplication
 from PyQt6.QtCore import QThreadPool, pyqtSlot, pyqtSignal, QSharedMemory
 
-from backend.core.backend import Backend, BackendDeps
-
-from backend.infra.notify.null_notify import NullNotifier
+from app.backend.core.backend import Backend, BackendDeps
+from app.backend.infra.notify.null_notify import NullNotifier
 from app.qt.ui_notify import Notifier
 
 from app.qt.app_context import AppContext
@@ -39,6 +38,10 @@ from utils.net.url_resolve_service import UrlResolveService
 from utils.net.url_resolver import TTLCache
 from utils.net.url_resolver_config import ResolverConfig
 
+
+
+# Hash of compiled executable
+MPV_PLAYER_HASH = "5f51ebb996b22490145af02e32e698370f56a328f81e02d0abe557effc90f477"
 
 class AnimePlayerAppVer3(QWidget):
     """

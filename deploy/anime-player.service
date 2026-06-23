@@ -1,0 +1,35 @@
+[Unit]
+Description=Anime Player Backend
+Documentation=https://github.com/yourrepo/anime-player
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anime
+Group=anime
+
+# Adjust these paths to match your installation
+WorkingDirectory=/opt/anime-player
+ExecStart=/opt/anime-player/venv/bin/python -m backend.transport.http.server \
+    --db /opt/anime-player/db/anime_player.db \
+    --port 8765 \
+    --host 0.0.0.0
+
+# Auto-restart on crash
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=anime-player
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/anime-player/db /opt/anime-player/playlists /opt/anime-player/temp /opt/anime-player/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

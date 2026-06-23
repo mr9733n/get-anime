@@ -61,8 +61,14 @@ class MpvEngine:
                 'audio-fallback-to-null': 'yes',
                 # ЗАЩИТА ОТ ПРОБЛЕМ С КЭШЕМ:
                 'cache': 'yes',
-                'demuxer-max-bytes': '150M',  # Уменьшил с 100M
-                'demuxer-readahead-secs': '20',  # Уменьшил с 20
+                'demuxer-max-bytes': '150M',
+                'demuxer-readahead-secs': '20',
+                # БУФЕРИЗАЦИЯ: пауза пока не накоплен начальный буфер,
+                # авто-возобновление/пауза при низком кэше во время воспроизведения.
+                # Не трогать: эти опции работают независимо от engine.play()/pause().
+                'cache-pause': 'yes',
+                'cache-pause-initial': 'yes',
+                'cache-pause-wait': '5',        # минимум 5 секунд данных перед стартом
                 # ЗАЩИТА ОТ THREADING ISSUES:
                 'input-terminal': 'no',
                 'terminal': 'no',
@@ -76,10 +82,15 @@ class MpvEngine:
             self.logger.error(f"Failed to create MPV instance: {e}", exc_info=True)
             self.logger.error(f"Stack trace: {traceback.format_exc()}")
             raise
-        self._player["http-header-fields"] = "Connection: close"
+        # НЕ устанавливаем "Connection: close" — он ломает HLS keepalive на Windows:
+        # MPV пытается переиспользовать сокет после того, как сервер его закрыл,
+        # получает WSAEINVAL ("Invalid argument"), и ретраит с нуля. За это время
+        # кэш демуксера опустошается → декодер получает неполный TS-сегмент → H264 ошибки.
         self._player["user-agent"] = "Mozilla/5.0"
-        self._player["network-timeout"] = "10"
+        self._player["network-timeout"] = "30"      # было 10: CDN иногда отвечает долго
         self._player["demuxer-hysteresis-secs"] = "10"
+        # Авто-переподключение при разрыве потока (reconnect_streamed нужен для HLS)
+        self._player["stream-lavf-o"] = "reconnect=1,reconnect_streamed=1,reconnect_delay_max=10"
 
         self._alive = True
 
@@ -303,18 +314,22 @@ class MpvEngine:
             except Exception as e:
                 self.logger.error(f"pause() failed: {e}")
 
-    def toggle_pause(self) -> None:
+    def toggle_pause(self) -> bool:
+        """Toggle pause and return the new is_playing state (True = playing)."""
         if not self._safe():
-            return
+            return False
         with self._lock:
             if not self._safe():
-                return
+                return False
             try:
-                current = bool(self._player.pause)
-                self._player.pause = not current
-                self.logger.info(f"Toggled pause: {current} -> {not current}")
+                current_paused = bool(self._player.pause)
+                new_paused = not current_paused
+                self._player.pause = new_paused
+                self.logger.info(f"Toggled pause: {current_paused} -> {new_paused}")
+                return not new_paused  # is_playing = not paused
             except Exception as e:
                 self.logger.error(f"toggle_pause() failed: {e}")
+                return False
 
     def stop(self) -> None:
         if not self._safe():
@@ -363,17 +378,41 @@ class MpvEngine:
             except Exception as e:
                 self.logger.error(f"set_volume({volume}) failed: {e}")
 
-    def screenshot(self, path: str) -> None:
+    def screenshot(self, path: str) -> bool:
+        """Save a screenshot to *path*.  Returns True on success, False otherwise."""
         if not self._safe():
-            return
+            return False
         with self._lock:
             if not self._safe():
-                return
+                return False
             try:
-                self.logger.info(f"Taking screenshot: {path}")
-                self._player.command("screenshot-to-file", path, "video")
+                # MPV/libavformat requires forward slashes even on Windows.
+                # str(pathlib.Path) produces backslashes, which cause
+                # MPV_ERROR_COMMAND (-12) inside the encoder.
+                clean_path = path.replace('\\', '/')
+
+                # Guard: screenshot-to-file fails with MPV_ERROR_COMMAND (-12)
+                # when there is no decoded video frame yet — e.g. paused_for_cache,
+                # initial buffering, or seeking.
+                try:
+                    vf       = self._player.video_format
+                    time_pos = self._player.time_pos
+                    if not vf or time_pos is None:
+                        self.logger.warning(
+                            f"screenshot(): no video frame yet "
+                            f"(video_format={vf!r}, time_pos={time_pos})"
+                        )
+                        return False
+                except Exception as e:
+                    self.logger.debug(f"screenshot pre-flight check failed: {e}")
+
+                self.logger.info(f"Taking screenshot: {clean_path}")
+                self._player.command("screenshot-to-file", clean_path, "video")
+                self.logger.info("Screenshot saved successfully")
+                return True
             except Exception as e:
                 self.logger.error(f"screenshot() failed: {e}")
+                return False
 
     def get_state(self) -> PlaybackState:
         if not self._safe():

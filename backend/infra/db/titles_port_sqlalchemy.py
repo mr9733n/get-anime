@@ -4,9 +4,10 @@ from sqlalchemy.orm import joinedload
 
 from backend.core.ports.titles_port import ITitlesPort
 
-# Импорты моделей — подстрой под реальный путь
-# Судя по твоему коду в get.py: TitleProviderMap и Provider точно есть.
-from storage.tables import TitleProviderMap  # <-- подставь реальный импорт
+from storage.tables import (
+    TitleProviderMap, Title, TitleGenreRelation, Genre, History,
+    TeamMember, TitleTeamRelation, FranchiseRelease,
+)
 
 
 class SqlAlchemyTitlesPort(ITitlesPort):
@@ -34,11 +35,139 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         )
 
     # --- search ---
-    def search_title_ids(self, query: str, *, limit: int = 50, offset: int = 0) -> list[int]:
+    def _has_filters(
+        self,
+        year: int | None,
+        genre: str | None,
+        status_filter: str | None,
+        type_filter: str | None,
+        need_to_see: bool | None,
+        team_member_id: int | None,
+        team_member: str | None,
+        franchise_id: int | None,
+        sort: str | None,
+    ) -> bool:
+        return (
+            any(x is not None for x in (year, genre, status_filter, type_filter))
+            or need_to_see is True
+            or team_member_id is not None
+            or team_member is not None
+            or franchise_id is not None
+            or sort == "recent"
+        )
+
+    def _filtered_query(self, session, query: str,
+                        year: int | None, genre: str | None,
+                        status_filter: str | None, type_filter: str | None,
+                        need_to_see: bool | None, user_id: int,
+                        team_member_id: int | None, team_member: str | None,
+                        franchise_id: int | None):
         """
-        Используем существующий get_titles_search_query, который возвращает list[dict],
-        и нормализуем до списка title_ids.
+        #9: SQLAlchemy query that applies optional filters.
+        Falls back to legacy get_titles_search_query when no filters given.
         """
+        q = session.query(Title.title_id)
+
+        # Text search (name_ru / name_en / alternative_name)
+        if query:
+            like = f"%{query}%"
+            q = q.filter(
+                Title.name_ru.ilike(like)
+                | Title.name_en.ilike(like)
+                | Title.alternative_name.ilike(like)
+            )
+
+        if year is not None:
+            q = q.filter(Title.season_year == year)
+
+        if status_filter:
+            q = q.filter(Title.status_string.ilike(f"%{status_filter}%"))
+
+        if type_filter:
+            q = q.filter(Title.type_string.ilike(f"%{type_filter}%"))
+
+        if genre:
+            q = (
+                q.join(TitleGenreRelation, TitleGenreRelation.title_id == Title.title_id)
+                 .join(Genre, Genre.genre_id == TitleGenreRelation.genre_id)
+                 .filter(Genre.name.ilike(f"%{genre}%"))
+            )
+
+        if team_member_id is not None:
+            q = (
+                q.join(TitleTeamRelation, TitleTeamRelation.title_id == Title.title_id)
+                 .filter(TitleTeamRelation.team_member_id == int(team_member_id))
+                 .distinct()
+            )
+        elif team_member:
+            q = (
+                q.join(TitleTeamRelation, TitleTeamRelation.title_id == Title.title_id)
+                 .join(TeamMember, TeamMember.id == TitleTeamRelation.team_member_id)
+                 .filter(TeamMember.name.ilike(f"%{team_member}%"))
+                 .distinct()
+            )
+
+        if franchise_id is not None:
+            q = (
+                q.join(FranchiseRelease, FranchiseRelease.title_id == Title.title_id)
+                 .filter(FranchiseRelease.franchise_id == int(franchise_id))
+                 .distinct()
+            )
+
+        if need_to_see is True:
+            q = (
+                q.join(History, History.title_id == Title.title_id)
+                 .filter(History.user_id == int(user_id))
+                 .filter(History.need_to_see.is_(True))
+                 .distinct()
+            )
+
+        return q
+
+    def _ordered_query(self, q, sort: str | None):
+        if sort == "recent":
+            return q.order_by(
+                Title.last_updated.desc(),
+                Title.updated.desc(),
+                Title.title_id.desc(),
+            )
+        return q.order_by(Title.title_id.desc())
+
+    def search_title_ids(
+        self,
+        query: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
+    ) -> list[int]:
+        """
+        When any filter is set, use a direct SQLAlchemy query.
+        Without filters, delegate to the legacy get_titles_search_query.
+        """
+        sort = (sort or "").strip().lower() or None
+        if self._has_filters(
+            year, genre, status_filter, type_filter, need_to_see,
+            team_member_id, team_member, franchise_id, sort,
+        ):
+            with self._db.Session() as session:
+                q = self._filtered_query(
+                    session, query or "", year, genre, status_filter, type_filter, need_to_see, user_id,
+                    team_member_id, team_member, franchise_id,
+                )
+                rows = self._ordered_query(q, sort).offset(int(offset)).limit(int(limit)).all()
+                return [int(r[0]) for r in rows]
+
+        # Legacy path (no filters)
         rows = self._db.get_titles_search_query(query=query)  # list[dict]
         ids: list[int] = []
         for r in rows or []:
@@ -47,8 +176,6 @@ class SqlAlchemyTitlesPort(ITitlesPort):
                     ids.append(int(r["title_id"]))
                 except Exception:
                     continue
-
-        # применяем offset/limit на уровне python (т.к. исходный метод уже отдал list)
         if offset:
             ids = ids[int(offset):]
         if limit is not None:
@@ -63,7 +190,36 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         title_ids = [int(x) for x in (title_ids or [])]
         providers = list(providers or [])
         return title_ids, providers
-    
+
+    def count_search_titles(
+        self,
+        query: str,
+        *,
+        year: int | None = None,
+        genre: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+        need_to_see: bool | None = None,
+        team_member_id: int | None = None,
+        team_member: str | None = None,
+        franchise_id: int | None = None,
+        user_id: int = 42,
+        sort: str | None = None,
+    ) -> int:
+        sort = (sort or "").strip().lower() or None
+        if self._has_filters(
+            year, genre, status_filter, type_filter, need_to_see,
+            team_member_id, team_member, franchise_id, sort,
+        ):
+            with self._db.Session() as session:
+                q = self._filtered_query(
+                    session, query or "", year, genre, status_filter, type_filter, need_to_see, user_id,
+                    team_member_id, team_member, franchise_id,
+                )
+                return q.count()
+        rows = self._db.get_titles_search_query(query=query)
+        return len(rows) if rows else 0
+
     # --- provider links ---
     def get_provider_links_map(self, title_ids: list[int]) -> dict[int, list[dict]]:
         """
@@ -76,10 +232,7 @@ class SqlAlchemyTitlesPort(ITitlesPort):
         title_ids = [int(x) for x in title_ids]
         out: dict[int, list[dict]] = {tid: [] for tid in title_ids}
 
-        # используем Session фабрику, которая уже есть внутри db_manager
-        # у тебя в DbManager методы делают: `with self.Session as session:`
-        # Значит self._db.Session — это контекст-менеджер.
-        with self._db.Session as session:
+        with self._db.Session() as session:
             links = (
                 session.query(TitleProviderMap)
                 .options(joinedload(TitleProviderMap.provider))

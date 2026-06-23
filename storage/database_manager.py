@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from storage.save import SaveManager
 from storage.process import ProcessManager
 from storage.get import GetManager
@@ -18,8 +19,13 @@ class DatabaseManager:
     def __init__(self, db_path):
         self.current_poster_index = None
         self.logger = logging.getLogger(__name__)
-        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
-        self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)()
+        self.engine = create_engine(
+            f'sqlite:///{db_path}',
+            echo=False,
+            connect_args={"check_same_thread": False},
+            poolclass=NullPool,
+        )
+        self.Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # TODO: fix this backward compat
         # self.app_state_manager = AppStateService(self)
@@ -44,7 +50,7 @@ class DatabaseManager:
             {"day_of_week": 6, "day_name": "Saturday"},
             {"day_of_week": 7, "day_name": "Sunday"},
         ]
-        with self.Session as session:
+        with self.Session() as session:
                 try:
                     if session.query(DaysOfWeek).count() == 0:
                         for day in days:
@@ -275,6 +281,18 @@ class DatabaseManager:
     def get_studio_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_studio_by_title_id(title_id)
 
+    def get_team_members_from_db(self, title_id: int) -> list[dict]:
+        return self.get_manager.get_team_members_from_db(title_id)
+
+    def get_ratings_list_from_db(self, title_id: int) -> list:
+        return self.get_manager.get_ratings_list_from_db(title_id)
+
+    def get_history_records_from_db(self, user_id: int, title_id: int) -> list:
+        return self.get_manager.get_history_records_from_db(user_id, title_id)
+
+    def get_production_studio_obj_from_db(self, title_id: int) -> dict | None:
+        return self.get_manager.get_production_studio_obj_from_db(title_id)
+
     def get_player_host_by_title_id(self, title_id: int) -> str | None:
         return self.get_manager.get_player_host_by_title_id(title_id)
 
@@ -324,7 +342,7 @@ class DatabaseManager:
         return result
 
     def restore_titles(self, title_ids):
-        with self.Session as session:
+        with self.Session() as session:
             titles = session.query(Title).filter(Title.title_id.in_(title_ids)).all()
             for t in titles:
                 t.is_deleted = False
